@@ -1,0 +1,338 @@
+/* Custom CSS Variables */
+:root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 174 72% 45%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 174 72% 45%;
+    --radius: 0.5rem;
+}
+
+.dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 174 72% 45%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 174 72% 45%;
+}
+
+/* Base Styles */
+* {
+    border-color: hsl(var(--border));
+}
+
+body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+}
+
+/* Custom Teal Colors */
+.bg-teal-500 {
+    background-color: hsl(174, 72%, 45%);
+}
+
+.bg-teal-600 {
+    background-color: hsl(174, 72%, 40%);
+}
+
+.bg-teal-700 {
+    background-color: hsl(174, 72%, 35%);
+}
+
+.text-teal-600 {
+    color: hsl(174, 72%, 40%);
+}
+
+.text-teal-700 {
+    color: hsl(174, 72%, 35%);
+}
+
+.hover\:bg-teal-600:hover {
+    background-color: hsl(174, 72%, 40%);
+}
+
+.hover\:bg-teal-700:hover {
+    background-color: hsl(174, 72%, 35%);
+}
+
+.border-teal-500 {
+    border-color: hsl(174, 72%, 45%);
+}
+
+.ring-teal-600 {
+    --tw-ring-color: hsl(174, 72%, 40%);
+}
+
+.bg-teal-50 {
+    background-color: hsl(174, 72%, 97%);
+}
+
+.bg-teal-100 {
+    background-color: hsl(174, 72%, 95%);
+}
+
+.bg-teal-200 {
+    background-color: hsl(174, 72%, 90%);
+}
+
+.ring-teal-500 {
+    --tw-ring-color: hsl(174, 72%, 45%);
+}
+
+/* Accordion Styles */
+.accordion-content {
+    overflow: hidden;
+    transition: height 0.2s ease-out;
+}
+
+.accordion-content.collapsed {
+    height: 0;
+}
+
+.accordion-content.expanded {
+    height: auto;
+}
+
+.accordion-trigger {
+    transition: transform 0.2s ease;
+}
+
+.accordion-trigger.open {
+    transform: rotate(180deg);
+}
+
+/* Focus Styles */
+.focus\:outline-none:focus {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+}
+
+.focus\:ring-teal-500:focus {
+    --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+    --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+    box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+    --tw-ring-opacity: 1;
+    --tw-ring-color: hsl(174 72% 45% / var(--tw-ring-opacity));
+}
+
+.focus\:border-teal-500:focus {
+    border-color: hsl(174, 72%, 45%);
+}
+
+/* Calendar Styles */
+.calendar-day {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.calendar-day:hover {
+    background-color: hsl(var(--accent));
+}
+
+.calendar-day.selected {
+    background-color: hsl(174, 72%, 45%);
+    color: white;
+}
+
+.calendar-day.disabled {
+    color: hsl(var(--muted-foreground));
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.calendar-day.today {
+    background-color: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
+}
+
+/* Time Slot Styles */
+.time-slot {
+    width: 100%;
+    height: 100%;
+    border-radius: 4px;
+    transition: all 0.2s;
+    font-weight: bold;
+    font-size: 18px;
+}
+
+.time-slot.available {
+    color: hsl(174, 72%, 40%);
+    cursor: pointer;
+}
+
+.time-slot.available:hover {
+    background-color: hsl(174, 72%, 90%);
+}
+
+.time-slot.selected {
+    background-color: hsl(174, 72%, 45%);
+    color: white;
+    ring: 2px solid hsl(174, 72%, 40%);
+}
+
+.time-slot.unavailable {
+    color: #9ca3af;
+    cursor: not-allowed;
+}
+
+/* Checkbox Styles */
+.checkbox {
+    accent-color: hsl(174, 72%, 45%);
+}
+
+/* Radio Button Styles */
+input[type="radio"] {
+    accent-color: hsl(174, 72%, 45%);
+}
+
+/* Treatment Item Styles */
+.treatment-item {
+    transition: all 0.2s ease;
+}
+
+.treatment-item.selected {
+    background-color: hsl(174, 72%, 97%);
+    border: 2px solid hsl(174, 72%, 45%);
+}
+
+.treatment-item:not(.selected) {
+    background-color: hsl(240, 4.8%, 95.9%);
+}
+
+.treatment-item:not(.selected):hover {
+    background-color: hsl(240, 4.8%, 90%);
+}
+
+/* Button Transitions */
+button {
+    transition: all 0.2s ease;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Custom Scrollbar */
+.overflow-x-auto::-webkit-scrollbar {
+    height: 8px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground));
+    border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--foreground));
+}
+
+/* Animation Classes */
+.fade-in {
+    opacity: 0;
+    animation: fadeIn 0.3s ease-in-out forwards;
+}
+
+@keyframes fadeIn {
+    to {
+        opacity: 1;
+    }
+}
+
+.slide-in {
+    transform: translateX(20px);
+    opacity: 0;
+    animation: slideIn 0.3s ease-in-out forwards;
+}
+
+@keyframes slideIn {
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Mobile Responsive Adjustments */
+@media (max-width: 640px) {
+    .container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    
+    .text-2xl {
+        font-size: 1.5rem;
+    }
+    
+    .text-3xl {
+        font-size: 1.875rem;
+    }
+    
+    .p-6 {
+        padding: 1rem;
+    }
+    
+    .space-x-4 > * + * {
+        margin-left: 0.5rem;
+    }
+    
+    .space-x-2 > * + * {
+        margin-left: 0.25rem;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .no-print {
+        display: none;
+    }
+    
+    body {
+        background: white;
+        color: black;
+    }
+    
+    .bg-teal-500,
+    .bg-teal-600,
+    .bg-teal-700 {
+        background: #000 !important;
+        color: white !important;
+    }
+}

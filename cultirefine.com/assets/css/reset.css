@@ -1,0 +1,356 @@
+/* Reset
+   ----------------------------------------------------------------- */
+
+@charset "UTF-8";
+@use "../global" as *;
+/*
+html5doctor.com Reset Stylesheet
+v1.6.1
+Last Updated: 2010-09-17
+Author: Richard Clark - http://richclarkdesign.com
+Twitter: @rich_clark
+*/
+
+html, body, div, span, object, iframe,
+h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+abbr, address, cite, code,
+del, dfn, em, img, ins, kbd, q, samp,
+small, strong, sub, sup, var,
+b, i,
+dl, dt, dd, ol, ul, li,
+fieldset, form, label, legend,
+table, caption, tbody, tfoot, thead, tr, th, td,
+article, aside, canvas, details, figcaption, figure,
+footer, header, hgroup, menu, nav, section, summary,
+time, mark, audio, video {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	outline: 0;
+	font-size: 100%;
+	vertical-align: baseline;
+	background: transparent;
+}
+
+body {
+	line-height: 1;
+	width: 100%;
+}
+
+article, aside, details, figcaption, figure,
+footer, header, hgroup, menu, nav, section {
+	display: block;
+}
+
+nav ul {
+	list-style: none;
+}
+
+blockquote, q {
+	quotes: none;
+}
+
+blockquote:before, blockquote:after,
+q:before, q:after {
+	content: '';
+	content: none;
+}
+
+a {
+	margin: 0;
+	padding: 0;
+	font-size: 100%;
+	vertical-align: baseline;
+	background: transparent;
+	text-decoration: none;
+}
+
+/* change colours to suit your needs */
+ins {
+	background-color: #ff9;
+	color: #000;
+	text-decoration: none;
+}
+
+/* change colours to suit your needs */
+mark {
+	background-color: #ff9;
+	color: #000;
+	font-style: italic;
+	font-weight: bold;
+}
+
+del {
+	text-decoration: line-through;
+}
+
+abbr[title], dfn[title] {
+	border-bottom: 1px dotted;
+	cursor: help;
+}
+
+table {
+	border-collapse: collapse;
+	border-spacing: 0;
+}
+
+th {
+    font-weight: inherit;
+}
+
+/* change border colour to suit your needs */
+hr {
+	display: block;
+	height: 0;
+	border: 0;
+	border-top: none;
+	margin: 0;
+	padding: 0;
+}
+
+input, select {
+	vertical-align: middle;
+}
+
+/* iOSでのデフォルトスタイルをリセット  */
+input[type="submit"],
+input[type="button"],
+input[type="radio"],
+input[type="tel"],
+input[type="email"],
+input[type="text"],
+textarea {
+	border-radius: 0;
+	-webkit-box-sizing: content-box;
+	-webkit-appearance: button;
+	appearance: button;
+	border: none;
+	box-sizing: border-box;
+
+	&::-webkit-search-decoration {
+		display: none;
+	}
+
+	&::focus {
+		outline-offset: -2px;
+	}
+}
+
+a[href*="tel:"] {
+	cursor: default;
+	text-decoration: none;
+	color: inherit;
+}
+
+li, ol {
+	list-style: none;
+}
+
+@media (min-width:$bp1a) {
+	a[href^="tel:"] {
+		pointer-events: none;
+	}
+}
+
+/* @charset "utf-8";
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+}
+:where([hidden]:not([hidden='until-found'])) {
+  display: none!important
+}
+:where(html) {
+  -webkit-text-size-adjust: none;
+  color-scheme: dark light
+}
+@media (prefers-reduced-motion:no-preference) {
+  :where(html: focus-within) {
+    scroll-behavior:smooth
+  }
+}
+:where(body) {
+  line-height: 1.5;
+  font-family: system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased
+}
+:where(input, button, textarea, select) {
+  font: inherit;
+  color: inherit
+}
+:where(textarea) {
+  resize: vertical;
+  resize: block
+}
+:where(button, label, select, summary, [role='button'], [role='option']) {
+  cursor: pointer;
+}
+:where(:disabled) {
+  cursor: not-allowed
+}
+:where(label:has(>input:disabled), label:has(+input:disabled)) {
+  cursor: not-allowed
+}
+:where(button) {
+  border-style: solid
+}
+:where(a) {
+  color: inherit;
+  text-underline-offset: .2ex
+}
+:where(ul, ol) {
+  list-style: none
+}
+:where(img, svg, video, canvas, audio, iframe, embed, object) {
+  display: block
+}
+:where(img, picture, svg) {
+  max-inline-size: 100%;
+  block-size: auto
+}
+:where(p, h1, h2, h3, h4, h5, h6) {
+  overflow-wrap: break-word
+}
+:where(hr) {
+  border: none;
+  border-block-start: 1px solid;
+  color: inherit;
+  block-size: 0;
+  overflow: visible
+}
+:where(:focus-visible) {
+  outline: 3px solid Highlight;
+  outline-offset: 2px;
+  scroll-margin-block: 10vh
+}
+:where(.visually-hidden:not(:focus-within, :active)) {
+  clip-path: inset(50%)!important;
+  height: 1px!important;
+  width: 1px!important;
+  overflow: hidden!important;
+  position: absolute!important;
+  white-space: nowrap!important;
+  border: 0!important
+}
+input:not([type="radio"]):not([type="checkbox"]),
+button,
+select,
+textarea {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  font: inherit;
+  outline: none;
+}
+/* html, body, div, span, object, iframe,
+h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+abbr, address, cite, code,
+del, dfn, em, img, ins, kbd, q, samp,
+small, strong, sub, sup, var,
+b, i,
+dl, dt, dd, ol, ul, li,
+fieldset, form, label, legend,
+caption, article, aside, dialog, figure, footer, header,
+hgroup, menu, nav, section,
+time, mark, audio, video {
+  margin:0;
+  padding:0;
+  border:0;
+  outline:0;
+  font-size:100%;
+  vertical-align:baseline;
+  background:transparent;
+}
+body {
+  line-height:1;
+}
+article, aside, dialog, figure, footer, header,
+hgroup, nav, section {
+  display:block;
+}
+nav ul {
+  list-style:none;
+}
+blockquote, q {
+  quotes:none;
+}
+blockquote:before, blockquote:after,
+q:before, q:after {
+  content:'';
+  content:none;
+}
+a {
+  margin:0;
+  padding:0;
+  border:0;
+  font-size:100%;
+  vertical-align:baseline;
+  background:transparent;
+}
+ins {
+  background-color:#ff9;
+  color:#000;
+  text-decoration:none;
+}
+img {
+  vertical-align: top;
+}
+mark {
+  background-color:#ff9;
+  color:#000;
+  font-style:italic;
+  font-weight:bold;
+}
+del {
+  text-decoration: line-through;
+}
+abbr[title], dfn[title] {
+  border-bottom:1px dotted #000;
+  cursor:help;
+}
+table {
+  border-collapse:collapse;
+  border-spacing:0;
+}
+hr {
+  display:block;
+  height:1px;
+  border:0;
+  border-top:1px solid #cccccc;
+  margin:1em 0;
+  padding:0;
+}
+ul li,
+ol li {
+  list-style-type: none;
+}
+input:not([type="radio"]):not([type="checkbox"]),
+button,
+select,
+textarea {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  font: inherit;
+  outline: none;
+  padding:0;
+}
+textarea {
+  resize: vertical;
+}
+input[type='submit'],
+input[type='button'],
+label,
+button,
+select {
+  cursor: pointer;
+}
+select::-ms-expand {
+  display: none;
+} */ */
