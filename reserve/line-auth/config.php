@@ -3,10 +3,15 @@
 require_once __DIR__ . '/env-loader.php';
 EnvLoader::load(__DIR__ . '/.env');
 
+// URLヘルパーを読み込む
+require_once __DIR__ . '/url-helper.php';
+
 // LINE認証設定
 define('LINE_CHANNEL_ID', getenv('LINE_CHANNEL_ID'));
 define('LINE_CHANNEL_SECRET', getenv('LINE_CHANNEL_SECRET'));
-define('LINE_CALLBACK_URL', getenv('LINE_CALLBACK_URL'));
+
+// コールバックURLを動的に生成
+define('LINE_CALLBACK_URL', getLineCallbackUrl());
 
 // セッション設定
 define('SESSION_LIFETIME', 3600); // 1時間

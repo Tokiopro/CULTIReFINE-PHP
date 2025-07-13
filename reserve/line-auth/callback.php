@@ -1,5 +1,6 @@
 <?php
 require_once 'config.php';
+require_once 'url-helper.php';
 require_once 'LineAuth.php';
 require_once 'ExternalApi.php';
 require_once 'logger.php';
@@ -59,7 +60,7 @@ try {
     
     // エラーページへリダイレクト
     $_SESSION['error_message'] = 'システムエラーが発生しました。しばらくしてからもう一度お試しください。';
-    header('Location: /reserve/error.php');
+    header('Location: ' . getRedirectUrl('/reserve/error.php'));
     exit;
 }
 
@@ -68,10 +69,10 @@ if ($userData) {
     $logger->info('既存ユーザーとして認識', ['user_id' => $userData['id']]);
     
     // 予約ページへリダイレクト
-    header('Location: /reserve/');
+    header('Location: ' . getRedirectUrl('/reserve/'));
 } else {
     // 新規ユーザーの場合の処理
     $logger->info('新規ユーザーとして登録ページへ', ['line_user_id' => $lineUserId]);
-    header('Location: /reserve/registration.php');
+    header('Location: ' . getRedirectUrl('/reserve/registration.php'));
 }
 exit;

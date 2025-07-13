@@ -1,10 +1,11 @@
 <?php
 session_start();
+require_once __DIR__ . '/line-auth/url-helper.php';
 
 // LINE認証チェック
 if (!isset($_SESSION['line_user_id'])) {
     // 未認証の場合はLINE認証へリダイレクト
-    header('Location: /reserve/line-auth/');
+    header('Location: ' . getRedirectUrl('/reserve/line-auth/'));
     exit;
 }
 
@@ -19,7 +20,7 @@ $userData = $_SESSION['user_data'] ?? null;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>天満病院 予約システム</title>
+    <title>CLUTIREFINEクリニック 予約</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .profile-image {
@@ -34,13 +35,17 @@ $userData = $_SESSION['user_data'] ?? null;
     <!-- ヘッダー -->
     <header class="bg-teal-600 text-white p-4 shadow-md">
         <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-bold">天満病院 予約システム</h1>
-            <div class="flex items-center space-x-3">
-                <?php if ($pictureUrl): ?>
-                    <img src="<?php echo htmlspecialchars($pictureUrl); ?>" alt="プロフィール画像" class="profile-image">
-                <?php endif; ?>
-                <span><?php echo htmlspecialchars($displayName); ?>さん</span>
-                <a href="/reserve/logout.php" class="text-sm underline">ログアウト</a>
+            <h1 class="text-xl font-semibold">CLUTIREFINEクリニック 予約</h1>
+            <div class="flex items-center space-x-5">
+                <span id="user-welcome" class="text-sm hidden sm:inline">ようこそ、
+                    <?php if ($pictureUrl): ?>
+                        <img src="<?php echo htmlspecialchars($pictureUrl); ?>" alt="プロフィール画像" class="profile-image inline-block mr-1">
+                    <?php endif; ?>
+                    <span id="user-name"><?php echo htmlspecialchars($displayName); ?></span>様
+                </span>
+                <a href="./" target="_blank" rel="noopener noreferrer" class="text-white hover:underline flex items-center text-sm" id="form-link">予約フォーム</a>
+                <a href="./document" target="_blank" rel="noopener noreferrer" class="text-white hover:underline flex items-center text-sm" id="docs-link">書類一覧</a>
+                <a href="./ticket" target="_blank" rel="noopener noreferrer" class="text-white hover:underline flex items-center text-sm" id="ticket-link">チケット確認</a>
             </div>
         </div>
     </header>

@@ -1,9 +1,10 @@
 <?php
 session_start();
+require_once __DIR__ . '/line-auth/url-helper.php';
 
 // LINE認証チェック
 if (!isset($_SESSION['line_user_id'])) {
-    header('Location: /reserve/line-auth/');
+    header('Location: ' . getRedirectUrl('/reserve/line-auth/'));
     exit;
 }
 
@@ -53,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['user_data'] = $result;
                 $_SESSION['success_message'] = '登録が完了しました。';
                 $logger->info('新規ユーザー登録完了', ['line_user_id' => $_SESSION['line_user_id']]);
-                header('Location: /reserve/');
+                header('Location: ' . getRedirectUrl('/reserve/'));
                 exit;
             } else {
                 $errors[] = '登録に失敗しました。もう一度お試しください。';
