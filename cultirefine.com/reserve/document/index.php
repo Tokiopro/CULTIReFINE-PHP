@@ -1,3 +1,117 @@
+<?php
+session_start();
+require_once __DIR__ . '/../line-auth/url-helper.php';
+
+// LINE認証チェック
+if (!isset($_SESSION['line_user_id'])) {
+    // 未認証の場合はLINE認証へリダイレクト
+    header('Location: ' . getRedirectUrl('/reserve/line-auth/'));
+    exit;
+}
+
+// ユーザー情報を取得
+$lineUserId = $_SESSION['line_user_id'];
+$displayName = $_SESSION['line_display_name'] ?? 'ゲスト';
+$pictureUrl = $_SESSION['line_picture_url'] ?? null;
+$userData = $_SESSION['user_data'] ?? null;
+
+// GAS APIから書類一覧を取得
+require_once __DIR__ . '/../line-auth/config.php';
+require_once __DIR__ . '/../line-auth/GasApiClient.php';
+
+$documents = [];
+$errorMessage = '';
+$visitorId = null;
+
+try {
+    // デバッグ情報の開始
+    error_log('=== Document API Debug Start ===');
+    error_log('LINE User ID: ' . $lineUserId);
+    error_log('GAS_DEPLOYMENT_ID: ' . GAS_DEPLOYMENT_ID);
+    error_log('GAS_API_KEY exists: ' . (!empty(GAS_API_KEY) ? 'YES' : 'NO'));
+    
+    $gasApi = new GasApiClient(GAS_DEPLOYMENT_ID, GAS_API_KEY);
+    
+    if (!$gasApi) {
+        $errorMessage = 'GAS APIクライアントの初期化に失敗しました。';
+        error_log('ERROR: GAS API Client initialization failed');
+    } else {
+        error_log('GAS API Client created successfully');
+        
+        // 1. LINE User IDでユーザー情報取得
+        error_log('Calling getUserFullInfo for LINE User ID: ' . $lineUserId);
+        $userInfo = $gasApi->getUserFullInfo($lineUserId);
+        
+        // APIレスポンスの詳細ログ
+        error_log('API Response Status: ' . ($userInfo['status'] ?? 'NO_STATUS'));
+        error_log('Full API Response: ' . json_encode($userInfo, JSON_PRETTY_PRINT));
+        
+        if (empty($userInfo)) {
+            $errorMessage = 'APIレスポンスが空です。';
+            error_log('ERROR: Empty API response');
+        } elseif (!isset($userInfo['status'])) {
+            $errorMessage = 'APIレスポンスが不正です。';
+            error_log('ERROR: No status in API response');
+        } elseif ($userInfo['status'] !== 'success') {
+            $errorMessage = 'API呼び出しエラー: ' . ($userInfo['message'] ?? 'Unknown error');
+            error_log('ERROR: API call failed with status: ' . $userInfo['status']);
+        } elseif (!isset($userInfo['data'])) {
+            $errorMessage = 'APIレスポンスにdataフィールドがありません。';
+            error_log('ERROR: No data field in API response');
+        } else {
+            // データ構造の詳細確認
+            error_log('Data Keys: ' . json_encode(array_keys($userInfo['data'])));
+            error_log('Has user.id: ' . (isset($userInfo['data']['user']['id']) ? 'YES' : 'NO'));
+            
+            if (isset($userInfo['data']['user']['id'])) {
+                $visitorId = $userInfo['data']['user']['id'];
+                error_log('Visitor ID found: ' . $visitorId);
+                
+                // 2. visitor_idで書類一覧取得
+                error_log('Calling getDocuments for visitor ID: ' . $visitorId);
+                $documentsResponse = $gasApi->getDocuments($visitorId);
+                
+                error_log('Documents API Response: ' . json_encode($documentsResponse, JSON_PRETTY_PRINT));
+                
+                if ($documentsResponse['status'] === 'success') {
+                    $documents = $documentsResponse['data']['documents'] ?? [];
+                    error_log('Documents count: ' . count($documents));
+                } else {
+                    $errorMessage = '書類の取得に失敗しました。(' . ($documentsResponse['message'] ?? 'Unknown error') . ')';
+                    error_log('ERROR: Documents API failed with status: ' . $documentsResponse['status']);
+                }
+            } else {
+                $errorMessage = 'ユーザーIDが見つかりません。userフィールドが存在しないか、IDが含まれていません。';
+                error_log('ERROR: user.id not found in data');
+                if (isset($userInfo['data']['user'])) {
+                    error_log('User field exists but no ID: ' . json_encode($userInfo['data']['user']));
+                } else {
+                    error_log('User field does not exist');
+                }
+            }
+        }
+    }
+    
+    error_log('=== Document API Debug End ===');
+    
+} catch (Exception $e) {
+    $errorMessage = 'システムエラーが発生しました: ' . $e->getMessage();
+    error_log('Documents API Exception: ' . $e->getMessage());
+    error_log('Stack trace: ' . $e->getTraceAsString());
+}
+
+// 日付フォーマット関数
+function formatJapaneseDate($isoDate) {
+    if (empty($isoDate)) return '不明';
+    
+    try {
+        $date = new DateTime($isoDate);
+        return $date->format('Y年n月j日');
+    } catch (Exception $e) {
+        return '不明';
+    }
+}
+?>
 <!DOCTYPE html>
 <!-- 
     CLUTIREFINEクリニック予約システム - HTML (修正版)
@@ -13,24 +127,7 @@
 <!-- Tailwind CSS CDN --> 
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="styles.css">
-<script>
-        // Tailwind設定のカスタマイズ
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        teal: {
-                            50: '#f0fdfa',
-                            100: '#ccfbf1',
-                            500: '#14b8a6',
-                            600: '#0d9488',
-                            700: '#0f766e',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
+<link rel="stylesheet" href="../assets/css/hamburger.css">
 </head>
 <body>
 <!-- Header -->
@@ -38,11 +135,9 @@
   <div class="container mx-auto flex justify-between items-center">
     <h1 class="text-xl font-semibold">CLUTIREFINEクリニック<br class="sp">
       書類一覧</h1>
-    <div class="flex items-center space-x-5">
-                <a href="../" target="_blank" rel="noopener noreferrer" class="text-white hover:underline flex items-center text-sm" id="form-link">予約フォーム</a>
-		<a href="../document" target="_blank" rel="noopener noreferrer" class="text-white hover:underline flex items-center text-sm" id="docs-link">書類一覧</a>
-                <a href="../ticket" target="_blank" rel="noopener noreferrer" class="text-white hover:underline flex items-center text-sm" id="ticket-link">チケット確認</a>
-            </div>
+    <?php
+  include_once '../assets/inc/navigation.php'; // navigation.phpの内容を読み込む
+?>
   </div>
 </header>
 
@@ -51,65 +146,77 @@
   <div class="container mx-auto px-0 sm:px-6">
     <div class="doc_cont_wrap">
       <h2>書類一覧</h2>
-      <div id="doc_cont_item1" class="doc_cont_item">
-        <div class="doc_cont_detail">
-          <div class="doc_cont_detail_name">
-            <p class="doc_ttl">書類名</p>
-            <p id="doc_name1" class="doc_name">プラセンタ説明・同意書.pdf</p>
-          </div>
-          <div class="doc_cont_detail_date">
-            <p class="doc_ttl">作成日</p>
-            <p id="doc_date1" class="doc_date">2025年6月10日</p>
-          </div>
+      
+      <?php if (!empty($errorMessage)): ?>
+        <div class="error-message bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          <p><?php echo htmlspecialchars($errorMessage); ?></p>
         </div>
-        <div class="doc_link_wrap"> <a id="doc1" class="doc_link" href="#"><span>プレビューを見る</span></a> </div>
-      </div>
-      <div id="doc_cont_item2" class="doc_cont_item">
-        <div class="doc_cont_detail">
-          <div class="doc_cont_detail_name">
-            <p class="doc_ttl">書類名</p>
-            <p id="doc_name2" class="doc_name">プラセンタ説明・同意書.pdf</p>
-          </div>
-          <div class="doc_cont_detail_date">
-            <p class="doc_ttl">作成日</p>
-            <p id="doc_date2" class="doc_date">2025年6月10日</p>
-          </div>
+      <?php endif; ?>
+      
+      <?php if (empty($documents) && empty($errorMessage)): ?>
+        <div class="no-documents bg-gray-100 border border-gray-300 text-gray-600 px-4 py-6 rounded text-center">
+          <p>現在、書類がありません。</p>
         </div>
-        <div class="doc_link_wrap"> <a id="doc2" class="doc_link" href="#"><span>プレビューを見る</span></a> </div>
-      </div>
-      <div id="doc_cont_item3" class="doc_cont_item">
-        <div class="doc_cont_detail">
-          <div class="doc_cont_detail_name">
-            <p class="doc_ttl">書類名</p>
-            <p id="doc_name3" class="doc_name">プラセンタ説明・同意書.pdf</p>
+      <?php else: ?>
+        <?php if (!empty($documents)): ?>
+          <div class="documents-count mb-4">
+            <p class="text-sm text-gray-600">書類件数: <?php echo count($documents); ?>件</p>
           </div>
-          <div class="doc_cont_detail_date">
-            <p class="doc_ttl">作成日</p>
-            <p id="doc_date3" class="doc_date">2025年6月10日</p>
-          </div>
-        </div>
-        <div class="doc_link_wrap"> <a id="doc3" class="doc_link" href="#"><span>プレビューを見る</span></a> </div>
-      </div>
-      <div id="doc_cont_item4" class="doc_cont_item">
-        <div class="doc_cont_detail">
-          <div class="doc_cont_detail_name">
-            <p class="doc_ttl">書類名</p>
-            <p id="doc_name4" class="doc_name">プラセンタ説明・同意書.pdf</p>
-          </div>
-          <div class="doc_cont_detail_date">
-            <p class="doc_ttl">作成日</p>
-            <p id="doc_date4" class="doc_date">2025年6月10日</p>
-          </div>
-        </div>
-        <div class="doc_link_wrap"> <a id="doc4" class="doc_link" href="#"><span>プレビューを見る</span></a> </div>
-      </div>
+          
+          <?php foreach ($documents as $index => $document): ?>
+            <div id="doc_cont_item<?php echo $index + 1; ?>" class="doc_cont_item">
+              <div class="doc_cont_detail">
+                <div class="doc_cont_detail_name">
+                  <p class="doc_ttl">書類名</p>
+                  <p class="doc_name"><?php echo htmlspecialchars($document['title'] ?? 'タイトル不明'); ?></p>
+                  <?php if (!empty($document['treatmentName'])): ?>
+                    <p class="text-xs text-gray-500 mt-1">施術: <?php echo htmlspecialchars($document['treatmentName']); ?></p>
+                  <?php endif; ?>
+                </div>
+                <div class="doc_cont_detail_date">
+                  <p class="doc_ttl">作成日</p>
+                  <p class="doc_date"><?php echo formatJapaneseDate($document['createdAt'] ?? ''); ?></p>
+                </div>
+              </div>
+              <div class="doc_link_wrap">
+                <?php if (!empty($document['url'])): ?>
+                  <a class="doc_link" href="<?php echo htmlspecialchars($document['url']); ?>" target="_blank" rel="noopener noreferrer">
+                    <span>プレビューを見る</span>
+                  </a>
+                <?php else: ?>
+                  <span class="doc_link disabled" style="opacity: 0.5; cursor: not-allowed;">
+                    <span>プレビュー不可</span>
+                  </span>
+                <?php endif; ?>
+              </div>
+            </div>
+          <?php endforeach; ?>
+        <?php endif; ?>
+      <?php endif; ?>
     </div>
   </div>
 </main>
 
 <!-- Footer -->
-<footer class="bg-slate-800 text-slate-400 text-center p-4 text-sm">
-  <p>&copy; <span id="current-year"></span> CLUTIREFINEクリニック. All rights reserved.</p>
-</footer>
+	<?php
+  include_once '../assets/inc/footer.php'; // footer.phpの内容を読み込む
+?>
+<!-- デバッグ情報（開発環境のみ） -->
+<?php if (defined('DEBUG_MODE') && DEBUG_MODE): ?>
+    <div class="fixed bottom-4 right-4 bg-gray-800 text-white p-2 text-xs rounded max-w-sm max-h-96 overflow-y-auto">
+        <p><strong>書類一覧デバッグ情報</strong></p>
+        <p>LINE ID: <?php echo substr($lineUserId, 0, 10); ?>...</p>
+        <p>Session ID: <?php echo session_id(); ?></p>
+        <hr class="my-2 border-gray-600">
+        <p>Visitor ID: <?php echo $visitorId ? substr($visitorId, 0, 15) . '...' : 'なし'; ?></p>
+        <p>書類件数: <?php echo count($documents); ?>件</p>
+        <p>エラー: <?php echo $errorMessage ?: 'なし'; ?></p>
+        <?php if (!empty($documents)): ?>
+        <hr class="my-2 border-gray-600">
+        <p><strong>書類データ:</strong></p>
+        <pre class="text-xs bg-gray-900 p-2 rounded overflow-auto max-h-32"><?php echo htmlspecialchars(json_encode($documents, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></pre>
+        <?php endif; ?>
+    </div>
+<?php endif; ?>
 </body>
 </html>
