@@ -73,6 +73,6 @@ if ($userData) {
 } else {
     // 新規ユーザーの場合の処理
     $logger->info('未登録ユーザーとして案内ページへ', ['line_user_id' => $lineUserId]);
-    header('Location: /reserve/not-registered.php');
+    header('Location: ' . getRedirectUrl('/reserve/not-registered.php'));
 }
 exit;

@@ -1,0 +1,14 @@
+# デバッグツールへのアクセスを制限（本番環境用）
+<Files "debug.php">
+    Order Deny,Allow
+    Deny from all
+    # ローカル開発環境からのアクセスは許可
+    Allow from 127.0.0.1
+    Allow from ::1
+</Files>
+
+# .envファイルへのアクセスを禁止
+<Files ".env">
+    Order Deny,Allow
+    Deny from all
+</Files>
