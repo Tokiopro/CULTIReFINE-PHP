@@ -2,7 +2,7 @@
 // GAS API通信モジュール（mock-api.jsの置き換え）
 
 // API基底URL
-const API_BASE_URL = '/reserve/api-bridge.php';
+const API_BASE_URL = '/cultirefine.com/reserve/api-bridge.php';
 
 /**
  * 遅延処理（UIの一貫性のため）

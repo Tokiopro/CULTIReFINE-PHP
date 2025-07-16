@@ -72,7 +72,7 @@ if ($userData) {
     header('Location: ' . getRedirectUrl('/reserve/'));
 } else {
     // 新規ユーザーの場合の処理
-    $logger->info('新規ユーザーとして登録ページへ', ['line_user_id' => $lineUserId]);
-    header('Location: ' . getRedirectUrl('/reserve/registration.php'));
+    $logger->info('未登録ユーザーとして案内ページへ', ['line_user_id' => $lineUserId]);
+    header('Location: ' . getRedirectUrl('/reserve/not-registered.php'));
 }
 exit;

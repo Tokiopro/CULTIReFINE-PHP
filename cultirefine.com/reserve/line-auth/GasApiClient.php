@@ -69,29 +69,6 @@ class GasApiClient
     }
     
     /**
-     * visitor IDから書類一覧を取得
-     */
-    public function getDocuments(string $visitorId): array
-    {
-        $cacheKey = "documents_{$visitorId}";
-        
-        // キャッシュチェック（5分間）
-        if ($cachedData = $this->getFromCache($cacheKey)) {
-            return $cachedData;
-        }
-        
-        $path = "api/documents/visitor/" . urlencode($visitorId);
-        $result = $this->makeRequest('GET', $path);
-        
-        if ($result['status'] === 'success') {
-            // 成功時のみキャッシュ
-            $this->saveToCache($cacheKey, $result);
-        }
-        
-        return $result;
-    }
-    
-    /**
      * 空き時間検索
      */
     public function getAvailability(string $treatmentId, string $date, bool $pairRoom = false): array

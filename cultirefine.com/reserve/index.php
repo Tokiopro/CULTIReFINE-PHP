@@ -50,51 +50,46 @@ $userData = $_SESSION['user_data'] ?? null;
         </div>
     </header>
 
-    <!-- メインコンテンツ -->
-    <main class="container mx-auto px-4 py-8">
-        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 class="text-2xl font-bold mb-4">ようこそ、<?php echo htmlspecialchars($displayName); ?>さん</h2>
-            
-            <?php if ($userData): ?>
-                <div class="mb-6 p-4 bg-gray-50 rounded">
-                    <h3 class="font-semibold mb-2">登録情報</h3>
-                    <p>お名前: <?php echo htmlspecialchars($userData['name'] ?? ''); ?></p>
-                    <p>メールアドレス: <?php echo htmlspecialchars($userData['email'] ?? ''); ?></p>
-                    <p>電話番号: <?php echo htmlspecialchars($userData['phone'] ?? ''); ?></p>
-                </div>
-            <?php endif; ?>
-
-            <div class="space-y-4">
-                <a href="/cultirefine.com/reserve/" class="block w-full bg-teal-600 text-white text-center py-3 px-6 rounded-lg hover:bg-teal-700 transition">
-                    新規予約を作成
-                </a>
-                
-                <a href="/reserve/history.php" class="block w-full bg-gray-200 text-gray-800 text-center py-3 px-6 rounded-lg hover:bg-gray-300 transition">
-                    予約履歴を確認
-                </a>
-                
-                <a href="/reserve/profile.php" class="block w-full bg-gray-200 text-gray-800 text-center py-3 px-6 rounded-lg hover:bg-gray-300 transition">
-                    プロフィール編集
-                </a>
+    <!-- メインコンテナ -->
+    <div class="container mx-auto p-6 mb-20">
+        <div id="app" class="bg-white rounded-lg shadow-md p-6">
+            <!-- 動的コンテンツはJavaScriptで挿入 -->
+            <div class="text-center">
+                <p class="text-gray-600">読み込み中...</p>
             </div>
         </div>
+    </div>
 
-        <?php if (isset($_SESSION['success_message'])): ?>
-            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-                <?php 
-                echo htmlspecialchars($_SESSION['success_message']);
-                unset($_SESSION['success_message']);
-                ?>
+    <!-- 共通モーダル -->
+    <div id="common-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div id="modal-content">
+                <!-- モーダルコンテンツはJavaScriptで動的に挿入 -->
             </div>
-        <?php endif; ?>
-    </main>
-
-    <!-- デバッグ情報（開発環境のみ） -->
-    <?php if (defined('DEBUG_MODE') && DEBUG_MODE): ?>
-        <div class="fixed bottom-4 right-4 bg-gray-800 text-white p-2 text-xs rounded">
-            <p>LINE ID: <?php echo substr($lineUserId, 0, 10); ?>...</p>
-            <p>Session ID: <?php echo session_id(); ?></p>
         </div>
-    <?php endif; ?>
+    </div>
+
+    <!-- スピナー -->
+    <div id="loading-spinner" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="flex items-center justify-center h-full">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+        </div>
+    </div>
+
+    <!-- アプリ設定 -->
+    <script>
+        // PHPから渡されたユーザー情報をJavaScriptで利用可能にする
+        window.APP_CONFIG = {
+            lineUserId: '<?php echo htmlspecialchars($lineUserId); ?>',
+            displayName: '<?php echo htmlspecialchars($displayName); ?>',
+            pictureUrl: <?php echo $pictureUrl ? "'" . htmlspecialchars($pictureUrl) . "'" : 'null'; ?>,
+            userData: <?php echo $userData ? json_encode($userData) : 'null'; ?>,
+            isAuthenticated: true,
+            apiEndpoint: '/reserve/api-bridge.php'
+        };
+    </script>
+
+    <!-- JavaScriptモジュール -->
+    <script type="module" src="/reserve/js/init-with-gas.js"></script>
 </body>
 </html>
