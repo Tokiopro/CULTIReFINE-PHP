@@ -85,9 +85,88 @@
 	display:none;
 }
 }
-/* Responsive adjustments */
+/* フォルダ階層表示のスタイル */
+.folder-item {
+    transition: all 0.3s ease-in-out;
+}
+
+.folder-header {
+    user-select: none;
+    transition: all 0.2s ease-in-out;
+}
+
+.folder-header:hover {
+    transform: translateY(-1px);
+}
+
+.folder-header:active {
+    transform: translateY(0px);
+}
+
+.folder-content {
+    overflow: hidden;
+    transition: all 0.3s ease-in-out;
+}
+
+.folder-content.hidden {
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+.toggle-arrow {
+    transition: transform 0.3s ease-in-out;
+}
+
+.documents-list {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+/* フォルダアイコンのホバー効果 */
+.folder-header:hover .folder-icon {
+    transform: scale(1.1);
+    transition: transform 0.2s ease-in-out;
+}
+
+/* 階層の区別のためのボーダー */
+.folder-item[style*="margin-left: 20px"] .folder-header {
+    border-left: 3px solid #e5e7eb;
+}
+
+.folder-item[style*="margin-left: 40px"] .folder-header {
+    border-left: 3px solid #d1d5db;
+}
+
+.folder-item[style*="margin-left: 60px"] .folder-header {
+    border-left: 3px solid #9ca3af;
+}
+
+/* ルート書類セクションのスタイル */
+.root-documents h3 {
+    border-bottom: 2px solid #10ada2;
+    padding-bottom: 0.5rem;
+}
+
+/* レスポンシブ対応 */
 @media (max-width: 768px) {
     .doc_cont_wrap {
-    padding: 3rem 1em;
-	}
+        padding: 3rem 1em;
+    }
+    
+    .folder-item {
+        margin-left: 0 !important;
+    }
+    
+    .folder-item[style*="margin-left"] {
+        padding-left: 1rem;
+        border-left: 2px solid #e5e7eb;
+    }
+    
+    .documents-list {
+        padding-left: 1rem;
+    }
+    
+    .folder-header {
+        padding: 0.75rem;
+    }
 }
