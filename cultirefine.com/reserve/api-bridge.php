@@ -58,6 +58,18 @@ try {
             $result = handleTestConnection($gasApi);
             break;
             
+        case 'createVisitor':
+            $result = handleCreateVisitor($gasApi, $lineUserId, getJsonInput());
+            break;
+            
+        case 'getCompanyVisitors':
+            $result = handleGetCompanyVisitors($gasApi, $lineUserId, $_GET);
+            break;
+            
+        case 'updateVisitorPublicStatus':
+            $result = handleUpdateVisitorPublicStatus($gasApi, $lineUserId, getJsonInput());
+            break;
+            
         default:
             throw new Exception('不正なアクションです', 400);
     }
@@ -175,6 +187,127 @@ function handleCancelReservation(GasApiClient $gasApi, string $reservationId): a
 function handleTestConnection(GasApiClient $gasApi): array
 {
     return $gasApi->testConnection();
+}
+
+/**
+ * 来院者登録
+ */
+function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $visitorData): array
+{
+    // 必須フィールドの検証
+    $required = ['name', 'kana', 'gender'];
+    foreach ($required as $field) {
+        if (empty($visitorData[$field])) {
+            throw new Exception("必須フィールド '{$field}' が不足しています", 400);
+        }
+    }
+    
+    // 性別の検証
+    if (!in_array($visitorData['gender'], ['MALE', 'FEMALE'])) {
+        throw new Exception("性別は 'MALE' または 'FEMALE' を指定してください", 400);
+    }
+    
+    // ユーザー情報を取得して会社情報を設定
+    $userInfo = $gasApi->getUserFullInfo($lineUserId);
+    if ($userInfo['status'] !== 'success') {
+        throw new Exception('ユーザー情報の取得に失敗しました', 500);
+    }
+    
+    $companyInfo = $userInfo['data']['membership_info'] ?? null;
+    if (!$companyInfo || empty($companyInfo['company_id'])) {
+        throw new Exception('会社情報が見つかりません', 400);
+    }
+    
+    // 来院者データを準備
+    $visitorData['company_id'] = $companyInfo['company_id'];
+    $visitorData['company_name'] = $companyInfo['company_name'];
+    
+    // 誕生日の形式チェック（提供されている場合）
+    if (!empty($visitorData['birthday'])) {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $visitorData['birthday'])) {
+            throw new Exception('誕生日はYYYY-MM-DD形式で入力してください', 400);
+        }
+    }
+    
+    $result = $gasApi->createVisitor($visitorData);
+    
+    if ($result['status'] === 'error') {
+        throw new Exception($result['error']['message'], 500);
+    }
+    
+    return $result['data'];
+}
+
+/**
+ * 会社の来院者一覧取得
+ */
+function handleGetCompanyVisitors(GasApiClient $gasApi, string $lineUserId, array $params): array
+{
+    // ユーザー情報を取得して会社情報と権限を確認
+    $userInfo = $gasApi->getUserFullInfo($lineUserId);
+    if ($userInfo['status'] !== 'success') {
+        throw new Exception('ユーザー情報の取得に失敗しました', 500);
+    }
+    
+    $companyInfo = $userInfo['data']['membership_info'] ?? null;
+    if (!$companyInfo || empty($companyInfo['company_id'])) {
+        throw new Exception('会社情報が見つかりません', 400);
+    }
+    
+    $userRole = $companyInfo['member_type'] === '本会員' ? 'main' : 'sub';
+    
+    $result = $gasApi->getPatientsByCompany($companyInfo['company_id'], $userRole);
+    
+    if ($result['status'] === 'error') {
+        throw new Exception($result['error']['message'], 500);
+    }
+    
+    return $result['data'];
+}
+
+/**
+ * 来院者の公開設定変更（新しいGAS API仕様対応）
+ */
+function handleUpdateVisitorPublicStatus(GasApiClient $gasApi, string $lineUserId, array $requestData): array
+{
+    // 必須フィールドの検証
+    if (!isset($requestData['visitor_id']) || !isset($requestData['is_public'])) {
+        throw new Exception('visitor_idとis_publicが必要です', 400);
+    }
+    
+    // ユーザー情報を取得して権限を確認
+    $userInfo = $gasApi->getUserFullInfo($lineUserId);
+    if ($userInfo['status'] !== 'success') {
+        throw new Exception('ユーザー情報の取得に失敗しました', 500);
+    }
+    
+    $companyInfo = $userInfo['data']['membership_info'] ?? null;
+    if (!$companyInfo) {
+        throw new Exception('会社情報が見つかりません', 400);
+    }
+    
+    // 本会員のみ公開設定を変更可能
+    if ($companyInfo['member_type'] !== '本会員') {
+        throw new Exception('公開設定の変更は本会員のみ可能です', 403);
+    }
+    
+    // 会社IDを取得
+    $companyId = $companyInfo['company_id'];
+    if (!$companyId) {
+        throw new Exception('会社IDが見つかりません', 400);
+    }
+    
+    $visitorId = $requestData['visitor_id'];
+    $isPublic = (bool)$requestData['is_public'];
+    
+    // 新しいAPI仕様に合わせて会社IDとビジターIDを両方渡す
+    $result = $gasApi->updateVisitorPublicStatus($companyId, $visitorId, $isPublic);
+    
+    if ($result['status'] === 'error') {
+        throw new Exception($result['error']['message'], 500);
+    }
+    
+    return $result['data'];
 }
 
 /**

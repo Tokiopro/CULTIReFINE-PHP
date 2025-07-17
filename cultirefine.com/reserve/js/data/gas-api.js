@@ -72,21 +72,55 @@ export async function getUserFullInfo() {
 }
 
 /**
- * 患者追加（既存APIとの互換性維持）
+ * 患者追加（実際のAPI連携）
  */
-export function mockAddPatient(patientData) {
+export async function mockAddPatient(patientData) {
     console.log('[GAS API] Adding patient:', patientData);
     
-    // 実際の実装では患者追加APIを呼び出し
-    return delay(500).then(function() {
-        var newPatient = {
-            id: "new-" + Date.now(),
+    try {
+        // 必須フィールドのチェック
+        if (!patientData.name || !patientData.kana || !patientData.gender) {
+            throw new Error('必須フィールドが不足しています');
+        }
+        
+        const visitorData = {
             name: patientData.name,
-            isNew: true,
-            lastVisit: new Date().toISOString().split("T")[0],
+            kana: patientData.kana,
+            gender: patientData.gender
         };
-        return { success: true, patient: newPatient, message: "患者が正常に追加されました。" };
-    });
+        
+        // オプションフィールドの追加
+        if (patientData.birthday) {
+            visitorData.birthday = patientData.birthday;
+        }
+        
+        const data = await apiCall('createVisitor', {}, 'POST', visitorData);
+        
+        // レスポンスデータを既存のフォーマットに変換
+        const newPatient = {
+            id: data.visitor_id,
+            name: data.name,
+            kana: data.kana,
+            isNew: true,
+            lastVisit: null,
+            isVisible: true,
+            companyId: data.company_id
+        };
+        
+        console.log('[GAS API] Patient added successfully:', newPatient);
+        return { 
+            success: true, 
+            patient: newPatient, 
+            message: "来院者が正常に登録されました。" 
+        };
+        
+    } catch (error) {
+        console.error('[GAS API] Error adding patient:', error);
+        return { 
+            success: false, 
+            message: error.message || "来院者の登録に失敗しました。" 
+        };
+    }
 }
 
 /**
