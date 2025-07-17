@@ -123,6 +123,94 @@ class GasApiClient
     }
     
     /**
+     * 会社に紐づく来院者一覧取得（権限に応じたフィルタリング）
+     */
+    public function getPatientsByCompany(string $companyId, string $userRole = 'sub'): array
+    {
+        $cacheKey = "patients_company_{$companyId}_{$userRole}";
+        
+        // キャッシュチェック（3分）
+        if ($cachedData = $this->getFromCache($cacheKey, 180)) {
+            return $cachedData;
+        }
+        
+        $params = [
+            'company_id' => $companyId,
+            'user_role' => $userRole
+        ];
+        
+        $path = "api/patients/company?" . http_build_query($params);
+        $result = $this->makeRequest('GET', $path);
+        
+        if ($result['status'] === 'success') {
+            $this->saveToCache($cacheKey, $result, 180);
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * 来院者登録
+     */
+    public function createVisitor(array $visitorData): array
+    {
+        $path = "api/visitors";
+        
+        // リクエストデータを準備
+        $requestData = [
+            'company_id' => $visitorData['company_id'],
+            'company_name' => $visitorData['company_name'],
+            'visitor' => [
+                'name' => $visitorData['name'],
+                'kana' => $visitorData['kana'],
+                'gender' => $visitorData['gender']
+            ]
+        ];
+        
+        // オプションフィールドの追加
+        if (!empty($visitorData['birthday'])) {
+            $requestData['visitor']['birthday'] = $visitorData['birthday'];
+        }
+        
+        // 姓名分割が提供されている場合
+        if (!empty($visitorData['first_name'])) {
+            $requestData['visitor']['first_name'] = $visitorData['first_name'];
+        }
+        if (!empty($visitorData['last_name'])) {
+            $requestData['visitor']['last_name'] = $visitorData['last_name'];
+        }
+        if (!empty($visitorData['first_name_kana'])) {
+            $requestData['visitor']['first_name_kana'] = $visitorData['first_name_kana'];
+        }
+        if (!empty($visitorData['last_name_kana'])) {
+            $requestData['visitor']['last_name_kana'] = $visitorData['last_name_kana'];
+        }
+        
+        // 連絡先情報（将来の拡張用）
+        if (!empty($visitorData['email'])) {
+            $requestData['visitor']['email'] = $visitorData['email'];
+        }
+        if (!empty($visitorData['phone'])) {
+            $requestData['visitor']['phone'] = $visitorData['phone'];
+        }
+        if (!empty($visitorData['zipcode'])) {
+            $requestData['visitor']['zipcode'] = $visitorData['zipcode'];
+        }
+        if (!empty($visitorData['address'])) {
+            $requestData['visitor']['address'] = $visitorData['address'];
+        }
+        
+        $result = $this->makeRequest('POST', $path, $requestData);
+        
+        // 成功時は関連キャッシュをクリア
+        if ($result['status'] === 'success') {
+            $this->clearCache("patients_company_{$visitorData['company_id']}_*");
+        }
+        
+        return $result;
+    }
+    
+    /**
      * HTTP リクエストを実行
      */
     private function makeRequest(string $method, string $path, ?array $data = null): array

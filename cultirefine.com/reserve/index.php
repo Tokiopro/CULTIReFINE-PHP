@@ -369,16 +369,67 @@ try {
                 <h3 class="text-lg font-semibold">新しい来院者情報を入力</h3>
                 <button class="text-gray-400 hover:text-gray-600 text-2xl leading-none w-8 h-8 flex items-center justify-center" id="modal-close-btn">&times;</button>
             </div>
-            <div class="p-6">
-                <div class="mb-4">
-                    <label for="new-patient-name" class="block text-sm font-medium text-gray-700 mb-1">氏名 (30字以内)</label>
-                    <input type="text" id="new-patient-name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="例: 鈴木 一郎" maxlength="30">
-                    <p class="text-xs text-gray-500 mt-1">絵文字・特殊記号は使用できません。</p>
+            <div class="p-6 space-y-4">
+                <!-- 氏名 -->
+                <div>
+                    <label for="new-patient-name" class="block text-sm font-medium text-gray-700 mb-1">
+                        氏名 <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" id="new-patient-name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="例: 鈴木 一郎" maxlength="30" required>
+                    <p class="text-xs text-gray-500 mt-1">30字以内で入力してください。</p>
+                </div>
+                
+                <!-- カナ -->
+                <div>
+                    <label for="new-patient-kana" class="block text-sm font-medium text-gray-700 mb-1">
+                        カナ <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" id="new-patient-kana" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="例: スズキ イチロウ" maxlength="60" required>
+                    <p class="text-xs text-gray-500 mt-1">全角カタカナで入力してください。</p>
+                </div>
+                
+                <!-- 性別 -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        性別 <span class="text-red-500">*</span>
+                    </label>
+                    <div class="flex space-x-4">
+                        <label class="flex items-center">
+                            <input type="radio" name="gender" value="MALE" class="mr-2 text-teal-600 focus:ring-teal-500" required>
+                            <span class="text-sm text-gray-700">男性</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="gender" value="FEMALE" class="mr-2 text-teal-600 focus:ring-teal-500" required>
+                            <span class="text-sm text-gray-700">女性</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- 生年月日 -->
+                <div>
+                    <label for="new-patient-birthday" class="block text-sm font-medium text-gray-700 mb-1">
+                        生年月日 <span class="text-gray-400">(任意)</span>
+                    </label>
+                    <input type="date" id="new-patient-birthday" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
+                    <p class="text-xs text-gray-500 mt-1">施術の予約間隔計算に使用されます。</p>
+                </div>
+                
+                <!-- エラーメッセージ表示エリア -->
+                <div id="patient-modal-error" class="hidden bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
+                    <div class="flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                        </svg>
+                        <span id="patient-modal-error-text"></span>
+                    </div>
                 </div>
             </div>
             <div class="p-4 border-t border-gray-200 flex gap-3 justify-end">
                 <button id="cancel-add-patient-btn" class="border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 py-2 px-4 rounded-md">キャンセル</button>
-                <button id="confirm-add-patient-btn" class="bg-teal-600 hover:bg-teal-700 text-white py-2 px-4 rounded-md">追加して選択</button>
+                <button id="confirm-add-patient-btn" class="bg-teal-600 hover:bg-teal-700 text-white py-2 px-4 rounded-md flex items-center">
+                    <span id="confirm-btn-text">追加して選択</span>
+                    <div id="confirm-btn-spinner" class="hidden ml-2 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                </button>
             </div>
         </div>
     </div>

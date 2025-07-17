@@ -104,6 +104,10 @@ export function initPatientSelectionScreen() {
     });
 
     updatePatientsList();
+    
+    // グローバル関数として登録（modal.jsから呼び出される）
+    window.updatePatientsList = updatePatientsList;
+    window.updateProceedButton = updateProceedButton;
 }
 
 export function updatePatientsList() {

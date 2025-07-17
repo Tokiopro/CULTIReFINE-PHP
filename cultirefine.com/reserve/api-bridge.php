@@ -58,6 +58,10 @@ try {
             $result = handleTestConnection($gasApi);
             break;
             
+        case 'createVisitor':
+            $result = handleCreateVisitor($gasApi, $lineUserId, getJsonInput());
+            break;
+            
         default:
             throw new Exception('不正なアクションです', 400);
     }
@@ -175,6 +179,55 @@ function handleCancelReservation(GasApiClient $gasApi, string $reservationId): a
 function handleTestConnection(GasApiClient $gasApi): array
 {
     return $gasApi->testConnection();
+}
+
+/**
+ * 来院者登録
+ */
+function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $visitorData): array
+{
+    // 必須フィールドの検証
+    $required = ['name', 'kana', 'gender'];
+    foreach ($required as $field) {
+        if (empty($visitorData[$field])) {
+            throw new Exception("必須フィールド '{$field}' が不足しています", 400);
+        }
+    }
+    
+    // 性別の検証
+    if (!in_array($visitorData['gender'], ['MALE', 'FEMALE'])) {
+        throw new Exception("性別は 'MALE' または 'FEMALE' を指定してください", 400);
+    }
+    
+    // ユーザー情報を取得して会社情報を設定
+    $userInfo = $gasApi->getUserFullInfo($lineUserId);
+    if ($userInfo['status'] !== 'success') {
+        throw new Exception('ユーザー情報の取得に失敗しました', 500);
+    }
+    
+    $companyInfo = $userInfo['data']['membership_info'] ?? null;
+    if (!$companyInfo || empty($companyInfo['company_id'])) {
+        throw new Exception('会社情報が見つかりません', 400);
+    }
+    
+    // 来院者データを準備
+    $visitorData['company_id'] = $companyInfo['company_id'];
+    $visitorData['company_name'] = $companyInfo['company_name'];
+    
+    // 誕生日の形式チェック（提供されている場合）
+    if (!empty($visitorData['birthday'])) {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $visitorData['birthday'])) {
+            throw new Exception('誕生日はYYYY-MM-DD形式で入力してください', 400);
+        }
+    }
+    
+    $result = $gasApi->createVisitor($visitorData);
+    
+    if ($result['status'] === 'error') {
+        throw new Exception($result['error']['message'], 500);
+    }
+    
+    return $result['data'];
 }
 
 /**
