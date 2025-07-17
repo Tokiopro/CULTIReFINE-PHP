@@ -47,13 +47,15 @@ try {
             $patientsResponse = $gasApi->getPatientsByCompany($companyInfo['id'], $userRole);
             
             if ($patientsResponse['status'] === 'success') {
-                $companyPatients = $patientsResponse['data']['patients'] ?? [];
+                $companyPatients = $patientsResponse['data']['visitors'] ?? [];
+                $totalPatients = $patientsResponse['data']['total_count'] ?? count($companyPatients);
                 
                 // デバッグログ
                 if (defined('DEBUG_MODE') && DEBUG_MODE) {
                     error_log('Company ID: ' . $companyInfo['id']);
                     error_log('User Role: ' . $userRole);
                     error_log('Patients count: ' . count($companyPatients));
+                    error_log('Total patients: ' . $totalPatients);
                 }
             } else {
                 $errorMessage = '来院者一覧の取得に失敗しました: ' . ($patientsResponse['message'] ?? 'Unknown error');

@@ -13,25 +13,29 @@ export function initPatientSelectionScreen() {
 
     if (!pairModeSwitch || !proceedBtn || !addPatientBtn || !description) return;
 
-    // PHPから取得したデータを利用
+    // PHPから取得したデータを利用（新しいGAS API形式）
     if (window.APP_CONFIG && window.APP_CONFIG.companyPatients) {
-        appState.allPatients = window.APP_CONFIG.companyPatients.map(function(patient) {
+        appState.allPatients = window.APP_CONFIG.companyPatients.map(function(visitor) {
             return {
-                id: patient.id,
-                name: patient.name,
-                lastVisit: patient.lastVisit || null,
-                isNew: patient.isNew || false,
-                isVisible: patient.isVisible !== false, // 公開設定がfalseでない限りtrue
-                companyId: patient.companyId
+                id: visitor.visitor_id,
+                name: visitor.name,
+                kana: visitor.kana,
+                gender: visitor.gender,
+                isPublic: visitor.is_public,
+                lastVisit: visitor.last_visit || null,
+                isNew: visitor.is_new || false,
+                isVisible: visitor.is_public !== false, // 公開設定がfalseでない限りtrue
+                companyId: visitor.company_id
             };
         });
         
-        console.log('Loaded ' + appState.allPatients.length + ' patients from PHP');
+        console.log('Loaded ' + appState.allPatients.length + ' visitors from PHP');
         
         // 権限チェック：サブ会員の場合は公開設定がfalseの患者を除外
         if (window.APP_CONFIG.userRole === 'sub') {
             appState.allPatients = appState.allPatients.filter(function(patient) {
-                return patient.isVisible;
+                // is_publicがtrueまたは明示的に設定されていない場合のみ表示
+                return patient.isPublic === true || (patient.isPublic !== false && typeof patient.isPublic === 'undefined');
             });
             console.log('Filtered to ' + appState.allPatients.length + ' visible patients for sub member');
         }
@@ -142,6 +146,12 @@ export function updatePatientsList() {
 
     for (var i = 0; i < appState.allPatients.length; i++) {
         var patient = appState.allPatients[i];
+        
+        // サブ会員の場合、非公開の来院者はスキップ
+        if (window.APP_CONFIG && window.APP_CONFIG.userRole === 'sub' && patient.isPublic === false) {
+            continue;
+        }
+        
         var isSelected = appState.selectedPatientsForBooking.some(function(p) { return p.id === patient.id; });
         var isDisabled = appState.isPairBookingMode && 
                           appState.selectedPatientsForBooking.length >= 2 && 
@@ -157,16 +167,38 @@ export function updatePatientsList() {
         var visibilityText = window.APP_CONFIG && window.APP_CONFIG.userRole === 'main' && !patient.isVisible ? 
             '<span class="text-xs text-red-600 ml-2">(非公開)</span>' : '';
         
+        // 本会員の場合、公開設定トグルボタンを追加
+        var toggleButton = '';
+        if (window.APP_CONFIG && window.APP_CONFIG.userRole === 'main') {
+            var toggleId = 'toggle-' + patient.id;
+            toggleButton = 
+                '<div class="ml-2 flex items-center">' +
+                    '<span class="text-xs text-gray-500 mr-1">公開:</span>' +
+                    '<label class="toggle-switch" for="' + toggleId + '">' +
+                        '<input type="checkbox" id="' + toggleId + '" class="toggle-checkbox" ' +
+                        (patient.isPublic ? 'checked' : '') + ' ' +
+                        'data-visitor-id="' + patient.id + '">' +
+                        '<span class="toggle-slider"></span>' +
+                    '</label>' +
+                '</div>';
+        }
+        
         patientElement.innerHTML = 
             '<input type="checkbox" class="patient-checkbox" ' +
             (isSelected ? 'checked' : '') + ' ' +
             (isDisabled ? 'disabled' : '') +
             ' data-patient-id="' + patient.id + '">' +
             '<div class="flex-1 cursor-pointer">' +
-                '<span class="font-medium">' + patient.name + '</span>' +
-                (lastVisitText ? '<span class="text-xs text-gray-500 ml-2">' + lastVisitText + '</span>' : '') +
-                newText +
-                visibilityText +
+                '<div class="flex items-center justify-between">' +
+                    '<div>' +
+                        '<span class="font-medium">' + patient.name + '</span>' +
+                        (patient.kana ? '<span class="text-xs text-gray-500 ml-1">(' + patient.kana + ')</span>' : '') +
+                        (lastVisitText ? '<span class="text-xs text-gray-500 ml-2">' + lastVisitText + '</span>' : '') +
+                        newText +
+                        visibilityText +
+                    '</div>' +
+                    toggleButton +
+                '</div>' +
             '</div>';
 
         patientElement.addEventListener('click', function(patientId) {
@@ -183,6 +215,19 @@ export function updatePatientsList() {
         }(patient.id));
 
         container.appendChild(patientElement);
+        
+        // トグルボタンのイベントリスナーを追加（本会員のみ）
+        if (window.APP_CONFIG && window.APP_CONFIG.userRole === 'main') {
+            var toggleCheckbox = patientElement.querySelector('.toggle-checkbox');
+            if (toggleCheckbox) {
+                toggleCheckbox.addEventListener('change', function(e) {
+                    e.stopPropagation(); // 親要素のクリックイベントを防ぐ
+                    var visitorId = this.getAttribute('data-visitor-id');
+                    var isPublic = this.checked;
+                    updateVisitorPublicStatus(visitorId, isPublic);
+                });
+            }
+        }
     }
 }
 
@@ -216,4 +261,116 @@ export function updateProceedButton() {
     proceedText.textContent = appState.isPairBookingMode
         ? "ペア予約へ進む"
         : "選択した" + count + "名の予約へ進む";
+}
+
+/**
+ * 来院者の公開設定を変更する
+ */
+async function updateVisitorPublicStatus(visitorId, isPublic) {
+    try {
+        // UI上でローディング状態を示す
+        var toggleElement = document.querySelector('[data-visitor-id="' + visitorId + '"]');
+        if (toggleElement) {
+            toggleElement.disabled = true;
+        }
+        
+        // APIを呼び出し
+        const response = await fetch('/reserve/api-bridge.php?action=updateVisitorPublicStatus', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                visitor_id: visitorId,
+                is_public: isPublic
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // アプリケーション状態を更新
+            var patient = appState.allPatients.find(function(p) { return p.id === visitorId; });
+            if (patient) {
+                patient.isPublic = isPublic;
+                patient.isVisible = isPublic;
+            }
+            
+            // 成功メッセージを表示
+            showStatusMessage(
+                isPublic ? '来院者を公開に設定しました' : '来院者を非公開に設定しました',
+                'success'
+            );
+            
+            // リストを更新
+            updatePatientsList();
+            
+        } else {
+            // エラーの場合、チェックボックスを元に戻す
+            if (toggleElement) {
+                toggleElement.checked = !isPublic;
+            }
+            
+            // 新しいAPI形式のエラーメッセージに対応
+            var errorMessage = '';
+            if (result.error) {
+                errorMessage = result.error.message || '公開設定の変更に失敗しました';
+            } else {
+                errorMessage = result.message || '公開設定の変更に失敗しました';
+            }
+            
+            showStatusMessage(errorMessage, 'error');
+        }
+        
+    } catch (error) {
+        console.error('Error updating visitor public status:', error);
+        
+        // エラーの場合、チェックボックスを元に戻す
+        var toggleElement = document.querySelector('[data-visitor-id="' + visitorId + '"]');
+        if (toggleElement) {
+            toggleElement.checked = !isPublic;
+        }
+        
+        showStatusMessage('システムエラーが発生しました', 'error');
+    } finally {
+        // ローディング状態を解除
+        var toggleElement = document.querySelector('[data-visitor-id="' + visitorId + '"]');
+        if (toggleElement) {
+            toggleElement.disabled = false;
+        }
+    }
+}
+
+/**
+ * ステータスメッセージを表示する
+ */
+function showStatusMessage(message, type) {
+    // 既存のメッセージがあれば削除
+    var existingMessage = document.getElementById('status-message');
+    if (existingMessage) {
+        existingMessage.remove();
+    }
+
+    var bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+    var icon = type === 'success' ? 
+        '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>' :
+        '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>';
+
+    var statusDiv = document.createElement('div');
+    statusDiv.id = 'status-message';
+    statusDiv.className = 'fixed top-20 right-4 ' + bgColor + ' text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center';
+    statusDiv.innerHTML = `
+        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+            ${icon}
+        </svg>
+        <span>${message}</span>
+    `;
+
+    document.body.appendChild(statusDiv);
+
+    // 3秒後に自動的に削除
+    setTimeout(function() {
+        statusDiv.remove();
+    }, 3000);
 }
