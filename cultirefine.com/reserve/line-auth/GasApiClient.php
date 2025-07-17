@@ -97,6 +97,32 @@ class GasApiClient
     }
     
     /**
+     * 書類一覧取得（フォルダ階層対応）
+     */
+    public function getDocuments(string $visitorId): array
+    {
+        $cacheKey = "documents_{$visitorId}";
+        
+        // キャッシュチェック（5分）
+        if ($cachedData = $this->getFromCache($cacheKey, 300)) {
+            return $cachedData;
+        }
+        
+        $params = [
+            'visitor_id' => $visitorId
+        ];
+        
+        $path = "api/documents?" . http_build_query($params);
+        $result = $this->makeRequest('GET', $path);
+        
+        if ($result['status'] === 'success') {
+            $this->saveToCache($cacheKey, $result, 300);
+        }
+        
+        return $result;
+    }
+    
+    /**
      * HTTP リクエストを実行
      */
     private function makeRequest(string $method, string $path, ?array $data = null): array
