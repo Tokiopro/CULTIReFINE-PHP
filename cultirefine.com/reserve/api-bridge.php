@@ -70,6 +70,14 @@ try {
             $result = handleUpdateVisitorPublicStatus($gasApi, $lineUserId, getJsonInput());
             break;
             
+        case 'getPatientMenus':
+            $result = handleGetPatientMenus($gasApi, $_GET);
+            break;
+            
+        case 'createMedicalForceReservation':
+            $result = handleCreateMedicalForceReservation($gasApi, getJsonInput());
+            break;
+            
         default:
             throw new Exception('不正なアクションです', 400);
     }
@@ -132,12 +140,13 @@ function handleGetAvailability(GasApiClient $gasApi, array $params): array
     $treatmentId = $params['treatment_id'] ?? '';
     $date = $params['date'] ?? '';
     $pairRoom = ($params['pair_room'] ?? 'false') === 'true';
+    $timeSpacing = (int)($params['time_spacing'] ?? 5);
     
     if (empty($treatmentId) || empty($date)) {
         throw new Exception('treatment_idとdateが必要です', 400);
     }
     
-    $result = $gasApi->getAvailability($treatmentId, $date, $pairRoom);
+    $result = $gasApi->getAvailability($treatmentId, $date, $pairRoom, $timeSpacing);
     
     if ($result['status'] === 'error') {
         throw new Exception($result['error']['message'], 500);
@@ -395,6 +404,46 @@ function mapGasUserDataToJs(array $gasData): array
             'favoriteTreatment' => $gasData['statistics']['favorite_treatment'] ?? '',
         ],
     ];
+}
+
+/**
+ * 患者別メニュー取得
+ */
+function handleGetPatientMenus(GasApiClient $gasApi, array $params): array
+{
+    $visitorId = $params['visitor_id'] ?? '';
+    $companyId = $params['company_id'] ?? '';
+    
+    if (empty($visitorId)) {
+        throw new Exception('visitor_idが必要です', 400);
+    }
+    
+    $result = $gasApi->getPatientMenus($visitorId, $companyId);
+    
+    if ($result['status'] === 'error') {
+        throw new Exception($result['error']['message'], 500);
+    }
+    
+    return $result['data'];
+}
+
+/**
+ * MedicalForce形式の予約作成
+ */
+function handleCreateMedicalForceReservation(GasApiClient $gasApi, array $reservationData): array
+{
+    // 必須フィールドの検証
+    if (empty($reservationData['visitor_id']) || empty($reservationData['start_at']) || empty($reservationData['menus'])) {
+        throw new Exception('必須フィールドが不足しています', 400);
+    }
+    
+    $result = $gasApi->createMedicalForceReservation($reservationData);
+    
+    if ($result['status'] === 'error') {
+        throw new Exception($result['error']['message'], 500);
+    }
+    
+    return $result['data'];
 }
 
 /**
