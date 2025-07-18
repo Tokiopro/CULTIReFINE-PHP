@@ -30,15 +30,16 @@ try {
     // 1. ユーザー情報を取得して会社情報を確認
     $userInfo = $gasApi->getUserFullInfo($lineUserId);
     
-    if ($userInfo['status'] === 'success' && isset($userInfo['data']['user'])) {
-        $userDetails = $userInfo['data']['user'];
+    if ($userInfo['status'] === 'success' && isset($userInfo['data']['membership_info'])) {
+        $membershipInfo = $userInfo['data']['membership_info'];
         
         // 会社情報を取得
-        if (isset($userDetails['companyId'])) {
+        if (isset($membershipInfo['company_id']) && !empty($membershipInfo['company_id'])) {
             $companyInfo = [
-                'id' => $userDetails['companyId'],
-                'name' => $userDetails['companyName'] ?? '不明',
-                'role' => $userDetails['userRole'] ?? 'sub'
+                'id' => $membershipInfo['company_id'],
+                'name' => $membershipInfo['company_name'] ?? '不明',
+                'member_type' => $membershipInfo['member_type'] ?? 'サブ会員',
+                'role' => ($membershipInfo['member_type'] === '本会員') ? 'main' : 'sub'
             ];
             
             $userRole = $companyInfo['role'];
