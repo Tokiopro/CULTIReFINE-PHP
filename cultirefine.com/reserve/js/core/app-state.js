@@ -15,10 +15,12 @@ export function AppState() {
     this.bookings = [];
     this.currentPatientIndexForBooking = 0;
     this.isPairBookingMode = false;
-    this.selectedTreatments = {};
+    this.selectedTreatments = {}; // 複数メニュー対応: {patientId: [treatment1, treatment2, ...]}
     this.selectedDates = {};
-    this.selectedTimes = {};
+    this.selectedTimes = {}; // 複数メニュー対応: {patientId: {treatmentId: time}}
     this.pairRoomDesired = {};
+    this.patientMenus = {}; // 患者別メニューデータをキャッシュ
+    this.selectedMenuIds = {}; // 選択されたメニューID: {patientId: [menuId1, menuId2, ...]}
 }
 
 AppState.prototype.setScreen = function(screenName) {

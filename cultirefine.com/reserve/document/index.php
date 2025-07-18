@@ -19,7 +19,7 @@ $userData = $_SESSION['user_data'] ?? null;
 require_once __DIR__ . '/../line-auth/config.php';
 require_once __DIR__ . '/../line-auth/GasApiClient.php';
 
-$documents = [];
+$folders = [];
 $rootDocuments = [];
 $totalDocuments = 0;
 $errorMessage = '';
@@ -76,11 +76,11 @@ try {
                 error_log('Documents API Response: ' . json_encode($documentsResponse, JSON_PRETTY_PRINT));
                 
                 if ($documentsResponse['status'] === 'success') {
-                    $documents = $documentsResponse['data']['documents'] ?? [];
-                    $rootDocuments = $documentsResponse['data']['rootDocuments'] ?? [];
-                    $totalDocuments = $documentsResponse['data']['totalDocuments'] ?? count($documents);
+                    $folders = $documentsResponse['data']['folders'] ?? [];
+                    $rootDocuments = $documentsResponse['data']['root_documents'] ?? [];
+                    $totalDocuments = $documentsResponse['data']['total_count'] ?? 0;
                     
-                    error_log('Documents count: ' . count($documents));
+                    error_log('Folders count: ' . count($folders));
                     error_log('Root documents count: ' . count($rootDocuments));
                     error_log('Total documents: ' . $totalDocuments);
                 } else {
@@ -160,24 +160,24 @@ function formatJapaneseDate($isoDate) {
         </div>
       <?php endif; ?>
       
-      <?php if (empty($documents) && empty($rootDocuments) && empty($errorMessage)): ?>
+      <?php if (empty($folders) && empty($rootDocuments) && empty($errorMessage)): ?>
         <div class="no-documents bg-gray-100 border border-gray-300 text-gray-600 px-4 py-6 rounded text-center">
           <p>現在、書類がありません。</p>
         </div>
       <?php else: ?>
-        <?php if (!empty($documents) || !empty($rootDocuments)): ?>
+        <?php if (!empty($folders) || !empty($rootDocuments)): ?>
           <div class="documents-count mb-4">
             <p class="text-sm text-gray-600">書類件数: <?php echo $totalDocuments; ?>件</p>
           </div>
           
           <!-- フォルダ階層表示 -->
-          <?php if (!empty($documents)): ?>
+          <?php if (!empty($folders)): ?>
             <?php 
             // フォルダ階層を再帰的に表示する関数
             function displayFolderTree($folders, $level = 0) {
               foreach ($folders as $folder) {
-                $folderId = 'folder_' . md5($folder['name'] . $level);
-                $hasChildren = !empty($folder['children']);
+                $folderId = 'folder_' . md5($folder['folder_name'] . $level);
+                $hasSubfolders = !empty($folder['subfolders']);
                 $hasDocuments = !empty($folder['documents']);
                 ?>
                 <div class="folder-item mb-3" style="margin-left: <?php echo $level * 20; ?>px;">
@@ -188,7 +188,7 @@ function formatJapaneseDate($isoDate) {
                         <svg class="w-5 h-5 text-blue-600 mr-2 folder-icon" fill="currentColor" viewBox="0 0 20 20">
                           <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
                         </svg>
-                        <span class="font-medium text-blue-900"><?php echo htmlspecialchars($folder['name']); ?></span>
+                        <span class="font-medium text-blue-900"><?php echo htmlspecialchars($folder['folder_name']); ?></span>
                         <span class="text-xs text-gray-500 ml-2">
                           (<?php echo ($hasDocuments ? count($folder['documents']) : 0); ?>件)
                         </span>
@@ -209,13 +209,13 @@ function formatJapaneseDate($isoDate) {
                               <div class="doc_cont_detail_name">
                                 <p class="doc_ttl">書類名</p>
                                 <p class="doc_name"><?php echo htmlspecialchars($document['title'] ?? 'タイトル不明'); ?></p>
-                                <?php if (!empty($document['treatmentName'])): ?>
-                                  <p class="text-xs text-gray-500 mt-1">施術: <?php echo htmlspecialchars($document['treatmentName']); ?></p>
+                                <?php if (!empty($document['treatment_name'])): ?>
+                                  <p class="text-xs text-gray-500 mt-1">施術: <?php echo htmlspecialchars($document['treatment_name']); ?></p>
                                 <?php endif; ?>
                               </div>
                               <div class="doc_cont_detail_date">
                                 <p class="doc_ttl">作成日</p>
-                                <p class="doc_date"><?php echo formatJapaneseDate($document['createdAt'] ?? ''); ?></p>
+                                <p class="doc_date"><?php echo formatJapaneseDate($document['upload_date'] ?? ''); ?></p>
                               </div>
                             </div>
                             <div class="doc_link_wrap">
@@ -234,8 +234,8 @@ function formatJapaneseDate($isoDate) {
                       </div>
                     <?php endif; ?>
                     
-                    <?php if ($hasChildren): ?>
-                      <?php displayFolderTree($folder['children'], $level + 1); ?>
+                    <?php if ($hasSubfolders): ?>
+                      <?php displayFolderTree($folder['subfolders'], $level + 1); ?>
                     <?php endif; ?>
                   </div>
                 </div>
@@ -244,7 +244,7 @@ function formatJapaneseDate($isoDate) {
             }
             
             // フォルダ階層を表示
-            displayFolderTree($documents);
+            displayFolderTree($folders);
             ?>
           <?php endif; ?>
           
@@ -300,12 +300,12 @@ function formatJapaneseDate($isoDate) {
         <p>Session ID: <?php echo session_id(); ?></p>
         <hr class="my-2 border-gray-600">
         <p>Visitor ID: <?php echo $visitorId ? substr($visitorId, 0, 15) . '...' : 'なし'; ?></p>
-        <p>書類件数: <?php echo count($documents); ?>件</p>
+        <p>書類件数: <?php echo $totalDocuments; ?>件</p>
         <p>エラー: <?php echo $errorMessage ?: 'なし'; ?></p>
-        <?php if (!empty($documents)): ?>
+        <?php if (!empty($folders)): ?>
         <hr class="my-2 border-gray-600">
-        <p><strong>書類データ:</strong></p>
-        <pre class="text-xs bg-gray-900 p-2 rounded overflow-auto max-h-32"><?php echo htmlspecialchars(json_encode($documents, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></pre>
+        <p><strong>フォルダデータ:</strong></p>
+        <pre class="text-xs bg-gray-900 p-2 rounded overflow-auto max-h-32"><?php echo htmlspecialchars(json_encode($folders, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></pre>
         <?php endif; ?>
     </div>
 <?php endif; ?>

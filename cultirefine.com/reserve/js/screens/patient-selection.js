@@ -120,17 +120,75 @@ export function updatePatientsList() {
     
     container.innerHTML = '';
 
-    // 権限に応じた説明を表示
-    if (window.APP_CONFIG && window.APP_CONFIG.userRole === 'sub') {
-        var roleNotice = document.createElement('div');
-        roleNotice.className = 'bg-blue-50 border border-blue-200 text-blue-700 px-3 py-2 rounded mb-3 text-sm';
-        roleNotice.innerHTML = '<strong>サブ会員</strong>: 公開設定された来院者のみ表示されています。';
-        container.appendChild(roleNotice);
-    } else if (window.APP_CONFIG && window.APP_CONFIG.userRole === 'main') {
-        var roleNotice = document.createElement('div');
-        roleNotice.className = 'bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded mb-3 text-sm';
-        roleNotice.innerHTML = '<strong>本会員</strong>: 会社の全ての来院者を表示しています。';
-        container.appendChild(roleNotice);
+    // ログインユーザーを最初に追加
+    if (window.APP_CONFIG && window.APP_CONFIG.displayName) {
+        var currentUser = {
+            id: 'current-user',
+            name: window.APP_CONFIG.displayName,
+            kana: '',
+            gender: '',
+            isPublic: true,
+            lastVisit: null,
+            isNew: false,
+            isVisible: true,
+            isCurrentUser: true
+        };
+        
+        // ログインユーザーが既に来院者リストにいないか確認
+        var userExists = appState.allPatients.some(function(patient) {
+            return patient.name === currentUser.name;
+        });
+        
+        if (!userExists) {
+            // ログインユーザーのカードを表示
+            var userElement = createElement('div', 
+                'patient-item flex items-center space-x-3 p-3 border rounded-md cursor-pointer transition-all border-gray-200 hover:bg-slate-50'
+            );
+            
+            var isSelected = appState.selectedPatientsForBooking.some(function(p) { return p.id === currentUser.id; });
+            if (isSelected) {
+                userElement.classList.add('selected', 'bg-teal-50', 'border-teal-500');
+                userElement.classList.remove('border-gray-200', 'hover:bg-slate-50');
+            }
+            
+            var isDisabled = appState.isPairBookingMode && 
+                              appState.selectedPatientsForBooking.length >= 2 && 
+                              !isSelected;
+            
+            userElement.innerHTML = 
+                '<input type="checkbox" class="patient-checkbox" ' +
+                (isSelected ? 'checked' : '') + ' ' +
+                (isDisabled ? 'disabled' : '') +
+                ' data-patient-id="' + currentUser.id + '">' +
+                '<div class="flex-1 cursor-pointer">' +
+                    '<div class="flex items-center justify-between">' +
+                        '<div>' +
+                            '<span class="font-medium">' + currentUser.name + ' (ご本人)</span>' +
+                            '<span class="text-xs text-teal-600 ml-2">ログイン中のユーザー</span>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            
+            userElement.addEventListener('click', function() {
+                var disabled = appState.isPairBookingMode && 
+                              appState.selectedPatientsForBooking.length >= 2 && 
+                              !appState.selectedPatientsForBooking.some(function(p) { return p.id === currentUser.id; });
+                if (disabled) {
+                    alert("ペア予約では2名まで選択できます。");
+                } else {
+                    togglePatientSelection(currentUser.id);
+                }
+            });
+            
+            container.appendChild(userElement);
+            
+            // 区切り線を追加
+            if (appState.allPatients.length > 0) {
+                var divider = document.createElement('hr');
+                divider.className = 'my-3 border-gray-200';
+                container.appendChild(divider);
+            }
+        }
     }
 
     if (appState.allPatients.length === 0) {
@@ -232,7 +290,25 @@ export function updatePatientsList() {
 }
 
 export function togglePatientSelection(patientId) {
-    var patient = appState.allPatients.find(function(p) { return p.id === patientId; });
+    var patient;
+    
+    // ログインユーザーの場合
+    if (patientId === 'current-user') {
+        patient = {
+            id: 'current-user',
+            name: window.APP_CONFIG.displayName,
+            kana: '',
+            gender: '',
+            isPublic: true,
+            lastVisit: null,
+            isNew: false,
+            isVisible: true,
+            isCurrentUser: true
+        };
+    } else {
+        patient = appState.allPatients.find(function(p) { return p.id === patientId; });
+    }
+    
     var isSelected = appState.selectedPatientsForBooking.some(function(p) { return p.id === patientId; });
 
     if (isSelected) {
