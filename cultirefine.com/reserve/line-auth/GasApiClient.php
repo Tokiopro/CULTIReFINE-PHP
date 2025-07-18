@@ -71,9 +71,9 @@ class GasApiClient
     /**
      * 空き時間検索
      */
-    public function getAvailability(string $treatmentId, string $date, bool $pairRoom = false): array
+    public function getAvailability(string $treatmentId, string $date, bool $pairRoom = false, int $timeSpacing = 5): array
     {
-        $cacheKey = "availability_{$treatmentId}_{$date}_" . ($pairRoom ? '1' : '0');
+        $cacheKey = "availability_{$treatmentId}_{$date}_" . ($pairRoom ? '1' : '0') . "_{$timeSpacing}";
         
         // 短時間キャッシュ（1分）
         if ($cachedData = $this->getFromCache($cacheKey, 60)) {
@@ -83,7 +83,8 @@ class GasApiClient
         $params = [
             'treatment_id' => $treatmentId,
             'date' => $date,
-            'pair_room' => $pairRoom ? 'true' : 'false'
+            'pair_room' => $pairRoom ? 'true' : 'false',
+            'time_spacing' => $timeSpacing
         ];
         
         $path = "api/availability?" . http_build_query($params);
@@ -410,6 +411,77 @@ class GasApiClient
         }
         
         return $deleted;
+    }
+    
+    /**
+     * 患者別メニュー取得
+     */
+    public function getPatientMenus(string $visitorId, ?string $companyId = null): array
+    {
+        $cacheKey = "patient_menus_{$visitorId}" . ($companyId ? "_{$companyId}" : "");
+        
+        // キャッシュチェック（10分）
+        if ($cachedData = $this->getFromCache($cacheKey, 600)) {
+            return $cachedData;
+        }
+        
+        $path = "api/patients/{$visitorId}/menus";
+        
+        // 会社IDがある場合はクエリパラメータに追加
+        if ($companyId) {
+            $path .= "?companyId={$companyId}";
+        }
+        
+        $result = $this->makeRequest('GET', $path);
+        
+        if ($result['status'] === 'success') {
+            $this->saveToCache($cacheKey, $result, 600);
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * MedicalForce形式で予約作成
+     */
+    public function createMedicalForceReservation(array $reservationData): array
+    {
+        $path = "developer/reservations";
+        
+        // MedicalForce API形式に変換
+        $requestData = [
+            'visitor_id' => $reservationData['visitor_id'],
+            'start_at' => $reservationData['start_at'],
+            'note' => $reservationData['note'] ?? '',
+            'is_online' => $reservationData['is_online'] ?? false,
+            'menus' => array_map(function($menu) {
+                return [
+                    'menu_id' => $menu['menu_id'],
+                    'staff_id' => $menu['staff_id'] ?? null
+                ];
+            }, $reservationData['menus'])
+        ];
+        
+        // オプションフィールド
+        if (!empty($reservationData['invitation_code'])) {
+            $requestData['invitation_code'] = $reservationData['invitation_code'];
+        }
+        if (!empty($reservationData['api_collaborator_id'])) {
+            $requestData['api_collaborator_id'] = $reservationData['api_collaborator_id'];
+        }
+        if (!empty($reservationData['api_collaborator_reservation_id'])) {
+            $requestData['api_collaborator_reservation_id'] = $reservationData['api_collaborator_reservation_id'];
+        }
+        
+        $result = $this->makeRequest('POST', $path, $requestData);
+        
+        // 成功時はキャッシュをクリア
+        if ($result['status'] === 'success') {
+            $this->clearCache("availability_*");
+            $this->clearCache("user_full_*");
+        }
+        
+        return $result;
     }
     
     /**

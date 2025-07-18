@@ -187,14 +187,15 @@ export async function mockCheckTreatmentInterval(patientId, treatmentId, desired
 /**
  * 空き時間確認
  */
-export async function mockCheckSlotAvailability(treatmentId, dateKey, pairRoomDesired) {
-    console.log('[GAS API] Checking slot availability for:', treatmentId, dateKey, pairRoomDesired);
+export async function mockCheckSlotAvailability(treatmentId, dateKey, pairRoomDesired, timeSpacing = 5) {
+    console.log('[GAS API] Checking slot availability for:', treatmentId, dateKey, pairRoomDesired, timeSpacing);
     
     try {
         const data = await apiCall('getAvailability', {
             treatment_id: treatmentId,
             date: dateKey,
-            pair_room: pairRoomDesired ? 'true' : 'false'
+            pair_room: pairRoomDesired ? 'true' : 'false',
+            time_spacing: timeSpacing
         });
         
         return {
@@ -276,6 +277,62 @@ export async function cancelReservation(reservationId) {
         return {
             success: false,
             message: "予約のキャンセルに失敗しました: " + error.message
+        };
+    }
+}
+
+/**
+ * 患者別メニュー取得
+ */
+export async function getPatientMenus(visitorId, companyId = null) {
+    console.log('[GAS API] Getting patient menus for:', visitorId, companyId);
+    
+    try {
+        const params = {
+            visitor_id: visitorId
+        };
+        
+        if (companyId) {
+            params.company_id = companyId;
+        }
+        
+        const data = await apiCall('getPatientMenus', params);
+        
+        console.log('[GAS API] Patient menus received:', data);
+        return {
+            success: true,
+            data: data
+        };
+        
+    } catch (error) {
+        console.error('[GAS API] Error getting patient menus:', error);
+        return {
+            success: false,
+            message: error.message || 'メニュー情報の取得に失敗しました'
+        };
+    }
+}
+
+/**
+ * MedicalForce形式で予約作成
+ */
+export async function createMedicalForceReservation(reservationData) {
+    console.log('[GAS API] Creating MedicalForce reservation:', reservationData);
+    
+    try {
+        const data = await apiCall('createMedicalForceReservation', {}, 'POST', reservationData);
+        
+        return {
+            success: true,
+            reservationId: data.reservation_id,
+            message: '予約が正常に作成されました'
+        };
+        
+    } catch (error) {
+        console.error('[GAS API] Error creating reservation:', error);
+        return {
+            success: false,
+            message: error.message || '予約の作成に失敗しました'
         };
     }
 }
