@@ -485,6 +485,48 @@ class GasApiClient
     }
     
     /**
+     * 来院者の公開設定を更新
+     */
+    public function updateVisitorVisibility(string $companyId, string $visitorId, bool $isPublic): array
+    {
+        $requestData = [
+            'path' => "api/company/{$companyId}/visitors/{$visitorId}/visibility",
+            'authorization' => "Bearer {$this->apiKey}",
+            'is_public' => $isPublic
+        ];
+        
+        return $this->request($requestData, 'POST');
+    }
+    
+    /**
+     * 予約履歴一覧を取得
+     */
+    public function getReservationHistory(string $memberType, string $date, string $companyId): array
+    {
+        $cacheKey = "reservation_history_{$companyId}_{$memberType}_{$date}";
+        
+        // キャッシュチェック（10分）
+        if ($cachedData = $this->getFromCache($cacheKey, 600)) {
+            return $cachedData;
+        }
+        
+        $params = [
+            'member_type' => $memberType,
+            'date' => $date,
+            'company_id' => $companyId
+        ];
+        
+        $path = "api/reservations/history?" . http_build_query($params);
+        $result = $this->makeRequest('GET', $path);
+        
+        if ($result['status'] === 'success') {
+            $this->saveToCache($cacheKey, $result, 600);
+        }
+        
+        return $result;
+    }
+    
+    /**
      * API接続テスト
      */
     public function testConnection(): array

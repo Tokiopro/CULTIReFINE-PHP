@@ -78,6 +78,10 @@ try {
             $result = handleCreateMedicalForceReservation($gasApi, getJsonInput());
             break;
             
+        case 'getReservationHistory':
+            $result = handleGetReservationHistory($gasApi, $lineUserId, $_GET);
+            break;
+            
         default:
             throw new Exception('不正なアクションです', 400);
     }
@@ -244,7 +248,19 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
         throw new Exception($result['error']['message'], 500);
     }
     
-    return $result['data'];
+    // JavaScriptが期待する形式でレスポンスを返す
+    return [
+        'success' => true,
+        'message' => '来院者が正常に登録されました。',
+        'data' => [
+            'visitor_id' => $result['data']['visitor_id'] ?? null,
+            'name' => $visitorData['name'],
+            'kana' => $visitorData['kana'],
+            'gender' => $visitorData['gender'],
+            'company_id' => $visitorData['company_id'],
+            'is_new' => true
+        ]
+    ];
 }
 
 /**
@@ -309,14 +325,18 @@ function handleUpdateVisitorPublicStatus(GasApiClient $gasApi, string $lineUserI
     $visitorId = $requestData['visitor_id'];
     $isPublic = (bool)$requestData['is_public'];
     
-    // 新しいAPI仕様に合わせて会社IDとビジターIDを両方渡す
-    $result = $gasApi->updateVisitorPublicStatus($companyId, $visitorId, $isPublic);
+    // 新しいGAS API仕様に合わせて呼び出し
+    $result = $gasApi->updateVisitorVisibility($companyId, $visitorId, $isPublic);
     
     if ($result['status'] === 'error') {
         throw new Exception($result['error']['message'], 500);
     }
     
-    return $result['data'];
+    return [
+        'success' => true,
+        'message' => $isPublic ? '来院者を公開に設定しました' : '来院者を非公開に設定しました',
+        'data' => $result['data'] ?? []
+    ];
 }
 
 /**
@@ -444,6 +464,45 @@ function handleCreateMedicalForceReservation(GasApiClient $gasApi, array $reserv
     }
     
     return $result['data'];
+}
+
+/**
+ * 予約履歴を取得
+ */
+function handleGetReservationHistory(GasApiClient $gasApi, string $lineUserId, array $params): array
+{
+    // 日付パラメータの確認（必須ではないが、指定された場合はフォーマットチェック）
+    $date = $params['date'] ?? date('Y-m-d');
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        throw new Exception('日付はYYYY-MM-DD形式で指定してください', 400);
+    }
+    
+    // ユーザー情報を取得して会社情報を確認
+    $userInfo = $gasApi->getUserFullInfo($lineUserId);
+    if ($userInfo['status'] !== 'success') {
+        throw new Exception('ユーザー情報の取得に失敗しました', 500);
+    }
+    
+    $companyInfo = $userInfo['data']['membership_info'] ?? null;
+    if (!$companyInfo || empty($companyInfo['company_id'])) {
+        throw new Exception('会社情報が見つかりません', 400);
+    }
+    
+    // 会員種別を取得（本会員/サブ会員）
+    $memberType = $companyInfo['member_type'] ?? 'サブ会員';
+    $companyId = $companyInfo['company_id'];
+    
+    // 予約履歴を取得
+    $result = $gasApi->getReservationHistory($memberType, $date, $companyId);
+    
+    if ($result['status'] === 'error') {
+        throw new Exception($result['error']['message'], 500);
+    }
+    
+    return [
+        'success' => true,
+        'data' => $result['data'] ?? []
+    ];
 }
 
 /**

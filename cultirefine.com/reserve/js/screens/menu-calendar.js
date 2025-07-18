@@ -5,8 +5,9 @@ import { appState } from '../core/app-state.js';
 import { Calendar, calendars } from '../components/calendar.js';
 import { createTreatmentAccordion } from '../components/treatment-accordion.js';
 import { showAlert, hideAlert, createElement } from '../core/ui-helpers.js';
-import { mockCheckTreatmentInterval, mockCheckSlotAvailability } from '../data/gas-api.js';
+import { mockCheckTreatmentInterval, mockCheckSlotAvailability, getPatientMenus } from '../data/gas-api.js';
 import { formatDateKey } from '../data/treatment-data.js';
+import { loadPatientMenus } from '../components/patient-menu-loader.js';
 
 export function initMenuCalendarScreen() {
     var backBtn = document.getElementById('back-to-patients-btn');
@@ -26,25 +27,39 @@ export function initMenuCalendarScreen() {
 
     nextBtn.addEventListener('click', function() {
         var currentPatient = appState.selectedPatientsForBooking[appState.currentPatientIndexForBooking];
-        var treatment = appState.selectedTreatments[currentPatient.id];
+        var treatments = appState.selectedTreatments[currentPatient.id] || [];
         var date = appState.selectedDates[currentPatient.id];
-        var time = appState.selectedTimes[currentPatient.id];
+        var times = appState.selectedTimes[currentPatient.id];
 
-        if (!treatment || !date || !time) {
+        if (treatments.length === 0 || !date || !times) {
             alert("メニュー、日付、時間を選択してください。");
             return;
         }
 
-        // Update booking
-        appState.bookings[appState.currentPatientIndexForBooking] = Object.assign(
-            appState.bookings[appState.currentPatientIndexForBooking],
-            {
-                treatment: treatment,
+        // 複数メニュー対応: booking情報を更新
+        if (treatments.length === 1) {
+            // 単一メニュー（後方互換性）
+            const selectedTime = typeof times === 'string' ? times : times[treatments[0].id];
+            appState.bookings[appState.currentPatientIndexForBooking] = Object.assign(
+                appState.bookings[appState.currentPatientIndexForBooking] || {},
+                {
+                    treatment: treatments[0],
+                    selectedDate: date,
+                    selectedTime: selectedTime,
+                    pairRoomDesired: appState.pairRoomDesired[currentPatient.id] || false
+                }
+            );
+        } else {
+            // 複数メニュー
+            appState.bookings[appState.currentPatientIndexForBooking] = {
+                patientId: currentPatient.id,
+                patientName: currentPatient.name,
+                treatments: treatments,
                 selectedDate: date,
-                selectedTime: time,
+                selectedTimes: times,
                 pairRoomDesired: appState.pairRoomDesired[currentPatient.id] || false
-            }
-        );
+            };
+        }
 
         if (appState.currentPatientIndexForBooking < appState.selectedPatientsForBooking.length - 1) {
             appState.currentPatientIndexForBooking++;
@@ -69,7 +84,7 @@ export function initMenuCalendarScreen() {
     updateMenuCalendarScreen();
 }
 
-export function updateMenuCalendarScreen() {
+export async function updateMenuCalendarScreen() {
     var currentPatient = appState.selectedPatientsForBooking[appState.currentPatientIndexForBooking];
     var description = document.getElementById('menu-calendar-description');
     var backButtonText = document.getElementById('back-button-text');
@@ -89,7 +104,8 @@ export function updateMenuCalendarScreen() {
         ? "次の来院者の予約へ"
         : "予約内容の確認へ";
 
-    createTreatmentAccordion('treatment-categories', currentPatient.id);
+    // 患者別メニューを取得して表示
+    await displayPatientMenus(currentPatient.id);
     
     // Initialize calendar - always create a fresh instance for each patient
     calendars['calendar'] = new Calendar('calendar', function(date) {
@@ -97,7 +113,7 @@ export function updateMenuCalendarScreen() {
     });
     
     // Restore selections
-    var treatment = appState.selectedTreatments[currentPatient.id];
+    var selectedMenus = appState.selectedTreatments[currentPatient.id] || [];
     var date = appState.selectedDates[currentPatient.id];
     var time = appState.selectedTimes[currentPatient.id];
     var pairRoom = appState.pairRoomDesired[currentPatient.id];
@@ -172,15 +188,18 @@ export function selectDate(patientId, date) {
 }
 
 export function checkAndUpdateTimeSlots(patientId, date) {
-    var treatment = appState.selectedTreatments[patientId];
+    // 複数メニュー対応
+    var selectedMenus = appState.selectedTreatments[patientId] || [];
     var pairRoom = appState.pairRoomDesired[patientId] || false;
     
-    if (!treatment || !date) {
+    if (selectedMenus.length === 0 || !date) {
         return Promise.resolve();
     }
 
     var dateKey = formatDateKey(date);
-    return mockCheckSlotAvailability(treatment.id, dateKey, pairRoom).then(function(slotsResult) {
+    // 最初のメニューで空き確認（5分間隔）
+    const firstMenu = selectedMenus[0];
+    return mockCheckSlotAvailability(firstMenu.id, dateKey, pairRoom, 5).then(function(slotsResult) {
         // Show availability message
         if (slotsResult.message) {
             var alertType = slotsResult.availableTimes.length > 0 ? 'info' : 'warning';
@@ -198,17 +217,48 @@ export function checkAndUpdateTimeSlots(patientId, date) {
         timeSlotsContainer.innerHTML = '';
         
         if (slotsResult.availableTimes.length > 0) {
-            for (var i = 0; i < slotsResult.availableTimes.length; i++) {
-                var time = slotsResult.availableTimes[i];
-                var timeSlot = createElement('button', 
-                    'time-slot px-3 py-2 border border-gray-300 rounded-md bg-white hover:bg-teal-50 cursor-pointer text-center text-sm transition-all', 
-                    time);
-                timeSlot.onclick = (function(time) {
-                    return function() {
-                        selectTimeSlot(patientId, time);
-                    };
-                })(time);
-                timeSlotsContainer.appendChild(timeSlot);
+            if (selectedMenus.length > 1) {
+                // 複数メニューの場合
+                selectedMenus.forEach((menu, index) => {
+                    const menuSection = createElement('div', 'mb-4');
+                    menuSection.innerHTML = `<h4 class="font-medium mb-2">${menu.name} (${menu.duration}分)</h4>`;
+                    const menuSlotsGrid = createElement('div', 'grid grid-cols-3 sm:grid-cols-4 gap-2');
+                    
+                    slotsResult.availableTimes.forEach(time => {
+                        const endTime = addMinutes(time, menu.duration);
+                        const timeSlot = createElement('button', 
+                            'time-slot px-3 py-2 border border-gray-300 rounded-md bg-white hover:bg-teal-50 cursor-pointer text-center text-sm transition-all'
+                        );
+                        timeSlot.innerHTML = `<div>${time}</div><div class="text-xs opacity-75">〜${endTime}</div>`;
+                        timeSlot.dataset.menuId = menu.id;
+                        timeSlot.onclick = (function(time, menuId) {
+                            return function(event) {
+                                selectTimeSlot(patientId, time);
+                            };
+                        })(time, menu.id);
+                        menuSlotsGrid.appendChild(timeSlot);
+                    });
+                    
+                    menuSection.appendChild(menuSlotsGrid);
+                    timeSlotsContainer.appendChild(menuSection);
+                });
+            } else {
+                // 単一メニューの場合
+                const menu = selectedMenus[0];
+                for (var i = 0; i < slotsResult.availableTimes.length; i++) {
+                    var time = slotsResult.availableTimes[i];
+                    const endTime = addMinutes(time, menu.duration);
+                    var timeSlot = createElement('button', 
+                        'time-slot px-3 py-2 border border-gray-300 rounded-md bg-white hover:bg-teal-50 cursor-pointer text-center text-sm transition-all'
+                    );
+                    timeSlot.innerHTML = `<div>${time}</div><div class="text-xs opacity-75">〜${endTime}</div>`;
+                    timeSlot.onclick = (function(time) {
+                        return function() {
+                            selectTimeSlot(patientId, time);
+                        };
+                    })(time);
+                    timeSlotsContainer.appendChild(timeSlot);
+                }
             }
             timeSlotsContainer.classList.remove('hidden');
         } else {
@@ -217,9 +267,118 @@ export function checkAndUpdateTimeSlots(patientId, date) {
     });
 }
 
+/**
+ * 時間に分を加算
+ */
+function addMinutes(timeStr, minutes) {
+    const [hours, mins] = timeStr.split(':').map(Number);
+    const totalMins = hours * 60 + mins + minutes;
+    const newHours = Math.floor(totalMins / 60);
+    const newMins = totalMins % 60;
+    return `${String(newHours).padStart(2, '0')}:${String(newMins).padStart(2, '0')}`;
+}
+
+/**
+ * 患者別メニューを表示
+ */
+async function displayPatientMenus(patientId) {
+    const container = document.getElementById('treatment-categories');
+    if (!container) return;
+    
+    // ローディング表示
+    container.innerHTML = '<div class="text-center py-4">メニューを読み込んでいます...</div>';
+    
+    // メニュー選択時のコールバック
+    const onMenuSelect = (menu, patientId) => {
+        // 選択されたメニューを配列に追加
+        if (!appState.selectedTreatments[patientId]) {
+            appState.selectedTreatments[patientId] = [];
+        }
+        if (!appState.selectedMenuIds[patientId]) {
+            appState.selectedMenuIds[patientId] = [];
+        }
+        
+        const menuIndex = appState.selectedTreatments[patientId].findIndex(t => t.id === menu.id);
+        if (menuIndex > -1) {
+            // 既に選択されている場合は削除
+            appState.selectedTreatments[patientId].splice(menuIndex, 1);
+            appState.selectedMenuIds[patientId] = appState.selectedMenuIds[patientId].filter(id => id !== menu.id);
+        } else {
+            // 新規選択
+            appState.selectedTreatments[patientId].push(menu);
+            appState.selectedMenuIds[patientId].push(menu.id);
+        }
+        
+        updateSelectedMenusDisplay(patientId);
+        updateNextButtonState();
+    };
+    
+    // 会社IDを取得
+    const companyId = appState.membershipInfo?.companyId || window.APP_CONFIG?.companyInfo?.companyId || null;
+    
+    // 患者別メニューをロード
+    await loadPatientMenus('treatment-categories', patientId, companyId, onMenuSelect);
+    
+    // 選択済みメニューをハイライト
+    highlightSelectedMenus(patientId);
+}
+
+/**
+ * 選択されたメニューの表示を更新
+ */
+function updateSelectedMenusDisplay(patientId) {
+    const selectedMenus = appState.selectedTreatments[patientId] || [];
+    const totalDuration = selectedMenus.reduce((sum, menu) => sum + menu.duration, 0);
+    const totalPrice = selectedMenus.reduce((sum, menu) => sum + (menu.price || 0), 0);
+    
+    // 既存のエラー表示を更新
+    const intervalError = document.getElementById('interval-error');
+    if (selectedMenus.length > 0) {
+        intervalError.classList.remove('hidden');
+        document.getElementById('interval-error-text').innerHTML = 
+            `選択中: ${selectedMenus.length}件 / 合計${totalDuration}分 / ￥${totalPrice.toLocaleString()}`;
+    } else {
+        intervalError.classList.add('hidden');
+    }
+    
+    // 日付・時間選択セクションの表示
+    const dateTimeSection = document.getElementById('date-time-selection');
+    if (selectedMenus.length > 0) {
+        dateTimeSection.classList.remove('hidden');
+    } else {
+        dateTimeSection.classList.add('hidden');
+    }
+}
+
+/**
+ * 選択済みメニューをハイライト
+ */
+function highlightSelectedMenus(patientId) {
+    const selectedMenuIds = appState.selectedMenuIds[patientId] || [];
+    selectedMenuIds.forEach(menuId => {
+        const menuElement = document.querySelector(`[data-menu-id="${menuId}"]`);
+        if (menuElement) {
+            menuElement.classList.add('selected', 'bg-blue-100', 'border-blue-500');
+        }
+    });
+}
+
 export function selectTimeSlot(patientId, time) {
     console.log('selectTimeSlot called for patient:', patientId, 'time:', time);
-    appState.selectedTimes[patientId] = time;
+    
+    // 複数メニュー対応: 現在選択中のメニューIDを取得
+    const currentMenuId = event.currentTarget?.dataset?.menuId;
+    
+    if (!appState.selectedTimes[patientId]) {
+        appState.selectedTimes[patientId] = {};
+    }
+    
+    if (currentMenuId) {
+        appState.selectedTimes[patientId][currentMenuId] = time;
+    } else {
+        // 後方互換性のため、単一の時間も保存
+        appState.selectedTimes[patientId] = time;
+    }
     
     // Update UI
     var timeSlots = document.querySelectorAll('.time-slot');
@@ -248,15 +407,28 @@ export function updateNextButtonState() {
     var currentPatient = appState.selectedPatientsForBooking[appState.currentPatientIndexForBooking];
     if (!currentPatient) return;
     
-    var hasAllRequired = 
-        appState.selectedTreatments[currentPatient.id] &&
-        appState.selectedDates[currentPatient.id] &&
-        appState.selectedTimes[currentPatient.id];
+    // 複数メニュー対応
+    const selectedMenus = appState.selectedTreatments[currentPatient.id] || [];
+    const selectedDate = appState.selectedDates[currentPatient.id];
+    const selectedTimes = appState.selectedTimes[currentPatient.id];
+    
+    let hasAllRequired = false;
+    
+    if (selectedMenus.length > 0 && selectedDate) {
+        if (typeof selectedTimes === 'string') {
+            // 後方互換性: 単一の時間が選択されている
+            hasAllRequired = true;
+        } else if (typeof selectedTimes === 'object' && selectedTimes !== null) {
+            // 複数メニュー: すべてのメニューに時間が選択されているか確認
+            const allMenusHaveTime = selectedMenus.every(menu => selectedTimes[menu.id]);
+            hasAllRequired = allMenusHaveTime;
+        }
+    }
     
     console.log('UpdateNextButtonState for patient:', currentPatient.name, 'hasAllRequired:', hasAllRequired);
-    console.log('Treatment:', appState.selectedTreatments[currentPatient.id]);
-    console.log('Date:', appState.selectedDates[currentPatient.id]);
-    console.log('Time:', appState.selectedTimes[currentPatient.id]);
+    console.log('Treatments:', selectedMenus);
+    console.log('Date:', selectedDate);
+    console.log('Times:', selectedTimes);
     
     nextBtn.disabled = !hasAllRequired;
 }

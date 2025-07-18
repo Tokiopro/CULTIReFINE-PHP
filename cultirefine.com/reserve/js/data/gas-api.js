@@ -94,24 +94,26 @@ export async function mockAddPatient(patientData) {
             visitorData.birthday = patientData.birthday;
         }
         
-        const data = await apiCall('createVisitor', {}, 'POST', visitorData);
+        const result = await apiCall('createVisitor', {}, 'POST', visitorData);
         
         // レスポンスデータを既存のフォーマットに変換
         const newPatient = {
-            id: data.visitor_id,
-            name: data.name,
-            kana: data.kana,
+            id: result.data.visitor_id || 'temp-' + Date.now(),
+            name: result.data.name,
+            kana: result.data.kana,
+            gender: result.data.gender,
             isNew: true,
             lastVisit: null,
             isVisible: true,
-            companyId: data.company_id
+            isPublic: true,
+            companyId: result.data.company_id
         };
         
         console.log('[GAS API] Patient added successfully:', newPatient);
         return { 
             success: true, 
             patient: newPatient, 
-            message: "来院者が正常に登録されました。" 
+            message: result.message || "来院者が正常に登録されました。" 
         };
         
     } catch (error) {
@@ -333,6 +335,34 @@ export async function createMedicalForceReservation(reservationData) {
         return {
             success: false,
             message: error.message || '予約の作成に失敗しました'
+        };
+    }
+}
+
+/**
+ * 予約履歴を取得
+ */
+export async function getReservationHistory(date = null) {
+    console.log('[GAS API] Getting reservation history for date:', date || 'today');
+    
+    try {
+        const params = {};
+        if (date) {
+            params.date = date;
+        }
+        
+        const result = await apiCall('getReservationHistory', params);
+        console.log('[GAS API] Reservation history received:', result);
+        
+        return { 
+            success: true, 
+            data: result.data || {}
+        };
+    } catch (error) {
+        console.error('[GAS API] Error getting reservation history:', error);
+        return { 
+            success: false, 
+            message: error.message || "予約履歴の取得に失敗しました。" 
         };
     }
 }
