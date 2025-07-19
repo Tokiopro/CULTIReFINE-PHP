@@ -15,13 +15,57 @@ $displayName = $_SESSION['line_display_name'] ?? 'ゲスト';
 $pictureUrl = $_SESSION['line_picture_url'] ?? null;
 $userData = $_SESSION['user_data'] ?? null;
 
-// GAS APIからユーザー情報を取得
+// GAS APIからユーザー情報と予約履歴を取得
 require_once __DIR__ . '/../line-auth/config.php';
 require_once __DIR__ . '/../line-auth/GasApiClient.php';
+
 $companyId = '';
-$reservationDetails = [];
+$companyName = '';
+$memberType = 'サブ会員';
+$reservations = [];
 $errorMessage = '';
-$params = [];
+
+try {
+    $gasApi = new GasApiClient(GAS_DEPLOYMENT_ID, GAS_API_KEY);
+    
+    // 1. ユーザー情報を取得して会社情報を確認
+    $userInfo = $gasApi->getUserFullInfo($lineUserId);
+    
+    if ($userInfo['status'] === 'success' && isset($userInfo['data']['membership_info'])) {
+        $membershipInfo = $userInfo['data']['membership_info'];
+        
+        // 会社情報を取得
+        if (isset($membershipInfo['company_id']) && !empty($membershipInfo['company_id'])) {
+            $companyId = $membershipInfo['company_id'];
+            $companyName = $membershipInfo['company_name'] ?? '不明';
+            $memberType = $membershipInfo['member_type'] ?? 'サブ会員';
+            
+            // 2. 予約履歴を取得（現在日付で前後3ヶ月）
+            $currentDate = date('Y-m-d');
+            $historyResponse = $gasApi->getReservationHistory($memberType, $currentDate, $companyId);
+            
+            if ($historyResponse['status'] === 'success') {
+                $reservations = $historyResponse['data']['reservations'] ?? [];
+                
+                // デバッグログ
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    error_log('Company ID: ' . $companyId);
+                    error_log('Member Type: ' . $memberType);
+                    error_log('Reservations count: ' . count($reservations));
+                }
+            } else {
+                $errorMessage = '予約履歴の取得に失敗しました: ' . ($historyResponse['message'] ?? 'Unknown error');
+            }
+        } else {
+            $errorMessage = '会社情報が見つかりません。管理者にお問い合わせください。';
+        }
+    } else {
+        $errorMessage = 'ユーザー情報の取得に失敗しました: ' . ($userInfo['message'] ?? 'Unknown error');
+    }
+} catch (Exception $e) {
+    $errorMessage = 'システムエラーが発生しました: ' . $e->getMessage();
+    error_log('Reservation history error: ' . $e->getMessage());
+}
 ?>
 <!DOCTYPE html>
 <!-- 
@@ -56,7 +100,11 @@ $params = [];
   <div class="container mx-auto px-0 sm:px-6">
     <div class="his_cont_wrap">
       <h2>予約履歴一覧<br>
-        <small>法人アカウント全体の予約履歴です。</small></h2>
+        <small><?php echo htmlspecialchars($companyName); ?> の予約履歴です。
+        <?php if ($memberType === 'サブ会員'): ?>
+          （公開設定の予約のみ表示）
+        <?php endif; ?>
+        </small></h2>
       <div id="search_box" class="bg-white">
         <h3>絞り込み検索</h3>
         <form id="sort_form">
@@ -69,9 +117,9 @@ $params = [];
             <label for="sort_status">ステータス</label>
             <select id="sort_status" name="sort_status" class="sort_input">
               <option value="">選択してください</option>
-              <option value="reserved">予約済み</option>
-              <option value="canceled">キャンセル済み</option>
-              <option value="visited">来院済み</option>
+              <option value="予約">予約済み</option>
+              <option value="キャンセル">キャンセル済み</option>
+              <option value="完了">来院済み</option>
             </select>
           </div>
           <div class="sort_item">
@@ -80,86 +128,62 @@ $params = [];
         </form>
       </div>
     </div>
-	<?php if (empty($params) && empty($errorMessage)): ?>
-		<p>予約がありません</p>
-		<?php else: ?>
-	<?php foreach ($params as $index => $$param): ?>
-    <div id="history_item<?php echo $index + 1; ?>" class="history_item">
+	
+	<?php if (!empty($errorMessage)): ?>
+		<div class="error-message bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+			<p><?php echo htmlspecialchars($errorMessage); ?></p>
+		</div>
+	<?php endif; ?>
+	
+	<?php if (empty($reservations) && empty($errorMessage)): ?>
+		<div class="no-reservations bg-gray-100 border border-gray-300 text-gray-600 px-4 py-6 rounded text-center">
+			<p>予約履歴がありません。</p>
+		</div>
+	<?php else: ?>
+		<?php foreach ($reservations as $index => $reservation): ?>
+    <div id="history_item<?php echo $index + 1; ?>" class="history_item"
+         data-reservation-id="<?php echo htmlspecialchars($reservation['reservation_id']); ?>"
+         data-visitor-name="<?php echo htmlspecialchars($reservation['visitor_name']); ?>"
+         data-status="<?php echo htmlspecialchars($reservation['status']); ?>"
+         data-menu="<?php echo htmlspecialchars($reservation['menu_name']); ?>"
+         data-date="<?php echo htmlspecialchars($reservation['date']); ?>"
+         data-time="<?php echo htmlspecialchars($reservation['time']); ?>"
+         data-memo="<?php echo htmlspecialchars($reservation['memo'] ?? ''); ?>">
       <div class="his_cont_detail">
-        <div class="his_cont_detail_status"><span>キャンセル済み</span></div>
-        <div class="his_cont_detail_menu">初回カウンセリング</div>
+        <div class="his_cont_detail_status">
+          <span class="status-<?php echo $reservation['status'] === '予約' ? 'reserved' : ($reservation['status'] === '完了' ? 'completed' : 'canceled'); ?>">
+            <?php echo htmlspecialchars($reservation['status']); ?>
+          </span>
+        </div>
+        <div class="his_cont_detail_menu"><?php echo htmlspecialchars($reservation['menu_name']); ?></div>
         <div class="his_cont_detail_date_wrap">
           <div class="his_cont_detail_date_item">
             <p class="his_ttl calender">予約日時</p>
-            <p id="his_date1" class="his_date">2025/06/18 16:00</p>
+            <p class="his_date"><?php echo htmlspecialchars($reservation['date']); ?> <?php echo htmlspecialchars($reservation['time']); ?></p>
           </div>
           <div class="his_cont_detail_date_item">
             <p class="his_ttl pin">クリニック名</p>
-            <p id="his_place1" class="his_date">CUTIREFINEクリニック</p>
+            <p class="his_date">CULTIRE FINEクリニック</p>
           </div>
         </div>
         <div class="his_cont_detail_visiter">
           <p class="his_ttl">来院者</p>
-          <p id="his_name1" class="his_visiter_name">高橋 健太<span class="relationship">(家族)</span></p>
+          <p class="his_visiter_name">
+            <?php echo htmlspecialchars($reservation['visitor_name']); ?>
+            <?php if ($reservation['is_public'] === false && $memberType === '本会員'): ?>
+              <span class="text-sm text-gray-500">(非公開)</span>
+            <?php endif; ?>
+          </p>
         </div>
         <div class="his_cont_detail_reserver">
-          <p class="his_ttl">予約者</p>
-          <p id="his_name1" class="his_name">田中 太郎</p>
+          <p class="his_ttl">メモ</p>
+          <p class="his_name"><?php echo htmlspecialchars($reservation['memo'] ?: 'なし'); ?></p>
         </div>
-        <button class="open_modal">予約詳細を見る</button></div>
+        <button class="open_modal">予約詳細を見る</button>
+      </div>
     </div>
 		<?php endforeach; ?>
-		<?php endif; ?>
-    <!--<div id="history_item2" class="history_item">
-      <div class="his_cont_detail">
-        <div class="his_cont_detail_status"><span>予約済み</span></div>
-        <div class="his_cont_detail_menu">免疫再生プレミア1cc(初回)</div>
-        <div class="his_cont_detail_date_wrap">
-          <div class="his_cont_detail_date_item">
-            <p class="his_ttl calender">予約日時</p>
-            <p id="his_date2" class="his_date">2025/06/18 16:00</p>
-          </div>
-          <div class="his_cont_detail_date_item">
-            <p class="his_ttl pin">クリニック名</p>
-            <p id="his_place2" class="his_date">CUTIREFINEクリニック</p>
-          </div>
-        </div>
-        <div class="his_cont_detail_visiter">
-          <p class="his_ttl">来院者</p>
-          <p id="his_name2" class="his_visiter_name">田中 太郎<span class="relationship">(家族)</span></p>
-        </div>
-        <div class="his_cont_detail_reserver">
-          <p class="his_ttl">予約者</p>
-          <p id="his_name2" class="his_name">田中 太郎</p>
-        </div>
-		  <button class="open_modal">予約詳細を見る</button>
-      </div>
-    </div>
-    <div id="history_item3" class="history_item">
-      <div class="his_cont_detail">
-        <div class="his_cont_detail_status"><span>来院済み</span></div>
-        <div class="his_cont_detail_menu">美容施術A(サンプル)</div>
-        <div class="his_cont_detail_date_wrap">
-          <div class="his_cont_detail_date_item">
-            <p class="his_ttl calender">予約日時</p>
-            <p id="his_date3" class="his_date">2025/06/18 16:00</p>
-          </div>
-          <div class="his_cont_detail_date_item">
-            <p class="his_ttl pin">クリニック名</p>
-            <p id="his_place3" class="his_date">CUTIREFINEクリニック</p>
-          </div>
-        </div>
-        <div class="his_cont_detail_visiter">
-          <p class="his_ttl">来院者</p>
-          <p id="his_name3" class="his_visiter_name">佐藤 愛美<span class="relationship">(家族)</span></p>
-        </div>
-        <div class="his_cont_detail_reserver">
-          <p class="his_ttl">予約者</p>
-          <p id="his_name3" class="his_name">佐藤 愛美</p>
-        </div>
-		  <button class="open_modal">予約詳細を見る</button>
-      </div>
-    </div>-->
+	<?php endif; ?>
   </div>
   </div>
 </main>
