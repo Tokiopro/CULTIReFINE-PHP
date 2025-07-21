@@ -119,7 +119,7 @@ export async function updateMenuCalendarScreen() {
     var pairRoom = appState.pairRoomDesired[currentPatient.id];
 
     console.log('Restoring selections for patient:', currentPatient.name);
-    console.log('Treatment:', treatment);
+    console.log('Selected menus:', selectedMenus);
     console.log('Date:', date);
     console.log('Time:', time);
 
@@ -130,9 +130,11 @@ export async function updateMenuCalendarScreen() {
     }
 
     // Restore treatment selection
-    if (treatment) {
+    if (selectedMenus && selectedMenus.length > 0) {
         setTimeout(function() {
-            selectTreatmentProgrammatically(currentPatient.id, treatment);
+            // 複数メニュー対応: 選択済みメニューをハイライト
+            highlightSelectedMenus(currentPatient.id);
+            updateSelectedMenusDisplay(currentPatient.id);
         }, 200);
     }
     
