@@ -1,8 +1,8 @@
 // data/gas-api.js
 // GAS API通信モジュール（mock-api.jsの置き換え）
 
-// API基底URL
-const API_BASE_URL = '/cultirefine.com/reserve/api-bridge.php';
+// API基底URL（絶対パスを使用）
+const API_BASE_URL = window.location.origin + '/reserve/api-bridge.php';
 
 /**
  * 遅延処理（UIの一貫性のため）
@@ -17,7 +17,7 @@ export function delay(ms) {
  * API呼び出し共通関数
  */
 async function apiCall(action, params = {}, method = 'GET', data = null) {
-    const url = new URL(API_BASE_URL, window.location.origin);
+    const url = new URL(API_BASE_URL);
     url.searchParams.set('action', action);
     
     // GETパラメータを追加
@@ -25,6 +25,13 @@ async function apiCall(action, params = {}, method = 'GET', data = null) {
         Object.keys(params).forEach(key => {
             url.searchParams.set(key, params[key]);
         });
+    }
+    
+    // デバッグ用：実際のリクエストURLを出力
+    console.log('[API Call] Request URL:', url.toString());
+    console.log('[API Call] Method:', method);
+    if (data) {
+        console.log('[API Call] Data:', data);
     }
     
     const options = {
@@ -42,6 +49,16 @@ async function apiCall(action, params = {}, method = 'GET', data = null) {
     
     try {
         const response = await fetch(url.toString(), options);
+        
+        // レスポンスのContent-Typeを確認
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            console.error('Non-JSON response received:', contentType);
+            const text = await response.text();
+            console.error('Response body:', text.substring(0, 500));
+            throw new Error('サーバーからの応答が正しくありません。管理者にお問い合わせください。');
+        }
+        
         const result = await response.json();
         
         if (!result.success) {
