@@ -124,9 +124,22 @@ export function initAddPatientModal() {
             var gender = document.querySelector('input[name="gender"]:checked').value;
             var birthday = birthdayInput.value;
 
+            // 氏名を姓名に分割（スペースで分割、なければ最初の文字を姓とする）
+            var nameParts = name.split(/[\s　]+/); // 半角・全角スペースで分割
+            var lastName = nameParts[0] || '';
+            var firstName = nameParts[1] || '';
+            
+            // カナも同様に分割
+            var kanaParts = kana.split(/[\s　]+/);
+            var lastNameKana = kanaParts[0] || '';
+            var firstNameKana = kanaParts[1] || '';
+
+            // PHP側のAPI形式に合わせて分割形式で送信
             var patientData = {
-                name: name,
-                kana: kana,
+                last_name: lastName,
+                first_name: firstName || '未設定', // 名前がない場合はデフォルト値
+                last_name_kana: lastNameKana,
+                first_name_kana: firstNameKana || 'ミセッテイ', // カナがない場合はデフォルト値
                 gender: gender
             };
 
@@ -158,11 +171,32 @@ export function initAddPatientModal() {
                 showSuccessMessage(result.message || '来院者が正常に登録されました。');
                 
             } else {
-                showError(result.message || '来院者の登録に失敗しました。');
+                // より詳細なエラーメッセージを表示
+                const errorMessage = result.message || '来院者の登録に失敗しました。';
+                console.error('Patient registration failed:', result);
+                showError(errorMessage);
             }
         } catch (error) {
             console.error('Patient registration error:', error);
-            showError('システムエラーが発生しました。時間をおいて再度お試しください。');
+            
+            // エラーの種類に応じてメッセージを変更
+            let errorMessage = 'システムエラーが発生しました。時間をおいて再度お試しください。';
+            
+            if (error.message) {
+                if (error.message.includes('認証')) {
+                    errorMessage = 'ログイン状態が無効です。再度ログインしてください。';
+                } else if (error.message.includes('Medical Force')) {
+                    errorMessage = 'Medical Force APIエラー: ' + error.message;
+                } else if (error.message.includes('GAS API')) {
+                    errorMessage = 'データベースエラー: ' + error.message;
+                } else if (error.message.includes('必須フィールド')) {
+                    errorMessage = '入力内容に不備があります: ' + error.message;
+                } else {
+                    errorMessage = error.message;
+                }
+            }
+            
+            showError(errorMessage);
         } finally {
             setLoading(false);
         }

@@ -5,7 +5,7 @@ import { appState } from '../core/app-state.js';
 import { Calendar, calendars } from '../components/calendar.js';
 import { createTreatmentAccordion } from '../components/treatment-accordion.js';
 import { showAlert, hideAlert, createElement } from '../core/ui-helpers.js';
-import { mockCheckTreatmentInterval, mockCheckSlotAvailability, getPatientMenus } from '../data/gas-api.js';
+import { mockCheckTreatmentInterval, mockCheckSlotAvailability, getPatientMenus, getAvailableSlots } from '../data/gas-api.js';
 import { formatDateKey } from '../data/treatment-data.js';
 import { loadPatientMenus } from '../components/patient-menu-loader.js';
 
@@ -110,10 +110,17 @@ export async function updateMenuCalendarScreen() {
     // Initialize calendar - always create a fresh instance for each patient
     calendars['calendar'] = new Calendar('calendar', function(date) {
         selectDate(currentPatient.id, date);
+    }, {
+        showAvailability: true
     });
     
-    // Restore selections
+    // 選択されたメニューがある場合は空き情報を取得
     var selectedMenus = appState.selectedTreatments[currentPatient.id] || [];
+    if (selectedMenus.length > 0) {
+        await loadCalendarAvailability(currentPatient.id, selectedMenus[0].id);
+    }
+    
+    // Restore selections
     var date = appState.selectedDates[currentPatient.id];
     var time = appState.selectedTimes[currentPatient.id];
     var pairRoom = appState.pairRoomDesired[currentPatient.id];
@@ -313,6 +320,11 @@ async function displayPatientMenus(patientId) {
         
         updateSelectedMenusDisplay(patientId);
         updateNextButtonState();
+        
+        // メニューが選択されたらカレンダーの空き情報を更新
+        if (appState.selectedTreatments[patientId].length > 0) {
+            loadCalendarAvailability(patientId, appState.selectedTreatments[patientId][0].id);
+        }
     };
     
     // 会社IDを取得
@@ -433,4 +445,59 @@ export function updateNextButtonState() {
     console.log('Times:', selectedTimes);
     
     nextBtn.disabled = !hasAllRequired;
+}
+
+// カレンダーの空き情報を読み込む
+async function loadCalendarAvailability(patientId, menuId) {
+    const calendar = calendars['calendar'];
+    if (!calendar) return;
+    
+    // ローディング状態を設定
+    calendar.setLoading(true);
+    
+    try {
+        // 現在の月の初日から30日分の空き情報を取得
+        const currentDate = calendar.currentDate;
+        const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+        const dateKey = calendar.formatDateKey(startDate);
+        
+        // ペア予約の設定を取得
+        const pairRoom = appState.pairRoomDesired[patientId] || false;
+        
+        // API呼び出し
+        const result = await getAvailableSlots(patientId, menuId, dateKey, 30, {
+            pairBooking: pairRoom,
+            allowMultipleSameDay: false
+        });
+        
+        if (result.success && result.data) {
+            const data = result.data;
+            
+            // 施術間隔制限の警告表示
+            if (data.treatment_interval_rules && data.treatment_interval_rules.has_restrictions) {
+                const rules = data.treatment_interval_rules;
+                if (rules.last_treatment_date && rules.next_available_date) {
+                    showAlert('interval-warning', 'info', '施術間隔制限', 
+                        `前回施術日: ${rules.last_treatment_date}、次回予約可能日: ${rules.next_available_date}`);
+                }
+            }
+            
+            // カレンダーに空き情報を設定
+            if (data.available_slots) {
+                calendar.setAvailableSlots(data.available_slots);
+            }
+        } else {
+            console.error('Failed to load availability:', result);
+            showAlert('availability-error', 'error', 'エラー', 
+                result.message || '空き情報の取得に失敗しました');
+        }
+        
+    } catch (error) {
+        console.error('Error loading availability:', error);
+        showAlert('availability-error', 'error', 'エラー', 
+            '空き情報の取得中にエラーが発生しました');
+    } finally {
+        // ローディング状態を解除
+        calendar.setLoading(false);
+    }
 }

@@ -18,14 +18,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $externalApi = new ExternalApi();
     
     // 入力データの検証
-    $name = trim($_POST['name'] ?? '');
+    $lastName = trim($_POST['last_name'] ?? '');
+    $firstName = trim($_POST['first_name'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
     
     $errors = [];
     
-    if (empty($name)) {
-        $errors[] = 'お名前を入力してください。';
+    if (empty($lastName)) {
+        $errors[] = '姓を入力してください。';
+    }
+    
+    if (empty($firstName)) {
+        $errors[] = '名を入力してください。';
     }
     
     if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -40,7 +45,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 新規ユーザー登録
         $userData = [
             'line_user_id' => $_SESSION['line_user_id'],
-            'name' => $name,
+            'last_name' => $lastName,
+            'first_name' => $firstName,
+            'name' => $lastName . ' ' . $firstName, // 互換性のため
             'email' => $email,
             'phone' => $phone,
             'line_display_name' => $_SESSION['line_display_name'],
@@ -113,16 +120,31 @@ $pictureUrl = $_SESSION['line_picture_url'] ?? null;
                 </p>
                 
                 <form method="POST" action="/reserve/registration.php" class="space-y-4">
-                    <div>
-                        <label for="name" class="block text-sm font-medium text-gray-700">
-                            お名前 <span class="text-red-500">*</span>
-                        </label>
-                        <input type="text" 
-                               id="name" 
-                               name="name" 
-                               value="<?php echo htmlspecialchars($_POST['name'] ?? ''); ?>"
-                               required
-                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label for="last_name" class="block text-sm font-medium text-gray-700">
+                                姓 <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" 
+                                   id="last_name" 
+                                   name="last_name" 
+                                   value="<?php echo htmlspecialchars($_POST['last_name'] ?? ''); ?>"
+                                   placeholder="山田"
+                                   required
+                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500">
+                        </div>
+                        <div>
+                            <label for="first_name" class="block text-sm font-medium text-gray-700">
+                                名 <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" 
+                                   id="first_name" 
+                                   name="first_name" 
+                                   value="<?php echo htmlspecialchars($_POST['first_name'] ?? ''); ?>"
+                                   placeholder="太郎"
+                                   required
+                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500">
+                        </div>
                     </div>
                     
                     <div>

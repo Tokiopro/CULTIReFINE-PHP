@@ -20,9 +20,16 @@ define('SESSION_LIFETIME', 3600); // 1時間
 define('GAS_DEPLOYMENT_ID', getenv('GAS_DEPLOYMENT_ID'));
 define('GAS_API_KEY', getenv('GAS_API_KEY'));
 
+// Medical Force API設定
+define('MEDICAL_FORCE_API_URL', getenv('MEDICAL_FORCE_API_URL') ?: 'https://api.medical-force.com');
+define('MEDICAL_FORCE_API_KEY', getenv('MEDICAL_FORCE_API_KEY'));
+define('MEDICAL_FORCE_CLIENT_ID', getenv('MEDICAL_FORCE_CLIENT_ID'));
+define('MEDICAL_FORCE_CLIENT_SECRET', getenv('MEDICAL_FORCE_CLIENT_SECRET'));
+
 // 開発環境設定
 define('DEBUG_MODE', getenv('DEBUG_MODE') === 'true');
 define('MOCK_MODE', getenv('MOCK_MODE') === 'true'); // モックモード
+define('MOCK_MEDICAL_FORCE', getenv('MOCK_MEDICAL_FORCE') === 'true'); // Medical Force モックモード
 
 // 必須設定の確認
 $requiredConfigs = [
