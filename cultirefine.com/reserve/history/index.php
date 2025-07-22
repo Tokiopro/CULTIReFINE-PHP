@@ -101,9 +101,6 @@ try {
     <div class="his_cont_wrap">
       <h2>予約履歴一覧<br>
         <small><?php echo htmlspecialchars($companyName); ?> の予約履歴です。
-        <?php if ($memberType === 'サブ会員'): ?>
-          （公開設定の予約のみ表示）
-        <?php endif; ?>
         </small></h2>
       <div id="search_box" class="bg-white">
         <h3>絞り込み検索</h3>

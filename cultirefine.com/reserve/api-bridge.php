@@ -6,6 +6,27 @@
 
 session_start();
 
+// 常にJSONレスポンスを保証するため、エラーハンドラーを設定
+set_error_handler(function($severity, $message, $file, $line) {
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+// 致命的エラーもJSONで返すように設定
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error && ($error['type'] & (E_ERROR | E_PARSE | E_CORE_ERROR | E_COMPILE_ERROR))) {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => [
+                'code' => 500,
+                'message' => 'サーバーエラーが発生しました'
+            ]
+        ]);
+    }
+});
+
 // CORS対応
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
@@ -82,6 +103,10 @@ try {
             $result = handleGetReservationHistory($gasApi, $lineUserId, $_GET);
             break;
             
+        case 'getAvailableSlots':
+            $result = handleGetAvailableSlots($gasApi, getJsonInput());
+            break;
+            
         default:
             throw new Exception('不正なアクションです', 400);
     }
@@ -141,16 +166,17 @@ function handleGetUserFullInfo(GasApiClient $gasApi, string $lineUserId): array
  */
 function handleGetAvailability(GasApiClient $gasApi, array $params): array
 {
+    $patientId = $params['patient_id'] ?? '';
     $treatmentId = $params['treatment_id'] ?? '';
     $date = $params['date'] ?? '';
     $pairRoom = ($params['pair_room'] ?? 'false') === 'true';
     $timeSpacing = (int)($params['time_spacing'] ?? 5);
     
-    if (empty($treatmentId) || empty($date)) {
-        throw new Exception('treatment_idとdateが必要です', 400);
+    if (empty($patientId) || empty($treatmentId) || empty($date)) {
+        throw new Exception('patient_id、treatment_idとdateが必要です', 400);
     }
     
-    $result = $gasApi->getAvailability($treatmentId, $date, $pairRoom, $timeSpacing);
+    $result = $gasApi->getAvailability($patientId, $treatmentId, $date, $pairRoom, $timeSpacing);
     
     if ($result['status'] === 'error') {
         throw new Exception($result['error']['message'], 500);
@@ -204,63 +230,130 @@ function handleTestConnection(GasApiClient $gasApi): array
 
 /**
  * 来院者登録
+ * Medical Force APIから受け取った来院者IDを使用してGAS APIに登録
  */
 function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $visitorData): array
 {
-    // 必須フィールドの検証
-    $required = ['name', 'kana', 'gender'];
-    foreach ($required as $field) {
-        if (empty($visitorData[$field])) {
-            throw new Exception("必須フィールド '{$field}' が不足しています", 400);
+    try {
+        // Medical Force APIからの来院者IDが必須
+        if (empty($visitorData['visitor_id'])) {
+            throw new Exception("Medical Force APIからの来院者ID（visitor_id）が必要です", 400);
         }
-    }
-    
-    // 性別の検証
-    if (!in_array($visitorData['gender'], ['MALE', 'FEMALE'])) {
-        throw new Exception("性別は 'MALE' または 'FEMALE' を指定してください", 400);
-    }
-    
-    // ユーザー情報を取得して会社情報を設定
-    $userInfo = $gasApi->getUserFullInfo($lineUserId);
-    if ($userInfo['status'] !== 'success') {
-        throw new Exception('ユーザー情報の取得に失敗しました', 500);
-    }
-    
-    $companyInfo = $userInfo['data']['membership_info'] ?? null;
-    if (!$companyInfo || empty($companyInfo['company_id'])) {
-        throw new Exception('会社情報が見つかりません', 400);
-    }
-    
-    // 来院者データを準備
-    $visitorData['company_id'] = $companyInfo['company_id'];
-    $visitorData['company_name'] = $companyInfo['company_name'];
-    
-    // 誕生日の形式チェック（提供されている場合）
-    if (!empty($visitorData['birthday'])) {
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $visitorData['birthday'])) {
-            throw new Exception('誕生日はYYYY-MM-DD形式で入力してください', 400);
+        
+        // 名前の分割処理
+        $nameParts = explode(' ', $visitorData['name'] ?? '', 2);
+        $lastName = $nameParts[0] ?? '';
+        $firstName = $nameParts[1] ?? '';
+        
+        // カナの分割処理
+        $kanaParts = explode(' ', $visitorData['kana'] ?? '', 2);
+        $lastNameKana = $kanaParts[0] ?? '';
+        $firstNameKana = $kanaParts[1] ?? '';
+        
+        // 必須フィールドの検証（API仕様に合わせて調整）
+        if (empty($lastName) || empty($firstName)) {
+            throw new Exception("姓名が正しく設定されていません。スペース区切りで入力してください", 400);
         }
+        if (empty($lastNameKana) || empty($firstNameKana)) {
+            throw new Exception("姓名カナが正しく設定されていません。スペース区切りで入力してください", 400);
+        }
+        
+        // 性別の変換（フロントエンドの形式からAPI形式へ）
+        $genderMap = [
+            'MALE' => 'male',
+            'FEMALE' => 'female',
+            'male' => 'male',
+            'female' => 'female'
+        ];
+        $gender = $genderMap[strtolower($visitorData['gender'] ?? '')] ?? 'other';
+        
+        // ユーザー情報を取得して会社情報を設定
+        $userInfo = $gasApi->getUserFullInfo($lineUserId);
+        if ($userInfo['status'] !== 'success') {
+            throw new Exception('ユーザー情報の取得に失敗しました（GAS API）', 500);
+        }
+        
+        $membershipInfo = $userInfo['data']['membership_info'] ?? null;
+        
+        // GAS API用のデータを準備
+        $gasApiData = [
+            'path' => 'api/visitors',
+            'api_key' => GAS_API_KEY,
+            'visitor_id' => $visitorData['visitor_id'], // Medical Forceから受け取ったID
+            'last_name' => $lastName,
+            'first_name' => $firstName,
+            'last_name_kana' => $lastNameKana,
+            'first_name_kana' => $firstNameKana,
+            'gender' => $gender,
+            'publicity_status' => 'private', // デフォルトは非公開
+            'notes' => 'Medical Force経由で登録'
+        ];
+        
+        // オプションフィールドの追加
+        if (!empty($visitorData['email'])) {
+            $gasApiData['email'] = $visitorData['email'];
+        }
+        if (!empty($visitorData['phone'])) {
+            $gasApiData['phone'] = $visitorData['phone'];
+        }
+        if (!empty($visitorData['birthday'])) {
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $visitorData['birthday'])) {
+                throw new Exception('誕生日はYYYY-MM-DD形式で入力してください', 400);
+            }
+            $gasApiData['birth_date'] = $visitorData['birthday'];
+        }
+        
+        // 会社情報がある場合は追加
+        if ($membershipInfo && !empty($membershipInfo['company_id'])) {
+            $gasApiData['company_id'] = $membershipInfo['company_id'];
+            $gasApiData['member_type'] = $membershipInfo['member_type'] ?? 'sub'; // デフォルトはサブ会員
+        }
+        
+        // GAS APIに登録
+        $result = $gasApi->createVisitorToSheet($gasApiData);
+        
+        if ($result['status'] === 'error') {
+            // エラーの詳細を判別
+            $errorMessage = $result['error']['message'] ?? 'GAS APIエラー';
+            $errorCode = $result['error']['code'] ?? 'UNKNOWN_ERROR';
+            
+            // エラーメッセージをより分かりやすく
+            if (strpos($errorMessage, 'DUPLICATE_EMAIL') !== false) {
+                throw new Exception('このメールアドレスは既に登録されています（GAS API）', 400);
+            } else if (strpos($errorMessage, 'INVALID_COMPANY') !== false) {
+                throw new Exception('指定された会社が見つかりません（GAS API）', 400);
+            } else {
+                throw new Exception("GAS API登録エラー: {$errorMessage}", 500);
+            }
+        }
+        
+        // JavaScriptが期待する形式でレスポンスを返す
+        return [
+            'success' => true,
+            'message' => '来院者が正常に登録されました。',
+            'data' => [
+                'visitor_id' => $visitorData['visitor_id'],
+                'name' => $visitorData['name'],
+                'kana' => $visitorData['kana'],
+                'gender' => $visitorData['gender'],
+                'company_id' => $gasApiData['company_id'] ?? null,
+                'is_new' => true
+            ]
+        ];
+        
+    } catch (Exception $e) {
+        // エラーハンドリングの強化
+        error_log("来院者登録エラー: " . $e->getMessage());
+        error_log("スタックトレース: " . $e->getTraceAsString());
+        
+        // エラーメッセージにソースを明記
+        $message = $e->getMessage();
+        if (strpos($message, 'GAS API') === false && strpos($message, 'Medical Force') === false) {
+            $message = "PHP処理エラー: " . $message;
+        }
+        
+        throw new Exception($message, $e->getCode() ?: 500);
     }
-    
-    $result = $gasApi->createVisitor($visitorData);
-    
-    if ($result['status'] === 'error') {
-        throw new Exception($result['error']['message'], 500);
-    }
-    
-    // JavaScriptが期待する形式でレスポンスを返す
-    return [
-        'success' => true,
-        'message' => '来院者が正常に登録されました。',
-        'data' => [
-            'visitor_id' => $result['data']['visitor_id'] ?? null,
-            'name' => $visitorData['name'],
-            'kana' => $visitorData['kana'],
-            'gender' => $visitorData['gender'],
-            'company_id' => $visitorData['company_id'],
-            'is_new' => true
-        ]
-    ];
 }
 
 /**
@@ -279,7 +372,7 @@ function handleGetCompanyVisitors(GasApiClient $gasApi, string $lineUserId, arra
         throw new Exception('会社情報が見つかりません', 400);
     }
     
-    $userRole = $companyInfo['member_type'] === '本会員' ? 'main' : 'sub';
+    $userRole = $companyInfo['member_type'] === 'main' ? 'main' : 'sub';
     
     $result = $gasApi->getPatientsByCompany($companyInfo['company_id'], $userRole);
     
@@ -312,7 +405,7 @@ function handleUpdateVisitorPublicStatus(GasApiClient $gasApi, string $lineUserI
     }
     
     // 本会員のみ公開設定を変更可能
-    if ($companyInfo['member_type'] !== '本会員') {
+    if ($companyInfo['member_type'] !== 'main') {
         throw new Exception('公開設定の変更は本会員のみ可能です', 403);
     }
     
@@ -366,7 +459,34 @@ function mapGasUserDataToJs(array $gasData): array
             'lastVisitDate' => $gasData['patient_info']['last_visit_date'] ?? null,
             'chartNumber' => $gasData['patient_info']['chart_number'] ?? '',
         ],
-        
+		//チケット情報
+        'ticketInfo' => array_map(function($ticket) {
+        return [
+            'treatment_id' => $ticket['treatment_id'] ?? '',
+            'treatment_name' => $ticket['treatment_name'] ?? '',
+            'remaining_count' => $ticket['remaining_count'] ?? 0,
+            'used_count' => $ticket['used_count'] ?? 0,
+            'available_count' => max(0, ($ticket['remaining_count'] ?? 0) - ($ticket['used_count'] ?? 0))
+        ];
+    }, $membershipInfo['ticketInfo'] ?? []),
+		//書類情報
+    'docsinfo' => array_map(function($doc) {
+        return [
+            'docs_id' => $doc['docs_id'] ?? '',
+            'docs_name' => $doc['docs_name'] ?? '',
+            'docs_url' => $doc['docs_url'] ?? ''
+        ];
+    }, $gasData['docsinfo'] ?? []),
+		//予約履歴
+    'ReservationHistory' => array_map(function($history) {
+        return [
+            'history_id' => $history['history_id'] ?? $history['id'] ?? '',
+            'reservename' => $history['treatment_name'] ?? $history['reservename'] ?? '',
+            'reservedate' => $history['treatment_date'] ?? $history['reservedate'] ?? '',
+            'reservestatus' => $history['status'] ?? $history['reservestatus'] ?? '',
+            'reservepatient' => $history['patient_name'] ?? $history['reservepatient'] ?? ''
+        ];
+    }, $gasData['ReservationHistory'] ?? []),
         // 施術履歴
         'treatmentHistory' => array_map(function($treatment) {
             return [
@@ -431,7 +551,19 @@ function mapGasUserDataToJs(array $gasData): array
  */
 function handleGetPatientMenus(GasApiClient $gasApi, array $params): array
 {
-    $visitorId = $params['visitor_id'] ?? '';
+    // POSTリクエストの場合、JSONボディからパラメータを取得
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $jsonInput = getJsonInput();
+        $params = $jsonInput['params'] ?? $params;
+    }
+    
+    // 新しいAPI仕様に対応
+    if (isset($params['path']) && preg_match('/api\/patients\/([^\/]+)\/menus/', $params['path'], $matches)) {
+        $visitorId = $matches[1];
+    } else {
+        $visitorId = $params['visitor_id'] ?? '';
+    }
+    
     $companyId = $params['company_id'] ?? '';
     
     if (empty($visitorId)) {
@@ -439,6 +571,43 @@ function handleGetPatientMenus(GasApiClient $gasApi, array $params): array
     }
     
     $result = $gasApi->getPatientMenus($visitorId, $companyId);
+    
+    if ($result['status'] === 'error') {
+        throw new Exception($result['error']['message'], 500);
+    }
+    
+    // 新しいAPI形式のレスポンスをそのまま返す
+    return $result['data'];
+}
+
+/**
+ * カレンダー空き情報取得
+ */
+function handleGetAvailableSlots(GasApiClient $gasApi, array $params): array
+{
+    // POSTリクエストのパラメータを取得
+    $requestParams = $params['params'] ?? $params;
+    
+    // パスからvisitorIdを抽出
+    if (isset($requestParams['path']) && preg_match('/api\/patients\/([^\/]+)\/available-slots/', $requestParams['path'], $matches)) {
+        $visitorId = $matches[1];
+    } else {
+        $visitorId = $requestParams['visitor_id'] ?? '';
+    }
+    
+    if (empty($visitorId)) {
+        throw new Exception('visitor_idが必要です', 400);
+    }
+    
+    if (empty($requestParams['menu_id'])) {
+        throw new Exception('menu_idが必要です', 400);
+    }
+    
+    if (empty($requestParams['date'])) {
+        throw new Exception('dateが必要です', 400);
+    }
+    
+    $result = $gasApi->getAvailableSlots($visitorId, $requestParams);
     
     if ($result['status'] === 'error') {
         throw new Exception($result['error']['message'], 500);
@@ -469,6 +638,7 @@ function handleCreateMedicalForceReservation(GasApiClient $gasApi, array $reserv
 /**
  * 予約履歴を取得
  */
+/*
 function handleGetReservationHistory(GasApiClient $gasApi, string $lineUserId, array $params): array
 {
     // 日付パラメータの確認（必須ではないが、指定された場合はフォーマットチェック）
@@ -489,7 +659,7 @@ function handleGetReservationHistory(GasApiClient $gasApi, string $lineUserId, a
     }
     
     // 会員種別を取得（本会員/サブ会員）
-    $memberType = $companyInfo['member_type'] ?? 'サブ会員';
+    $memberType = $companyInfo['member_type'] ?? 'sub';
     $companyId = $companyInfo['company_id'];
     
     // 予約履歴を取得
@@ -504,7 +674,7 @@ function handleGetReservationHistory(GasApiClient $gasApi, string $lineUserId, a
         'data' => $result['data'] ?? []
     ];
 }
-
+*/
 /**
  * JSON入力を取得
  */

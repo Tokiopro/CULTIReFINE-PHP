@@ -39,7 +39,7 @@ class GasApiClient
             return $cachedData;
         }
         
-        $path = "api/users/line/" . urlencode($lineUserId) . "/full";
+        $path = "/api/users/line/" . urlencode($lineUserId) . "/full";
         $result = $this->makeRequest('GET', $path);
         
         if ($result['status'] === 'success') {
@@ -55,7 +55,7 @@ class GasApiClient
      */
     public function createReservation(array $reservationData): array
     {
-        $path = "api/reservations";
+        $path = "/api/reservations";
         return $this->makeRequest('POST', $path, $reservationData);
     }
     
@@ -64,16 +64,21 @@ class GasApiClient
      */
     public function cancelReservation(string $reservationId): array
     {
-        $path = "api/reservations/{$reservationId}";
+        $path = "/api/reservations/{$reservationId}";
         return $this->makeRequest('DELETE', $path);
     }
     
     /**
      * 空き時間検索
+     * @param string $patientId 患者ID
+     * @param string $treatmentId 施術ID
+     * @param string $date 日付
+     * @param bool $pairRoom ペア施術希望
+     * @param int $timeSpacing 時間間隔（分）
      */
-    public function getAvailability(string $treatmentId, string $date, bool $pairRoom = false, int $timeSpacing = 5): array
+    public function getAvailability(string $patientId, string $treatmentId, string $date, bool $pairRoom = false, int $timeSpacing = 5): array
     {
-        $cacheKey = "availability_{$treatmentId}_{$date}_" . ($pairRoom ? '1' : '0') . "_{$timeSpacing}";
+        $cacheKey = "availability_{$patientId}_{$treatmentId}_{$date}_" . ($pairRoom ? '1' : '0') . "_{$timeSpacing}";
         
         // 短時間キャッシュ（1分）
         if ($cachedData = $this->getFromCache($cacheKey, 60)) {
@@ -87,7 +92,8 @@ class GasApiClient
             'time_spacing' => $timeSpacing
         ];
         
-        $path = "api/availability?" . http_build_query($params);
+        // 新しいAPIでは患者IDベースのエンドポイントを使用
+        $path = "/api/patients/{$patientId}/available-slots?" . http_build_query($params);
         $result = $this->makeRequest('GET', $path);
         
         if ($result['status'] === 'success') {
@@ -100,6 +106,7 @@ class GasApiClient
     /**
      * 書類一覧取得（フォルダ階層対応）
      */
+	/*
     public function getDocuments(string $visitorId): array
     {
         $cacheKey = "documents_{$visitorId}";
@@ -113,7 +120,7 @@ class GasApiClient
             'visitor_id' => $visitorId
         ];
         
-        $path = "api/documents?" . http_build_query($params);
+        $path = "/api/documents?" . http_build_query($params);
         $result = $this->makeRequest('GET', $path);
         
         if ($result['status'] === 'success') {
@@ -122,7 +129,7 @@ class GasApiClient
         
         return $result;
     }
-    
+    */
     /**
      * 会社に紐づく来院者一覧取得（新しいGAS API対応）
      */
@@ -135,7 +142,7 @@ class GasApiClient
             return $cachedData;
         }
         
-        $path = "api/company/{$companyId}/visitors";
+        $path = "/api/company/{$companyId}/visitors";
         $result = $this->makeRequest('GET', $path);
         
         if ($result['status'] === 'success') {
@@ -167,7 +174,7 @@ class GasApiClient
      */
     public function createVisitor(array $visitorData): array
     {
-        $path = "api/visitors";
+        $path = "/api/visitors";
         
         // リクエストデータを準備
         $requestData = [
@@ -228,17 +235,14 @@ class GasApiClient
      */
     public function updateVisitorPublicStatus(string $companyId, string $visitorId, bool $isPublic): array
     {
-        // 新しいAPI仕様に合わせてPOSTリクエストでパスを送信
-        $path = "api/company/{$companyId}/visitors/{$visitorId}/visibility";
+        // 新しいAPI v1ではPUTメソッドを使用
+        $path = "/api/company/{$companyId}/visitors/{$visitorId}/visibility";
         
         $requestData = [
-            'path' => $path,
-            'authorization' => 'Bearer ' . $this->apiKey,
             'is_public' => $isPublic
         ];
         
-        // POSTリクエストとして送信（GAS WebAppの制約により）
-        $result = $this->makeRequest('POST', '', $requestData);
+        $result = $this->makeRequest('PUT', $path, $requestData);
         
         // 成功時は関連キャッシュをクリア
         if ($result['status'] === 'success') {
@@ -256,8 +260,8 @@ class GasApiClient
         $url = $this->baseUrl . "?path=" . urlencode($path);
         
         // 認証が必要なエンドポイントの場合、URLパラメータでAPIキーを送信
-        if ($path !== 'api/health') {
-            $url .= "&authorization=" . urlencode("Bearer " . $this->apiKey);
+        if ($path !== '/api/health') {
+            $url .= "&Authorization=" . urlencode("Bearer " . $this->apiKey);
         }
         
         $headers = [
@@ -265,6 +269,13 @@ class GasApiClient
             'Content-Type: application/json',
             'User-Agent: TenmaBYOIN-LINE-System/1.0'
         ];
+        
+        // GETリクエストでデータがある場合はURLパラメータとして追加
+        if ($method === 'GET' && $data) {
+            foreach ($data as $key => $value) {
+                $url .= "&" . urlencode($key) . "=" . urlencode($value);
+            }
+        }
         
         $ch = curl_init();
         curl_setopt_array($ch, [
@@ -414,6 +425,91 @@ class GasApiClient
     }
     
     /**
+     * 来院者をスプレッドシートに登録
+     * Medical Force APIで作成された来院者をGAS API経由でスプレッドシートに登録
+     */
+    public function createVisitorToSheet(array $visitorData): array
+    {
+        // 必須パラメータの検証
+        $required = ['path', 'api_key', 'visitor_id', 'last_name', 'first_name', 
+                    'last_name_kana', 'first_name_kana', 'publicity_status'];
+        
+        foreach ($required as $field) {
+            if (empty($visitorData[$field])) {
+                return [
+                    'status' => 'error',
+                    'error' => [
+                        'code' => 'INVALID_REQUEST',
+                        'message' => "必須パラメータ '{$field}' が不足しています",
+                        'details' => '必須フィールド: ' . implode(', ', $required)
+                    ]
+                ];
+            }
+        }
+        
+        // APIパスの設定
+        $path = $visitorData['path'];
+        unset($visitorData['path']); // pathはURLパラメータなので除外
+        
+        try {
+            // POSTリクエストで送信
+            $result = $this->makeRequest('POST', $path, $visitorData);
+            
+            if ($result['status'] === 'success') {
+                // 成功時はキャッシュをクリア（関連するキャッシュを削除）
+                $this->clearCache("visitors_*");
+                $this->clearCache("user_full_info_*");
+            }
+            
+            return $result;
+            
+        } catch (Exception $e) {
+            return [
+                'status' => 'error',
+                'error' => [
+                    'code' => 'API_ERROR',
+                    'message' => 'GAS APIとの通信に失敗しました',
+                    'details' => $e->getMessage()
+                ]
+            ];
+        }
+    }
+    
+    /**
+     * カレンダー空き情報取得
+     */
+    public function getAvailableSlots(string $visitorId, array $params): array
+    {
+        $cacheKey = "available_slots_{$visitorId}_" . md5(json_encode($params));
+        
+        // キャッシュチェック（5分）
+        if ($cachedData = $this->getFromCache($cacheKey, 300)) {
+            return $cachedData;
+        }
+        
+        // パラメータを整理
+        $apiParams = [
+            'path' => $params['path'] ?? "api/patients/{$visitorId}/available-slots",
+            'api_key' => $params['api_key'] ?? $this->apiKey,
+            'menu_id' => $params['menu_id'],
+            'date' => $params['date'],
+            'date_range' => $params['date_range'] ?? 7,
+            'include_room_info' => $params['include_room_info'] ?? false,
+            'pair_booking' => $params['pair_booking'] ?? false,
+            'allow_multiple_same_day' => $params['allow_multiple_same_day'] ?? false
+        ];
+        
+        // GETリクエストとして送信
+        $result = $this->makeRequest('GET', $apiParams['path'], $apiParams);
+        
+        if ($result['status'] === 'success') {
+            $this->saveToCache($cacheKey, $result, 300);
+        }
+        
+        return $result;
+    }
+    
+    /**
      * 患者別メニュー取得
      */
     public function getPatientMenus(string $visitorId, ?string $companyId = null): array
@@ -427,12 +523,13 @@ class GasApiClient
         
         $path = "api/patients/{$visitorId}/menus";
         
-        // 会社IDがある場合はクエリパラメータに追加
+        // APIキーと会社IDをデータパラメータとして設定
+        $data = ['api_key' => $this->apiKey];
         if ($companyId) {
-            $path .= "?companyId={$companyId}";
+            $data['company_id'] = $companyId;
         }
         
-        $result = $this->makeRequest('GET', $path);
+        $result = $this->makeRequest('GET', $path, $data);
         
         if ($result['status'] === 'success') {
             $this->saveToCache($cacheKey, $result, 600);
@@ -446,7 +543,7 @@ class GasApiClient
      */
     public function createMedicalForceReservation(array $reservationData): array
     {
-        $path = "developer/reservations";
+        $path = "/api/reservations";
         
         // MedicalForce API形式に変換
         $requestData = [
@@ -501,6 +598,7 @@ class GasApiClient
     /**
      * 予約履歴一覧を取得
      */
+	/*
     public function getReservationHistory(string $memberType, string $date, string $companyId): array
     {
         $cacheKey = "reservation_history_{$companyId}_{$memberType}_{$date}";
@@ -510,14 +608,16 @@ class GasApiClient
             return $cachedData;
         }
         
+        $path = "/api/reservations/history";
+        
+        // パラメータはmakeRequestの第3引数として渡す
         $params = [
             'member_type' => $memberType,
             'date' => $date,
             'company_id' => $companyId
         ];
         
-        $path = "api/reservations/history?" . http_build_query($params);
-        $result = $this->makeRequest('GET', $path);
+        $result = $this->makeRequest('GET', $path, $params);
         
         if ($result['status'] === 'success') {
             $this->saveToCache($cacheKey, $result, 600);
@@ -525,7 +625,7 @@ class GasApiClient
         
         return $result;
     }
-    
+    */
     /**
      * API接続テスト
      */
@@ -536,8 +636,8 @@ class GasApiClient
             'test' => true
         ];
         
-        // ヘルスチェックエンドポイントがある場合
-        $path = "api/health";
+        // ヘルスチェックエンドポイント
+        $path = "/api/health";
         return $this->makeRequest('GET', $path);
     }
 }

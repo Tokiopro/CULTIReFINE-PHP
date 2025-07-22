@@ -89,10 +89,11 @@ export async function getUserFullInfo() {
 }
 
 /**
- * 患者追加（実際のAPI連携）
+ * 患者追加（Medical Force API連携）
+ * Medical Force APIで作成された来院者IDを受け取り、GAS APIでスプレッドシートに登録
  */
 export async function mockAddPatient(patientData) {
-    console.log('[GAS API] Adding patient:', patientData);
+    console.log('[GAS API] Adding patient with Medical Force integration:', patientData);
     
     try {
         // 必須フィールドのチェック
@@ -100,7 +101,20 @@ export async function mockAddPatient(patientData) {
             throw new Error('必須フィールドが不足しています');
         }
         
+        // Step 1: Medical Force APIで来院者を作成（実際の実装は別途必要）
+        console.log('[Medical Force API] Creating visitor...');
+        const medicalForceResponse = await createVisitorInMedicalForce(patientData);
+        
+        if (!medicalForceResponse.success) {
+            throw new Error('Medical Force APIでの来院者作成に失敗しました: ' + (medicalForceResponse.message || 'Unknown error'));
+        }
+        
+        const visitorId = medicalForceResponse.visitor_id;
+        console.log('[Medical Force API] Visitor created with ID:', visitorId);
+        
+        // Step 2: GAS APIでスプレッドシートに登録
         const visitorData = {
+            visitor_id: visitorId, // Medical Forceから受け取ったID
             name: patientData.name,
             kana: patientData.kana,
             gender: patientData.gender
@@ -110,12 +124,18 @@ export async function mockAddPatient(patientData) {
         if (patientData.birthday) {
             visitorData.birthday = patientData.birthday;
         }
+        if (patientData.email) {
+            visitorData.email = patientData.email;
+        }
+        if (patientData.phone) {
+            visitorData.phone = patientData.phone;
+        }
         
         const result = await apiCall('createVisitor', {}, 'POST', visitorData);
         
         // レスポンスデータを既存のフォーマットに変換
         const newPatient = {
-            id: result.data.visitor_id || 'temp-' + Date.now(),
+            id: visitorId, // Medical ForceのIDを使用
             name: result.data.name,
             kana: result.data.kana,
             gender: result.data.gender,
@@ -130,7 +150,7 @@ export async function mockAddPatient(patientData) {
         return { 
             success: true, 
             patient: newPatient, 
-            message: result.message || "来院者が正常に登録されました。" 
+            message: "来院者が正常に登録されました（Medical Force & GAS）" 
         };
         
     } catch (error) {
@@ -140,6 +160,25 @@ export async function mockAddPatient(patientData) {
             message: error.message || "来院者の登録に失敗しました。" 
         };
     }
+}
+
+/**
+ * Medical Force APIで来院者を作成（モック実装）
+ * 実際のMedical Force API実装は別途必要
+ */
+async function createVisitorInMedicalForce(patientData) {
+    console.log('[Medical Force API Mock] Creating visitor:', patientData);
+    
+    // モック遅延（実際のAPI呼び出しをシミュレート）
+    await delay(500);
+    
+    // モックレスポンス
+    // 実際の実装では、Medical Force APIを呼び出してvisitor_idを取得
+    return {
+        success: true,
+        visitor_id: 'MF' + Date.now(), // Medical Forceで生成されたIDのモック
+        message: 'Medical Forceで来院者が作成されました'
+    };
 }
 
 /**
@@ -199,6 +238,71 @@ export async function mockCheckTreatmentInterval(patientId, treatmentId, desired
             success: false, 
             isValid: false, 
             message: "施術間隔のチェックに失敗しました" 
+        };
+    }
+}
+
+/**
+ * カレンダー空き情報取得（新API）
+ * 複数日の空き状況を一括取得
+ */
+export async function getAvailableSlots(visitorId, menuId, startDate, dateRange = 7, options = {}) {
+    console.log('[GAS API] Getting available slots:', {
+        visitorId,
+        menuId,
+        startDate,
+        dateRange,
+        options
+    });
+    
+    try {
+        const params = {
+            path: `api/patients/${visitorId}/available-slots`,
+            api_key: 'your_api_key_here', // 実際の環境では適切なAPIキーを設定
+            menu_id: menuId,
+            date: startDate,
+            date_range: dateRange,
+            include_room_info: options.includeRoomInfo || false,
+            pair_booking: options.pairBooking || false,
+            allow_multiple_same_day: options.allowMultipleSameDay || false
+        };
+        
+        // api-bridge.php経由でGAS APIを呼び出す
+        const response = await fetch(API_BASE_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                action: 'getAvailableSlots',
+                params: params
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.status === 'error') {
+            throw new Error(result.error?.message || '空き情報の取得に失敗しました');
+        }
+        
+        console.log('[GAS API] Available slots received:', result);
+        
+        return {
+            success: true,
+            data: result.data || result
+        };
+        
+    } catch (error) {
+        console.error('[GAS API] Error getting available slots:', error);
+        return {
+            success: false,
+            message: error.message || '空き情報の取得に失敗しました',
+            error: error
         };
     }
 }
@@ -307,17 +411,44 @@ export async function getPatientMenus(visitorId, companyId = null) {
     console.log('[GAS API] Getting patient menus for:', visitorId, companyId);
     
     try {
+        // 新しいAPI仕様に合わせてパラメータを設定
         const params = {
-            visitor_id: visitorId
+            path: `api/patients/${visitorId}/menus`,
+            api_key: 'your_api_key_here' // 実際の環境では適切なAPIキーを設定
         };
         
         if (companyId) {
             params.company_id = companyId;
         }
         
-        const data = await apiCall('getPatientMenus', params);
+        // api-bridge.php経由でGAS APIを呼び出す
+        const response = await fetch(API_BASE_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                action: 'getPatientMenus',
+                params: params
+            })
+        });
         
-        console.log('[GAS API] Patient menus received:', data);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.status === 'error') {
+            throw new Error(result.error?.message || 'メニュー情報の取得に失敗しました');
+        }
+        
+        console.log('[GAS API] Patient menus received:', result);
+        
+        // 新形式と旧形式の両方に対応
+        const data = result.data || result;
+        
         return {
             success: true,
             data: data

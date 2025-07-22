@@ -28,17 +28,19 @@ if (empty($visitorId)) {
 $gasApi = new GasApiClient(GAS_DEPLOYMENT_ID, GAS_API_KEY);
 $result = $gasApi->getPatientMenus($visitorId, $companyId);
 
-$menuData = [];
-$visitorInfo = [];
-$companyInfo = [];
+$patientInfo = [];
+$visitHistory = [];
 $ticketBalance = [];
+$menuCategories = [];
+$recommendedCategory = '';
 
 if ($result['status'] === 'success') {
     $data = $result['data'];
-    $visitorInfo = $data['visitor'] ?? [];
-    $companyInfo = $data['company'] ?? [];
-    $ticketBalance = $data['ticketBalance'] ?? [];
-    $menuData = $data['menus'] ?? [];
+    $patientInfo = $data['patient_info'] ?? [];
+    $visitHistory = $data['visit_history'] ?? [];
+    $ticketBalance = $data['ticket_balance'] ?? [];
+    $menuCategories = $data['menu_categories'] ?? [];
+    $recommendedCategory = $data['recommended_category'] ?? 'first_time_menus';
 }
 ?>
 <!DOCTYPE html>
@@ -171,6 +173,21 @@ if ($result['status'] === 'success') {
             margin-top: 8px;
         }
         
+        .menu-item-description {
+            font-size: 14px;
+            color: #666;
+            margin-top: 8px;
+            line-height: 1.5;
+        }
+        
+        .menu-item-category {
+            background-color: #f0f0f0;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 13px;
+            color: #666;
+        }
+        
         .ticket-required {
             background-color: #fff3cd;
             color: #856404;
@@ -217,48 +234,85 @@ if ($result['status'] === 'success') {
     <div class="menu-container">
         <!-- 来院者情報 -->
         <div class="visitor-info">
-            <h2>来院者: <?php echo htmlspecialchars($visitorInfo['name'] ?? '名前なし'); ?></h2>
-            <?php if (!empty($companyInfo)): ?>
-                <p>会社: <?php echo htmlspecialchars($companyInfo['name']); ?> (<?php echo htmlspecialchars($companyInfo['plan']); ?>)</p>
-                <?php if (!empty($ticketBalance)): ?>
-                    <div class="ticket-balance">
-                        <strong>チケット残数:</strong>
-                        <?php foreach ($ticketBalance as $type => $count): ?>
-                            <div class="ticket-item">
-                                <?php echo htmlspecialchars($type); ?>: <?php echo $count; ?>枚
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
+            <h2>来院者: <?php echo htmlspecialchars($patientInfo['name'] ?? '名前なし'); ?></h2>
+            <?php if (!empty($patientInfo['company_id'])): ?>
+                <p>会社: <?php echo htmlspecialchars($patientInfo['company_id']); ?></p>
+            <?php endif; ?>
+            
+            <?php if (!empty($visitHistory)): ?>
+                <p>来院履歴: 
+                    <?php if ($visitHistory['has_visits']): ?>
+                        <?php echo $visitHistory['visit_count']; ?>回 (最終: <?php echo $visitHistory['last_visit_date']; ?>)
+                    <?php else: ?>
+                        初回来院
+                    <?php endif; ?>
+                </p>
+            <?php endif; ?>
+            
+            <?php if (!empty($ticketBalance) && array_sum($ticketBalance) > 0): ?>
+                <div class="ticket-balance">
+                    <strong>チケット残数:</strong>
+                    <?php if (isset($ticketBalance['stem_cell']) && $ticketBalance['stem_cell'] > 0): ?>
+                        <div class="ticket-item">幹細胞: <?php echo $ticketBalance['stem_cell']; ?>枚</div>
+                    <?php endif; ?>
+                    <?php if (isset($ticketBalance['treatment']) && $ticketBalance['treatment'] > 0): ?>
+                        <div class="ticket-item">施術: <?php echo $ticketBalance['treatment']; ?>枚</div>
+                    <?php endif; ?>
+                    <?php if (isset($ticketBalance['drip']) && $ticketBalance['drip'] > 0): ?>
+                        <div class="ticket-item">点滴: <?php echo $ticketBalance['drip']; ?>枚</div>
+                    <?php endif; ?>
+                </div>
             <?php endif; ?>
         </div>
         
         <!-- メニュー表示 -->
         <div class="menu-list">
-            <?php if (empty($menuData)): ?>
+            <?php if (empty($menuCategories)): ?>
                 <p>利用可能なメニューがありません。</p>
             <?php else: ?>
-                <?php foreach ($menuData as $majorCategory => $middleCategories): ?>
-                    <div class="menu-category">
-                        <h3><?php echo htmlspecialchars($majorCategory); ?></h3>
-                        
-                        <?php foreach ($middleCategories as $middleCategory => $smallCategories): ?>
-                            <div class="menu-subcategory">
-                                <h4><?php echo htmlspecialchars($middleCategory); ?></h4>
-                                
-                                <?php foreach ($smallCategories as $smallCategory => $menus): ?>
-                                    <div class="menu-group">
-                                        <h5><?php echo htmlspecialchars($smallCategory); ?></h5>
+                <?php 
+                // 推奨カテゴリを先に表示
+                $categoryOrder = [];
+                if ($recommendedCategory === 'first_time_menus') {
+                    $categoryOrder = ['first_time_menus' => '初回メニュー', 'repeat_menus' => 'リピートメニュー'];
+                } else {
+                    $categoryOrder = ['repeat_menus' => 'リピートメニュー', 'first_time_menus' => '初回メニュー'];
+                }
+                ?>
+                
+                <?php foreach ($categoryOrder as $categoryKey => $categoryLabel): ?>
+                    <?php if (isset($menuCategories[$categoryKey])): ?>
+                        <div class="menu-category">
+                            <h3><?php echo htmlspecialchars($categoryLabel); ?>
+                                <?php if ($categoryKey === $recommendedCategory): ?>
+                                    <span style="font-size: 14px; color: #e74c3c; margin-left: 10px;">（推奨）</span>
+                                <?php endif; ?>
+                            </h3>
+                            
+                            <?php 
+                            $subCategories = [
+                                'regular' => '通常メニュー',
+                                'ticket_based' => 'チケット制メニュー'
+                            ];
+                            ?>
+                            
+                            <?php foreach ($subCategories as $subKey => $subLabel): ?>
+                                <?php if (isset($menuCategories[$categoryKey][$subKey]) && !empty($menuCategories[$categoryKey][$subKey])): ?>
+                                    <div class="menu-subcategory">
+                                        <h4><?php echo htmlspecialchars($subLabel); ?></h4>
                                         <div class="menu-items">
-                                            <?php foreach ($menus as $menu): ?>
-                                                <div class="menu-item <?php echo !$menu['canReserve'] ? 'disabled' : ''; ?>" 
-                                                     data-menu-id="<?php echo htmlspecialchars($menu['id']); ?>"
-                                                     data-can-reserve="<?php echo $menu['canReserve'] ? 'true' : 'false'; ?>">
+                                            <?php foreach ($menuCategories[$categoryKey][$subKey] as $menu): ?>
+                                                <?php 
+                                                $canReserve = !isset($menu['is_available']) || $menu['is_available'];
+                                                ?>
+                                                <div class="menu-item <?php echo !$canReserve ? 'disabled' : ''; ?>" 
+                                                     data-menu-id="<?php echo htmlspecialchars($menu['menu_id']); ?>"
+                                                     data-can-reserve="<?php echo $canReserve ? 'true' : 'false'; ?>">
                                                     <div class="menu-item-header">
-                                                        <span class="menu-item-name"><?php echo htmlspecialchars($menu['name']); ?></span>
-                                                        <?php if (isset($menu['ticketType'])): ?>
+                                                        <span class="menu-item-name"><?php echo htmlspecialchars($menu['menu_name']); ?></span>
+                                                        <?php if ($menu['requires_ticket']): ?>
                                                             <span class="ticket-required">
-                                                                <?php echo htmlspecialchars($menu['ticketType']); ?>チケット: <?php echo $menu['requiredTickets']; ?>枚
+                                                                <?php echo htmlspecialchars($menu['ticket_type']); ?>チケット: <?php echo $menu['ticket_consumption']; ?>枚
                                                             </span>
                                                         <?php else: ?>
                                                             <span class="menu-item-price">¥<?php echo number_format($menu['price']); ?></span>
@@ -270,33 +324,32 @@ if ($result['status'] === 'success') {
                                                                 <circle cx="12" cy="12" r="10"></circle>
                                                                 <polyline points="12 6 12 12 16 14"></polyline>
                                                             </svg>
-                                                            <?php echo $menu['duration']; ?>分
+                                                            <?php echo $menu['duration_minutes']; ?>分
                                                         </span>
-                                                        <?php if ($menu['usageCount'] > 0): ?>
-                                                            <span class="menu-item-usage">
-                                                                利用回数: <?php echo $menu['usageCount']; ?>回
+                                                        <?php if (!empty($menu['category'])): ?>
+                                                            <span class="menu-item-category">
+                                                                <?php echo htmlspecialchars($menu['category']); ?>
                                                             </span>
                                                         <?php endif; ?>
                                                     </div>
-                                                    <?php if (!$menu['canReserve'] && !empty($menu['reason'])): ?>
+                                                    <?php if (!empty($menu['description'])): ?>
+                                                        <div class="menu-item-description">
+                                                            <?php echo htmlspecialchars($menu['description']); ?>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    <?php if (!$canReserve && !empty($menu['availability_reason'])): ?>
                                                         <div class="menu-item-unavailable">
-                                                            ※ <?php echo htmlspecialchars($menu['reason']); ?>
-                                                            <?php if (!empty($menu['nextAvailableDate'])): ?>
-                                                                (次回予約可能日: <?php 
-                                                                    $date = new DateTime($menu['nextAvailableDate']);
-                                                                    echo $date->format('Y年m月d日');
-                                                                ?>)
-                                                            <?php endif; ?>
+                                                            ※ <?php echo htmlspecialchars($menu['availability_reason']); ?>
                                                         </div>
                                                     <?php endif; ?>
                                                 </div>
                                             <?php endforeach; ?>
                                         </div>
                                     </div>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             <?php endif; ?>
         </div>
