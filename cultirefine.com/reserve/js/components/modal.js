@@ -158,11 +158,32 @@ export function initAddPatientModal() {
                 showSuccessMessage(result.message || '来院者が正常に登録されました。');
                 
             } else {
-                showError(result.message || '来院者の登録に失敗しました。');
+                // より詳細なエラーメッセージを表示
+                const errorMessage = result.message || '来院者の登録に失敗しました。';
+                console.error('Patient registration failed:', result);
+                showError(errorMessage);
             }
         } catch (error) {
             console.error('Patient registration error:', error);
-            showError('システムエラーが発生しました。時間をおいて再度お試しください。');
+            
+            // エラーの種類に応じてメッセージを変更
+            let errorMessage = 'システムエラーが発生しました。時間をおいて再度お試しください。';
+            
+            if (error.message) {
+                if (error.message.includes('認証')) {
+                    errorMessage = 'ログイン状態が無効です。再度ログインしてください。';
+                } else if (error.message.includes('Medical Force')) {
+                    errorMessage = 'Medical Force APIエラー: ' + error.message;
+                } else if (error.message.includes('GAS API')) {
+                    errorMessage = 'データベースエラー: ' + error.message;
+                } else if (error.message.includes('必須フィールド')) {
+                    errorMessage = '入力内容に不備があります: ' + error.message;
+                } else {
+                    errorMessage = error.message;
+                }
+            }
+            
+            showError(errorMessage);
         } finally {
             setLoading(false);
         }

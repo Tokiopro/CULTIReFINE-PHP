@@ -89,8 +89,8 @@ export async function getUserFullInfo() {
 }
 
 /**
- * 患者追加（Medical Force API連携）
- * Medical Force APIで作成された来院者IDを受け取り、GAS APIでスプレッドシートに登録
+ * 患者追加（Medical Force API & GAS API 連携）
+ * フロントエンドからHTMLフォームデータを送信し、PHP側でMedical Force APIとGAS APIの両方に登録
  */
 export async function mockAddPatient(patientData) {
     console.log('[GAS API] Adding patient with Medical Force integration:', patientData);
@@ -101,20 +101,9 @@ export async function mockAddPatient(patientData) {
             throw new Error('必須フィールドが不足しています');
         }
         
-        // Step 1: Medical Force APIで来院者を作成（実際の実装は別途必要）
-        console.log('[Medical Force API] Creating visitor...');
-        const medicalForceResponse = await createVisitorInMedicalForce(patientData);
-        
-        if (!medicalForceResponse.success) {
-            throw new Error('Medical Force APIでの来院者作成に失敗しました: ' + (medicalForceResponse.message || 'Unknown error'));
-        }
-        
-        const visitorId = medicalForceResponse.visitor_id;
-        console.log('[Medical Force API] Visitor created with ID:', visitorId);
-        
-        // Step 2: GAS APIでスプレッドシートに登録
+        // PHP側でMedical Force API → GAS APIの2段階処理を実行
+        // フロントエンドからは基本情報のみを送信
         const visitorData = {
-            visitor_id: visitorId, // Medical Forceから受け取ったID
             name: patientData.name,
             kana: patientData.kana,
             gender: patientData.gender
@@ -131,11 +120,12 @@ export async function mockAddPatient(patientData) {
             visitorData.phone = patientData.phone;
         }
         
+        console.log('[API Bridge] Sending data to PHP for Medical Force & GAS API processing...');
         const result = await apiCall('createVisitor', {}, 'POST', visitorData);
         
         // レスポンスデータを既存のフォーマットに変換
         const newPatient = {
-            id: visitorId, // Medical ForceのIDを使用
+            id: result.data.visitor_id || 'temp-' + Date.now(), // Medical ForceのIDを使用
             name: result.data.name,
             kana: result.data.kana,
             gender: result.data.gender,
@@ -162,24 +152,6 @@ export async function mockAddPatient(patientData) {
     }
 }
 
-/**
- * Medical Force APIで来院者を作成（モック実装）
- * 実際のMedical Force API実装は別途必要
- */
-async function createVisitorInMedicalForce(patientData) {
-    console.log('[Medical Force API Mock] Creating visitor:', patientData);
-    
-    // モック遅延（実際のAPI呼び出しをシミュレート）
-    await delay(500);
-    
-    // モックレスポンス
-    // 実際の実装では、Medical Force APIを呼び出してvisitor_idを取得
-    return {
-        success: true,
-        visitor_id: 'MF' + Date.now(), // Medical Forceで生成されたIDのモック
-        message: 'Medical Forceで来院者が作成されました'
-    };
-}
 
 /**
  * 施術間隔チェック

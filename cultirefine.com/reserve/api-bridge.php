@@ -41,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once 'line-auth/config.php';
 require_once 'line-auth/GasApiClient.php';
+require_once 'line-auth/MedicalForceApiClient.php';
 require_once 'line-auth/logger.php';
 
 $logger = new Logger();
@@ -105,6 +106,10 @@ try {
             
         case 'getAvailableSlots':
             $result = handleGetAvailableSlots($gasApi, getJsonInput());
+            break;
+            
+        case 'testMedicalForceConnection':
+            $result = handleTestMedicalForceConnection();
             break;
             
         default:
@@ -230,23 +235,45 @@ function handleTestConnection(GasApiClient $gasApi): array
 
 /**
  * 来院者登録
- * Medical Force APIから受け取った来院者IDを使用してGAS APIに登録
+ * 2段階で処理：(1) Medical Force APIで来院者作成 → (2) GAS APIで登録
  */
 function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $visitorData): array
 {
     try {
-        // Medical Force APIからの来院者IDが必須
-        if (empty($visitorData['visitor_id'])) {
-            throw new Exception("Medical Force APIからの来院者ID（visitor_id）が必要です", 400);
+        // Step 1: フロントエンドからの基本データを検証
+        $required = ['name', 'kana', 'gender'];
+        foreach ($required as $field) {
+            if (empty($visitorData[$field])) {
+                throw new Exception("必須フィールド '{$field}' が不足しています", 400);
+            }
         }
         
+        // Step 2: Medical Force APIで来院者を作成（OAuth 2.0対応）
+        $medicalForceApi = new MedicalForceApiClient(
+            MEDICAL_FORCE_API_URL, 
+            MEDICAL_FORCE_API_KEY,
+            MEDICAL_FORCE_CLIENT_ID,
+            MEDICAL_FORCE_CLIENT_SECRET
+        );
+        $medicalForceResult = $medicalForceApi->createVisitor($visitorData);
+        
+        if (!$medicalForceResult['success']) {
+            throw new Exception(
+                "Medical Force API エラー: " . $medicalForceResult['message'],
+                400
+            );
+        }
+        
+        $visitorId = $medicalForceResult['visitor_id'];
+        
+        // Step 3: Medical Forceから取得したIDを使ってGAS APIに登録
         // 名前の分割処理
-        $nameParts = explode(' ', $visitorData['name'] ?? '', 2);
+        $nameParts = explode(' ', trim($visitorData['name']), 2);
         $lastName = $nameParts[0] ?? '';
         $firstName = $nameParts[1] ?? '';
         
         // カナの分割処理
-        $kanaParts = explode(' ', $visitorData['kana'] ?? '', 2);
+        $kanaParts = explode(' ', trim($visitorData['kana']), 2);
         $lastNameKana = $kanaParts[0] ?? '';
         $firstNameKana = $kanaParts[1] ?? '';
         
@@ -265,7 +292,7 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
             'male' => 'male',
             'female' => 'female'
         ];
-        $gender = $genderMap[strtolower($visitorData['gender'] ?? '')] ?? 'other';
+        $gender = $genderMap[strtoupper($visitorData['gender'] ?? '')] ?? 'other';
         
         // ユーザー情報を取得して会社情報を設定
         $userInfo = $gasApi->getUserFullInfo($lineUserId);
@@ -279,7 +306,7 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
         $gasApiData = [
             'path' => 'api/visitors',
             'api_key' => GAS_API_KEY,
-            'visitor_id' => $visitorData['visitor_id'], // Medical Forceから受け取ったID
+            'visitor_id' => $visitorId, // Medical Forceから受け取ったID
             'last_name' => $lastName,
             'first_name' => $firstName,
             'last_name_kana' => $lastNameKana,
@@ -309,10 +336,14 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
             $gasApiData['member_type'] = $membershipInfo['member_type'] ?? 'sub'; // デフォルトはサブ会員
         }
         
-        // GAS APIに登録
+        // Step 4: GAS APIに登録
         $result = $gasApi->createVisitorToSheet($gasApiData);
         
         if ($result['status'] === 'error') {
+            // GAS API登録に失敗した場合、Medical Forceでの作成は成功しているため
+            // ロールバックが必要な場合は考慮する（現時点では警告ログのみ）
+            error_log("警告: Medical Force作成成功、GAS API登録失敗: visitor_id={$visitorId}");
+            
             // エラーの詳細を判別
             $errorMessage = $result['error']['message'] ?? 'GAS APIエラー';
             $errorCode = $result['error']['code'] ?? 'UNKNOWN_ERROR';
@@ -330,9 +361,9 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
         // JavaScriptが期待する形式でレスポンスを返す
         return [
             'success' => true,
-            'message' => '来院者が正常に登録されました。',
+            'message' => '来院者が正常に登録されました（Medical Force & GAS API）',
             'data' => [
-                'visitor_id' => $visitorData['visitor_id'],
+                'visitor_id' => $visitorId,
                 'name' => $visitorData['name'],
                 'kana' => $visitorData['kana'],
                 'gender' => $visitorData['gender'],
@@ -675,6 +706,44 @@ function handleGetReservationHistory(GasApiClient $gasApi, string $lineUserId, a
     ];
 }
 */
+/**
+ * Medical Force API接続テスト
+ */
+function handleTestMedicalForceConnection(): array
+{
+    try {
+        $medicalForceApi = new MedicalForceApiClient(
+            MEDICAL_FORCE_API_URL, 
+            MEDICAL_FORCE_API_KEY,
+            MEDICAL_FORCE_CLIENT_ID,
+            MEDICAL_FORCE_CLIENT_SECRET
+        );
+        $result = $medicalForceApi->testConnection();
+        
+        return [
+            'medical_force_connection' => $result,
+            'configuration' => [
+                'api_url' => MEDICAL_FORCE_API_URL,
+                'mock_mode' => defined('MOCK_MEDICAL_FORCE') && MOCK_MEDICAL_FORCE,
+                'debug_mode' => DEBUG_MODE
+            ]
+        ];
+        
+    } catch (Exception $e) {
+        return [
+            'medical_force_connection' => [
+                'success' => false,
+                'message' => 'テスト実行エラー: ' . $e->getMessage()
+            ],
+            'configuration' => [
+                'api_url' => MEDICAL_FORCE_API_URL,
+                'mock_mode' => defined('MOCK_MEDICAL_FORCE') && MOCK_MEDICAL_FORCE,
+                'debug_mode' => DEBUG_MODE
+            ]
+        ];
+    }
+}
+
 /**
  * JSON入力を取得
  */
