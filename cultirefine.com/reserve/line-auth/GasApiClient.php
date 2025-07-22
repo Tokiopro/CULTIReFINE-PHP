@@ -34,20 +34,156 @@ class GasApiClient
     {
         $cacheKey = "user_full_{$lineUserId}";
         
+        // デバッグ: 入力値確認
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] getUserFullInfo called with LINE User ID: {$lineUserId}");
+            error_log("[GAS API] Cache key: {$cacheKey}");
+        }
+        
         // キャッシュチェック
         if ($cachedData = $this->getFromCache($cacheKey)) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Returning cached data for: {$lineUserId}");
+            }
             return $cachedData;
         }
         
         $path = "/api/users/line/" . urlencode($lineUserId) . "/full";
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Making request to path: {$path}");
+            error_log("[GAS API] Base URL: {$this->baseUrl}");
+            error_log("[GAS API] Full URL: {$this->baseUrl}{$path}");
+        }
+        
         $result = $this->makeRequest('GET', $path);
+        
+        // デバッグ: レスポンス詳細
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Response status: " . ($result['status'] ?? 'no_status'));
+            error_log("[GAS API] Response keys: " . implode(', ', array_keys($result)));
+            if (isset($result['error'])) {
+                error_log("[GAS API] Error details: " . json_encode($result['error']));
+            }
+            if (isset($result['data'])) {
+                error_log("[GAS API] Data keys: " . implode(', ', array_keys($result['data'])));
+            }
+        }
         
         if ($result['status'] === 'success') {
             // 成功時のみキャッシュ
             $this->saveToCache($cacheKey, $result);
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Data cached successfully for: {$lineUserId}");
+            }
+        } else {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Request failed, not caching. Status: " . ($result['status'] ?? 'unknown'));
+            }
         }
         
-        return $result;
+        // レスポンス形式を標準化
+        $normalizedResult = $this->normalizeGasApiResponse($result);
+        
+        return $normalizedResult;
+    }
+    
+    /**
+     * GAS APIレスポンスを標準形式に変換
+     */
+    private function normalizeGasApiResponse(array $response): array
+    {
+        // デバッグ: 変換前のレスポンス
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Normalizing response with keys: " . implode(', ', array_keys($response)));
+        }
+        
+        // 既に標準形式（status + data構造）の場合はそのまま返す
+        if (isset($response['status']) && isset($response['data'])) {
+            return $response;
+        }
+        
+        // エラーレスポンスの場合
+        if (isset($response['status']) && $response['status'] === 'error') {
+            return $response;
+        }
+        
+        // 実際のGAS APIレスポンス形式を標準形式に変換
+        if (isset($response['visitor']) || isset($response['company'])) {
+            $normalizedResponse = [
+                'status' => 'success',
+                'data' => []
+            ];
+            
+            // visitor情報を user と patient_info に分割
+            if (isset($response['visitor'])) {
+                $visitor = $response['visitor'];
+                $normalizedResponse['data']['user'] = [
+                    'id' => $visitor['visitor_id'] ?? '',
+                    'name' => $visitor['visitor_name'] ?? '',
+                ];
+                
+                $normalizedResponse['data']['patient_info'] = [
+                    'id' => $visitor['visitor_id'] ?? '',
+                    'is_new' => true // 来院者情報があれば登録済み
+                ];
+            }
+            
+            // company情報を membership_info に変換
+            if (isset($response['company'])) {
+                $company = $response['company'];
+                $normalizedResponse['data']['membership_info'] = [
+                    'is_member' => true,
+                    'company_id' => $company['company_id'] ?? '',
+                    'company_name' => $company['name'] ?? '',
+                    'member_type' => isset($response['visitor']['member_type']) && $response['visitor']['member_type'] === true ? '本会員' : 'サブ会員'
+                ];
+            }
+            
+            // その他の情報も追加
+            if (isset($response['ticketInfo'])) {
+                $normalizedResponse['data']['membership_info']['ticket_balance'] = $response['ticketInfo'];
+            }
+            
+            if (isset($response['ReservationHistory'])) {
+                $normalizedResponse['data']['upcoming_reservations'] = $response['ReservationHistory'];
+            }
+            
+            if (isset($response['docsinfo'])) {
+                $normalizedResponse['data']['documents'] = $response['docsinfo'];
+            }
+            
+            // 施術履歴と利用可能施術は空配列で初期化（必要に応じて後で追加）
+            $normalizedResponse['data']['treatment_history'] = [];
+            $normalizedResponse['data']['available_treatments'] = [];
+            
+            // 統計情報も空で初期化
+            $normalizedResponse['data']['statistics'] = [
+                'total_visits' => 0,
+                'total_treatments' => [],
+                'last_30_days_visits' => 0,
+                'favorite_treatment' => ''
+            ];
+            
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Normalized response structure: " . implode(', ', array_keys($normalizedResponse['data'])));
+                if (isset($normalizedResponse['data']['membership_info'])) {
+                    error_log("[GAS API] Membership info: " . json_encode($normalizedResponse['data']['membership_info']));
+                }
+            }
+            
+            return $normalizedResponse;
+        }
+        
+        // その他の場合はエラーとして扱う
+        return [
+            'status' => 'error',
+            'error' => [
+                'code' => 'INVALID_RESPONSE_FORMAT',
+                'message' => 'GAS APIからの予期しないレスポンス形式です',
+                'details' => $response
+            ]
+        ];
     }
     
     /**
@@ -259,9 +395,22 @@ class GasApiClient
     {
         $url = $this->baseUrl . "?path=" . urlencode($path);
         
+        // デバッグ: リクエスト開始
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] makeRequest START");
+            error_log("[GAS API] Method: {$method}");
+            error_log("[GAS API] Path: {$path}");
+            error_log("[GAS API] Base URL: {$this->baseUrl}");
+            error_log("[GAS API] Data: " . ($data ? json_encode($data) : 'null'));
+        }
+        
         // 認証が必要なエンドポイントの場合、URLパラメータでAPIキーを送信
         if ($path !== '/api/health') {
             $url .= "&Authorization=" . urlencode("Bearer " . $this->apiKey);
+        }
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Final URL: {$url}");
         }
         
         $headers = [
@@ -274,6 +423,9 @@ class GasApiClient
         if ($method === 'GET' && $data) {
             foreach ($data as $key => $value) {
                 $url .= "&" . urlencode($key) . "=" . urlencode($value);
+            }
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] URL with GET params: {$url}");
             }
         }
         
@@ -302,28 +454,47 @@ class GasApiClient
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
+        $curlInfo = curl_getinfo($ch);
         curl_close($ch);
+        
+        // デバッグ: レスポンス詳細
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] HTTP Code: {$httpCode}");
+            error_log("[GAS API] cURL Error: " . ($curlError ?: 'none'));
+            error_log("[GAS API] Response (first 500 chars): " . substr($response, 0, 500));
+            error_log("[GAS API] Total time: " . $curlInfo['total_time']);
+            error_log("[GAS API] Connect time: " . $curlInfo['connect_time']);
+        }
         
         // cURLエラーチェック
         if ($response === false) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] cURL failed completely");
+                error_log("[GAS API] cURL info: " . json_encode($curlInfo));
+            }
             return [
                 'status' => 'error',
                 'error' => [
                     'code' => 'CURL_ERROR',
                     'message' => 'API通信に失敗しました: ' . $curlError,
-                    'details' => null
+                    'details' => $curlInfo
                 ]
             ];
         }
         
         // HTTPステータスコードチェック
         if ($httpCode !== 200) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] HTTP Error {$httpCode}");
+                error_log("[GAS API] Error response: {$response}");
+            }
             return [
                 'status' => 'error',
                 'error' => [
                     'code' => 'HTTP_ERROR',
                     'message' => "APIエラー (HTTP {$httpCode})",
-                    'details' => $response
+                    'details' => $response,
+                    'http_code' => $httpCode
                 ]
             ];
         }

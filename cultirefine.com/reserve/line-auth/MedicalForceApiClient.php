@@ -33,20 +33,57 @@ class MedicalForceApiClient
     {
         // 既存のトークンが有効かチェック
         if ($this->accessToken && $this->tokenExpiry && time() < $this->tokenExpiry) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[Medical Force OAuth] Using cached token, expires at: ' . date('Y-m-d H:i:s', $this->tokenExpiry));
+            }
             return $this->accessToken;
         }
         
         // OAuth 2.0クライアント認証が設定されている場合
         if (!empty($this->clientId) && !empty($this->clientSecret)) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[Medical Force OAuth] Using OAuth 2.0 authentication');
+            }
             return $this->obtainOAuthToken();
         }
         
         // フォールバック: 従来のAPIキー認証
         if (!empty($this->apiKey)) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[Medical Force OAuth] Falling back to API key authentication');
+            }
             return $this->apiKey;
         }
         
+        error_log('[Medical Force OAuth] No authentication credentials configured');
         throw new Exception('Medical Force API認証情報が設定されていません', 500);
+    }
+    
+    /**
+     * 認証設定の検証
+     * 
+     * @return array 検証結果
+     */
+    public function validateAuthConfiguration(): array
+    {
+        $result = [
+            'has_oauth_credentials' => !empty($this->clientId) && !empty($this->clientSecret),
+            'has_api_key' => !empty($this->apiKey),
+            'preferred_method' => 'none',
+            'configuration_status' => 'invalid'
+        ];
+        
+        if ($result['has_oauth_credentials']) {
+            $result['preferred_method'] = 'oauth2';
+            $result['configuration_status'] = 'valid';
+            $result['client_id'] = $this->clientId;
+            $result['client_secret_set'] = !empty($this->clientSecret);
+        } elseif ($result['has_api_key']) {
+            $result['preferred_method'] = 'api_key';
+            $result['configuration_status'] = 'valid';
+        }
+        
+        return $result;
     }
     
     /**
@@ -59,12 +96,14 @@ class MedicalForceApiClient
     {
         $tokenUrl = $this->baseUrl . '/oauth/token';
         
+        // RFC 6749準拠: クライアント認証はBasic認証ヘッダーで送信
         $postData = [
             'grant_type' => 'client_credentials',
-            'client_id' => $this->clientId,
-            'client_secret' => $this->clientSecret,
             'scope' => 'api'  // 必要に応じてスコープを調整
         ];
+        
+        // Basic認証用のクライアント認証情報
+        $clientCredentials = base64_encode($this->clientId . ':' . $this->clientSecret);
         
         $options = [
             CURLOPT_URL => $tokenUrl,
@@ -73,11 +112,19 @@ class MedicalForceApiClient
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => $this->timeout,
             CURLOPT_HTTPHEADER => [
+                'Authorization: Basic ' . $clientCredentials,
                 'Content-Type: application/x-www-form-urlencoded',
                 'Accept: application/json'
             ],
             CURLOPT_SSL_VERIFYPEER => false, // 開発環境用（本番では有効にする）
         ];
+        
+        // デバッグ情報をログ出力
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[Medical Force OAuth] Token URL: ' . $tokenUrl);
+            error_log('[Medical Force OAuth] Client ID: ' . $this->clientId);
+            error_log('[Medical Force OAuth] Post Data: ' . json_encode($postData));
+        }
         
         $curl = curl_init();
         curl_setopt_array($curl, $options);
@@ -87,18 +134,37 @@ class MedicalForceApiClient
         $error = curl_error($curl);
         curl_close($curl);
         
+        // デバッグ情報をログ出力
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[Medical Force OAuth] HTTP Code: ' . $httpCode);
+            error_log('[Medical Force OAuth] Response: ' . substr($response, 0, 500));
+        }
+        
         if ($error) {
+            error_log('[Medical Force OAuth] cURL Error: ' . $error);
             throw new Exception("OAuth Token取得エラー (cURL): {$error}", 500);
         }
         
         if ($httpCode !== 200) {
-            throw new Exception("OAuth Token取得エラー (HTTP {$httpCode}): {$response}", 500);
+            error_log('[Medical Force OAuth] HTTP Error: ' . $httpCode . ' - ' . $response);
+            
+            // より詳細なエラーメッセージを提供
+            $errorDetails = json_decode($response, true);
+            $errorMessage = $errorDetails['message'] ?? $errorDetails['error_description'] ?? $response;
+            
+            throw new Exception("OAuth Token取得エラー (HTTP {$httpCode}): {$errorMessage}", $httpCode);
         }
         
         $tokenData = json_decode($response, true);
         
-        if (json_last_error() !== JSON_ERROR_NONE || !isset($tokenData['access_token'])) {
-            throw new Exception("OAuth Token取得エラー: 無効なレスポンス", 500);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log('[Medical Force OAuth] JSON Parse Error: ' . json_last_error_msg());
+            throw new Exception("OAuth Token取得エラー: JSONパースエラー - " . json_last_error_msg(), 500);
+        }
+        
+        if (!isset($tokenData['access_token'])) {
+            error_log('[Medical Force OAuth] Missing access_token in response: ' . json_encode($tokenData));
+            throw new Exception("OAuth Token取得エラー: access_tokenが見つかりません", 500);
         }
         
         // トークンをキャッシュ
@@ -378,23 +444,32 @@ class MedicalForceApiClient
     public function testOAuthAuthentication(): array
     {
         try {
+            // 認証設定の検証
+            $authConfig = $this->validateAuthConfiguration();
+            
             // OAuth 2.0トークンの取得をテスト
             $token = $this->getAccessToken();
             
             return [
                 'success' => true,
-                'message' => 'OAuth 2.0認証成功',
-                'token_type' => !empty($this->clientId) ? 'OAuth 2.0' : 'Bearer Token',
+                'message' => 'Medical Force API認証成功',
+                'authentication_method' => $authConfig['preferred_method'],
+                'configuration' => $authConfig,
                 'has_token' => !empty($token),
                 'token_cached' => $this->accessToken !== null,
-                'expires_at' => $this->tokenExpiry ? date('Y-m-d H:i:s', $this->tokenExpiry) : null
+                'expires_at' => $this->tokenExpiry ? date('Y-m-d H:i:s', $this->tokenExpiry) : null,
+                'token_length' => strlen($token),
             ];
             
         } catch (Exception $e) {
+            $authConfig = $this->validateAuthConfiguration();
+            
             return [
                 'success' => false,
-                'message' => 'OAuth 2.0認証失敗: ' . $e->getMessage(),
-                'token_type' => !empty($this->clientId) ? 'OAuth 2.0' : 'Bearer Token'
+                'message' => 'Medical Force API認証失敗: ' . $e->getMessage(),
+                'authentication_method' => $authConfig['preferred_method'],
+                'configuration' => $authConfig,
+                'error_code' => $e->getCode()
             ];
         }
     }

@@ -39,23 +39,35 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   addBtn.addEventListener("click", async function () {
-    const nameInput = document.getElementById("newPatientName");
-    const kanaInput = document.getElementById("newPatientKana");
+    const lastNameInput = document.getElementById("newPatientLastName");
+    const firstNameInput = document.getElementById("newPatientFirstName");
+    const lastNameKanaInput = document.getElementById("newPatientLastNameKana");
+    const firstNameKanaInput = document.getElementById("newPatientFirstNameKana");
     const genderSelect = document.getElementById("newPatientGender");
     const birthdayInput = document.getElementById("newPatientBirthday");
     
-    const name = nameInput?.value.trim() || "";
-    const kana = kanaInput?.value.trim() || "";
+    const lastName = lastNameInput?.value.trim() || "";
+    const firstName = firstNameInput?.value.trim() || "";
+    const lastNameKana = lastNameKanaInput?.value.trim() || "";
+    const firstNameKana = firstNameKanaInput?.value.trim() || "";
     const gender = genderSelect?.value || "MALE";
     const birthday = birthdayInput?.value || "";
 
     // バリデーション
-    if (!name) {
-      alert("名前を入力してください。");
+    if (!lastName) {
+      alert("姓を入力してください。");
       return;
     }
-    if (!kana) {
-      alert("カナを入力してください。");
+    if (!firstName) {
+      alert("名を入力してください。");
+      return;
+    }
+    if (!lastNameKana) {
+      alert("セイを入力してください。");
+      return;
+    }
+    if (!firstNameKana) {
+      alert("メイを入力してください。");
       return;
     }
 
@@ -70,29 +82,17 @@ document.addEventListener("DOMContentLoaded", function () {
     addBtn.textContent = "登録中...";
     
     try {
-      // 1. Medical Force APIで来院者を作成（モック）
-      // 実際のMedical Force API呼び出しは、別途実装が必要
-      const medicalForceResponse = await createVisitorInMedicalForce({
-        name: name,
-        kana: kana,
+      // PHP側で2段階処理を実行（Medical Force API → GAS API）
+      const visitorData = {
+        last_name: lastName,
+        first_name: firstName,
+        last_name_kana: lastNameKana,
+        first_name_kana: firstNameKana,
         gender: gender,
         birthday: birthday
-      });
+      };
       
-      if (!medicalForceResponse.success) {
-        throw new Error(medicalForceResponse.message || "Medical Force APIエラー");
-      }
-      
-      const visitorId = medicalForceResponse.visitor_id;
-      
-      // 2. GAS APIでスプレッドシートに登録
-      const gasResponse = await registerVisitorToGAS({
-        visitor_id: visitorId,
-        name: name,
-        kana: kana,
-        gender: gender,
-        birthday: birthday
-      });
+      const gasResponse = await registerVisitorToGAS(visitorData);
       
       if (!gasResponse.success) {
         throw new Error(gasResponse.message || "GAS APIエラー");
@@ -155,8 +155,10 @@ label.appendChild(dateSpan);
       if (overlay) overlay.remove();
       
       dialogWrapper.style.display = "none";
-      nameInput.value = "";
-      if (kanaInput) kanaInput.value = "";
+      if (lastNameInput) lastNameInput.value = "";
+      if (firstNameInput) firstNameInput.value = "";
+      if (lastNameKanaInput) lastNameKanaInput.value = "";
+      if (firstNameKanaInput) firstNameKanaInput.value = "";
       if (birthdayInput) birthdayInput.value = "";
       
     } catch (error) {
@@ -187,19 +189,16 @@ async function createVisitorInMedicalForce(patientData) {
   };
 }
 
-// GAS APIでスプレッドシートに登録
+// Medical Force API & GAS APIで来院者登録（2段階処理）
 async function registerVisitorToGAS(visitorData) {
   try {
-    const response = await fetch('/reserve/api-bridge.php', {
+    const response = await fetch('/reserve/api-bridge.php?action=createVisitor', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       credentials: 'same-origin',
-      body: JSON.stringify({
-        action: 'createVisitor',
-        ...visitorData
-      })
+      body: JSON.stringify(visitorData)
     });
     
     if (!response.ok) {
