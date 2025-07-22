@@ -124,9 +124,22 @@ export function initAddPatientModal() {
             var gender = document.querySelector('input[name="gender"]:checked').value;
             var birthday = birthdayInput.value;
 
+            // 氏名を姓名に分割（スペースで分割、なければ最初の文字を姓とする）
+            var nameParts = name.split(/[\s　]+/); // 半角・全角スペースで分割
+            var lastName = nameParts[0] || '';
+            var firstName = nameParts[1] || '';
+            
+            // カナも同様に分割
+            var kanaParts = kana.split(/[\s　]+/);
+            var lastNameKana = kanaParts[0] || '';
+            var firstNameKana = kanaParts[1] || '';
+
+            // PHP側のAPI形式に合わせて分割形式で送信
             var patientData = {
-                name: name,
-                kana: kana,
+                last_name: lastName,
+                first_name: firstName || '未設定', // 名前がない場合はデフォルト値
+                last_name_kana: lastNameKana,
+                first_name_kana: firstNameKana || 'ミセッテイ', // カナがない場合はデフォルト値
                 gender: gender
             };
 

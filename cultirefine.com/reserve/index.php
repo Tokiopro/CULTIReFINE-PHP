@@ -315,6 +315,14 @@ try {
                         <div class="text-4xl mb-4">👥</div>
                         <h2 class="text-2xl font-bold text-teal-700 mb-2">来院者を選択</h2>
                         <p id="patient-selection-description" class="text-gray-600">今回同時に予約する来院者を選択してください。</p>
+                        <?php if ($userRole === 'main'): ?>
+                        <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                            <div class="text-xs text-blue-700">
+                                <span class="font-medium">💡 本会員権限</span><br>
+                                公開・非公開設定はサブ会員に来院者を公開するか非公開にするかを設定できます。
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                     <div class="px-6 pb-6 space-y-6">
                         <div class="bg-slate-100 border border-gray-200 rounded-md p-3">
@@ -530,7 +538,7 @@ try {
                     <label for="new-patient-name" class="block text-sm font-medium text-gray-700 mb-1">
                         氏名 <span class="text-red-500">*</span>
                     </label>
-                    <input type="text" id="new-patient-name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="例: 鈴木 一郎" maxlength="30" required>
+                    <input type="text" id="new-patient-name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="例: 鈴木 一郎（姓名をスペースで区切って入力）" maxlength="30" required>
                     <p class="text-xs text-gray-500 mt-1">30字以内で入力してください。</p>
                 </div>
                 
@@ -539,7 +547,7 @@ try {
                     <label for="new-patient-kana" class="block text-sm font-medium text-gray-700 mb-1">
                         カナ <span class="text-red-500">*</span>
                     </label>
-                    <input type="text" id="new-patient-kana" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="例: スズキ イチロウ" maxlength="60" required>
+                    <input type="text" id="new-patient-kana" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="例: スズキ イチロウ（セイメイをスペースで区切って入力）" maxlength="60" required>
                     <p class="text-xs text-gray-500 mt-1">全角カタカナで入力してください。</p>
                 </div>
                 
@@ -854,7 +862,7 @@ try {
                 ">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span style="font-size: 16px;">🔧</span>
-                        <span style="font-weight: 600; font-size: 14px;">Advanced Debug Panel</span>
+                        <span style="font-weight: 600; font-size: 14px;">高度デバッグパネル</span>
                     </div>
                     <div style="display: flex; gap: 5px;">
                         <button id="debug-minimize" style="
@@ -882,7 +890,7 @@ try {
                 
                 <div id="debug-content" style="padding: 15px; max-height: 400px; overflow-y: auto;">
                     <div style="margin-bottom: 15px;">
-                        <h4 style="margin: 0 0 10px 0; color: #63b3ed; font-size: 14px;">🎛️ Controls</h4>
+                        <h4 style="margin: 0 0 10px 0; color: #63b3ed; font-size: 14px;">🎛️ 操作</h4>
                         <div style="display: grid; gap: 8px;">
                             <button id="logout-btn" style="
                                 background: linear-gradient(135deg, #e53e3e, #c53030);
@@ -893,7 +901,7 @@ try {
                                 cursor: pointer;
                                 font-size: 12px;
                                 transition: all 0.2s;
-                            ">🚪 Logout</button>
+                            ">🚪 ログアウト</button>
                             <button id="clear-cache-btn" style="
                                 background: linear-gradient(135deg, #3182ce, #2c5282);
                                 border: none;
@@ -903,7 +911,7 @@ try {
                                 cursor: pointer;
                                 font-size: 12px;
                                 transition: all 0.2s;
-                            ">🗑️ Clear Cache</button>
+                            ">🗑️ キャッシュクリア</button>
                             <button id="refresh-hard-btn" style="
                                 background: linear-gradient(135deg, #38a169, #2f855a);
                                 border: none;
@@ -913,7 +921,7 @@ try {
                                 cursor: pointer;
                                 font-size: 12px;
                                 transition: all 0.2s;
-                            ">🔄 Hard Refresh</button>
+                            ">🔄 強制更新</button>
                         </div>
                     </div>
                     
@@ -964,7 +972,7 @@ try {
                     </div>
                     
                     <div style="margin-bottom: 15px;">
-                        <h4 style="margin: 0 0 10px 0; color: #63b3ed; font-size: 14px;">🧪 API Tests</h4>
+                        <h4 style="margin: 0 0 10px 0; color: #63b3ed; font-size: 14px;">🧪 APIテスト</h4>
                         <div style="display: grid; gap: 5px;">
                             <button id="test-gas-api-btn" style="
                                 background: linear-gradient(135deg, #ed8936, #dd6b20);
@@ -974,7 +982,7 @@ try {
                                 border-radius: 4px;
                                 cursor: pointer;
                                 font-size: 11px;
-                            ">Test GAS API</button>
+                            ">GAS APIテスト</button>
                             <button id="test-medical-force-btn" style="
                                 background: linear-gradient(135deg, #9f7aea, #805ad5);
                                 border: none;
@@ -983,7 +991,7 @@ try {
                                 border-radius: 4px;
                                 cursor: pointer;
                                 font-size: 11px;
-                            ">Test Medical Force</button>
+                            ">メディカルフォーステスト</button>
                             <button id="test-session-btn" style="
                                 background: linear-gradient(135deg, #48bb78, #38a169);
                                 border: none;
@@ -992,7 +1000,7 @@ try {
                                 border-radius: 4px;
                                 cursor: pointer;
                                 font-size: 11px;
-                            ">Test Session</button>
+                            ">セッションテスト</button>
                             <button id="analyze-patient-form-btn" style="
                                 background: linear-gradient(135deg, #f56565, #e53e3e);
                                 border: none;
@@ -1001,12 +1009,77 @@ try {
                                 border-radius: 4px;
                                 cursor: pointer;
                                 font-size: 11px;
-                            ">Analyze Patient Form</button>
+                            ">患者フォーム解析</button>
                         </div>
                     </div>
                     
                     <div style="margin-bottom: 15px;">
-                        <h4 style="margin: 0 0 10px 0; color: #63b3ed; font-size: 14px;">🔧 Quick Actions</h4>
+                        <h4 style="margin: 0 0 10px 0; color: #63b3ed; font-size: 14px;">📡 API監視</h4>
+                        <div style="display: flex; gap: 5px; margin-bottom: 8px;">
+                            <button id="start-monitoring-btn" style="
+                                background: linear-gradient(135deg, #48bb78, #38a169);
+                                border: none;
+                                color: white;
+                                padding: 6px 10px;
+                                border-radius: 4px;
+                                cursor: pointer;
+                                font-size: 11px;
+                                flex: 1;
+                            ">▶️ 監視開始</button>
+                            <button id="stop-monitoring-btn" style="
+                                background: linear-gradient(135deg, #f56565, #e53e3e);
+                                border: none;
+                                color: white;
+                                padding: 6px 10px;
+                                border-radius: 4px;
+                                cursor: pointer;
+                                font-size: 11px;
+                                flex: 1;
+                                display: none;
+                            ">⏹️ 監視停止</button>
+                            <button id="clear-api-log-btn" style="
+                                background: linear-gradient(135deg, #805ad5, #6b46c1);
+                                border: none;
+                                color: white;
+                                padding: 6px 10px;
+                                border-radius: 4px;
+                                cursor: pointer;
+                                font-size: 11px;
+                            ">🗑️</button>
+                        </div>
+                        <div id="api-monitoring-status" style="
+                            background: #1a202c;
+                            padding: 6px;
+                            border-radius: 4px;
+                            font-size: 10px;
+                            margin-bottom: 8px;
+                            color: #a0aec0;
+                            border: 1px solid #2d3748;
+                        ">監視停止中</div>
+                        <div id="api-log-display" style="
+                            background: #1a202c;
+                            padding: 8px;
+                            border-radius: 4px;
+                            font-family: monospace;
+                            font-size: 10px;
+                            max-height: 120px;
+                            overflow-y: auto;
+                            border: 1px solid #2d3748;
+                            color: #e2e8f0;
+                        ">APIコールがここに表示されます...</div>
+                        <div id="api-statistics" style="
+                            background: #2d3748;
+                            padding: 6px;
+                            border-radius: 4px;
+                            font-size: 10px;
+                            margin-top: 6px;
+                            color: #a0aec0;
+                            border: 1px solid #4a5568;
+                        ">統計: 成功 0, エラー 0, 平均応答時間 0ms</div>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 10px 0; color: #63b3ed; font-size: 14px;">🔧 クイックアクション</h4>
                         <div style="display: grid; gap: 5px;">
                             <button id="find-all-forms-btn" style="
                                 background: linear-gradient(135deg, #2b6cb0, #2c5282);
@@ -1016,7 +1089,7 @@ try {
                                 border-radius: 4px;
                                 cursor: pointer;
                                 font-size: 11px;
-                            ">Find All Forms</button>
+                            ">全フォーム検索</button>
                             <button id="find-all-inputs-btn" style="
                                 background: linear-gradient(135deg, #38a169, #2f855a);
                                 border: none;
@@ -1025,7 +1098,7 @@ try {
                                 border-radius: 4px;
                                 cursor: pointer;
                                 font-size: 11px;
-                            ">Find All Inputs</button>
+                            ">全入力要素検索</button>
                             <button id="find-newpatient-elements-btn" style="
                                 background: linear-gradient(135deg, #d69e2e, #b7791f);
                                 border: none;
@@ -1034,7 +1107,7 @@ try {
                                 border-radius: 4px;
                                 cursor: pointer;
                                 font-size: 11px;
-                            ">Find newPatient* Elements</button>
+                            ">患者フォーム要素検索</button>
                         </div>
                     </div>
                     
@@ -1155,6 +1228,11 @@ try {
             panel.querySelector('#test-session-btn').onclick = () => testSessionDebug();
             panel.querySelector('#analyze-patient-form-btn').onclick = () => analyzePatientForm();
             
+            // APIモニタリングボタン
+            panel.querySelector('#start-monitoring-btn').onclick = () => startAPIMonitoring();
+            panel.querySelector('#stop-monitoring-btn').onclick = () => stopAPIMonitoring();
+            panel.querySelector('#clear-api-log-btn').onclick = () => clearAPILog();
+            
             // クイックアクションボタン
             panel.querySelector('#find-all-forms-btn').onclick = () => findAllForms();
             panel.querySelector('#find-all-inputs-btn').onclick = () => findAllInputs();
@@ -1238,15 +1316,15 @@ try {
             if (!statusDiv) return;
             
             const status = [
-                `Time: ${new Date().toLocaleString()}`,
+                `時刻: ${new Date().toLocaleString('ja-JP')}`,
                 `URL: ${window.location.pathname}`,
-                `User Agent: ${navigator.userAgent.substring(0, 50)}...`,
-                `Screen: ${screen.width}×${screen.height}`,
-                `Viewport: ${window.innerWidth}×${window.innerHeight}`,
-                `LocalStorage: ${Object.keys(localStorage).length} items`,
-                `SessionStorage: ${Object.keys(sessionStorage).length} items`,
-                `Debug Mode: ${window.APP_CONFIG?.debugMode || 'false'}`,
-                `Session Active: ${document.cookie.includes('PHPSESSID') ? 'Yes' : 'No'}`
+                `ユーザーエージェント: ${navigator.userAgent.substring(0, 50)}...`,
+                `画面解像度: ${screen.width}×${screen.height}`,
+                `表示領域: ${window.innerWidth}×${window.innerHeight}`,
+                `ローカルストレージ: ${Object.keys(localStorage).length}項目`,
+                `セッションストレージ: ${Object.keys(sessionStorage).length}項目`,
+                `デバッグモード: ${window.APP_CONFIG?.debugMode ? 'ON' : 'OFF'}`,
+                `セッション状態: ${document.cookie.includes('PHPSESSID') ? 'アクティブ' : '非アクティブ'}`
             ];
             
             statusDiv.textContent = status.join('\n');
@@ -1255,40 +1333,264 @@ try {
         // API テスト機能（デバッグパネル用）
         async function testGasApiDebug() {
             const resultsDiv = document.getElementById('test-results');
-            resultsDiv.textContent = 'Testing GAS API...';
+            resultsDiv.textContent = 'GAS APIをテスト中...';
             
             try {
                 const result = await window.testGasApi();
-                resultsDiv.textContent = 'GAS API Test Result:\n' + JSON.stringify(result, null, 2);
+                resultsDiv.textContent = 'GAS APIテスト結果:\n' + JSON.stringify(result, null, 2);
             } catch (error) {
-                resultsDiv.textContent = 'GAS API Test Error:\n' + error.message;
+                resultsDiv.textContent = 'GAS APIテストエラー:\n' + error.message;
             }
         }
         
         async function testMedicalForceDebug() {
             const resultsDiv = document.getElementById('test-results');
-            resultsDiv.textContent = 'Testing Medical Force API...';
+            resultsDiv.textContent = 'Medical Force APIをテスト中...';
             
             try {
                 const result = await window.testMedicalForceApi();
-                resultsDiv.textContent = 'Medical Force API Test Result:\n' + JSON.stringify(result, null, 2);
+                resultsDiv.textContent = 'Medical Force APIテスト結果:\n' + JSON.stringify(result, null, 2);
             } catch (error) {
-                resultsDiv.textContent = 'Medical Force API Test Error:\n' + error.message;
+                resultsDiv.textContent = 'Medical Force APIテストエラー:\n' + error.message;
             }
         }
         
         async function testSessionDebug() {
             const resultsDiv = document.getElementById('test-results');
-            resultsDiv.textContent = 'Testing Session...';
+            resultsDiv.textContent = 'セッションをテスト中...';
             
             try {
                 const result = await window.testSession();
-                resultsDiv.textContent = 'Session Test Result:\n' + JSON.stringify(result, null, 2);
+                resultsDiv.textContent = 'セッションテスト結果:\n' + JSON.stringify(result, null, 2);
             } catch (error) {
-                resultsDiv.textContent = 'Session Test Error:\n' + error.message;
+                resultsDiv.textContent = 'セッションテストエラー:\n' + error.message;
             }
         }
         
+        // APIモニタリング機能
+        let isMonitoring = false;
+        let originalFetch = null;
+        let apiCallLog = [];
+        let apiCallCount = 0;
+        
+        function startAPIMonitoring() {
+            if (isMonitoring) return;
+            
+            isMonitoring = true;
+            const startBtn = document.getElementById('start-monitoring-btn');
+            const stopBtn = document.getElementById('stop-monitoring-btn');
+            const statusDiv = document.getElementById('api-monitoring-status');
+            
+            // ボタンの表示を切り替え
+            startBtn.style.display = 'none';
+            stopBtn.style.display = 'block';
+            
+            // ステータスを更新
+            statusDiv.textContent = '🟢 監視中... (0 calls)';
+            statusDiv.style.color = '#48bb78';
+            
+            // 元のfetch関数を保存
+            if (!originalFetch) {
+                originalFetch = window.fetch;
+            }
+            
+            // fetch関数をインターセプト
+            window.fetch = function(...args) {
+                const startTime = Date.now();
+                const url = args[0];
+                const options = args[1] || {};
+                
+                // APIコール情報をログ
+                const callId = ++apiCallCount;
+                const logEntry = {
+                    id: callId,
+                    url: url,
+                    method: options.method || 'GET',
+                    startTime: startTime,
+                    status: 'pending'
+                };
+                
+                apiCallLog.unshift(logEntry);
+                if (apiCallLog.length > 50) apiCallLog.pop(); // 最大50件まで保持
+                
+                updateAPILog();
+                updateMonitoringStatus();
+                
+                // 実際のfetch実行
+                return originalFetch.apply(this, args)
+                    .then(response => {
+                        const endTime = Date.now();
+                        const duration = endTime - startTime;
+                        
+                        // ログエントリを更新
+                        const entry = apiCallLog.find(e => e.id === callId);
+                        if (entry) {
+                            entry.status = response.ok ? 'success' : 'error';
+                            entry.statusCode = response.status;
+                            entry.duration = duration;
+                            entry.endTime = endTime;
+                        }
+                        
+                        updateAPILog();
+                        return response;
+                    })
+                    .catch(error => {
+                        const endTime = Date.now();
+                        const duration = endTime - startTime;
+                        
+                        // エラー情報をログに追加
+                        const entry = apiCallLog.find(e => e.id === callId);
+                        if (entry) {
+                            entry.status = 'error';
+                            entry.error = error.message;
+                            entry.duration = duration;
+                            entry.endTime = endTime;
+                        }
+                        
+                        updateAPILog();
+                        throw error;
+                    });
+            };
+            
+            addAPILogEntry('🟢 APIモニタリングを開始しました', 'system');
+        }
+        
+        function stopAPIMonitoring() {
+            if (!isMonitoring) return;
+            
+            isMonitoring = false;
+            const startBtn = document.getElementById('start-monitoring-btn');
+            const stopBtn = document.getElementById('stop-monitoring-btn');
+            const statusDiv = document.getElementById('api-monitoring-status');
+            
+            // fetch関数を元に戻す
+            if (originalFetch) {
+                window.fetch = originalFetch;
+            }
+            
+            // ボタンの表示を切り替え
+            stopBtn.style.display = 'none';
+            startBtn.style.display = 'block';
+            
+            // ステータスを更新
+            statusDiv.textContent = `🔴 監視停止 (${apiCallCount} calls logged)`;
+            statusDiv.style.color = '#f56565';
+            
+            addAPILogEntry('🔴 APIモニタリングを停止しました', 'system');
+        }
+        
+        function clearAPILog() {
+            apiCallLog = [];
+            apiCallCount = 0;
+            const logDiv = document.getElementById('api-log-display');
+            if (logDiv) {
+                logDiv.innerHTML = 'APIコールがここに表示されます...';
+            }
+            updateMonitoringStatus();
+        }
+        
+        function updateAPILog() {
+            const logDiv = document.getElementById('api-log-display');
+            if (!logDiv || apiCallLog.length === 0) return;
+            
+            const logLines = apiCallLog.slice(0, 8).map(entry => {
+                const time = new Date(entry.startTime).toLocaleTimeString();
+                const url = entry.url.toString().replace(window.location.origin, '');
+                const method = entry.method;
+                
+                let statusIcon = '';
+                let statusText = '';
+                
+                switch (entry.status) {
+                    case 'pending':
+                        statusIcon = '🟡';
+                        statusText = 'PENDING';
+                        break;
+                    case 'success':
+                        statusIcon = '✅';
+                        statusText = `${entry.statusCode} (${entry.duration}ms)`;
+                        break;
+                    case 'error':
+                        statusIcon = '❌';
+                        statusText = entry.error || `${entry.statusCode || 'ERROR'}`;
+                        break;
+                }
+                
+                return `${time} ${statusIcon} ${method} ${url}\n    ${statusText}`;
+            });
+            
+            logDiv.innerHTML = logLines.join('\n\n');
+            
+            // 統計情報を更新
+            updateAPIStatistics();
+            
+            // 自動スクロール（新しいエントリが上にあるので不要だが、エラーが見やすいように最上部へ）
+            logDiv.scrollTop = 0;
+        }
+        
+        function updateAPIStatistics() {
+            const statsDiv = document.getElementById('api-statistics');
+            if (!statsDiv) return;
+            
+            const completedCalls = apiCallLog.filter(entry => entry.status !== 'pending');
+            const successCalls = apiCallLog.filter(entry => entry.status === 'success');
+            const errorCalls = apiCallLog.filter(entry => entry.status === 'error');
+            
+            let averageResponseTime = 0;
+            if (completedCalls.length > 0) {
+                const totalTime = completedCalls.reduce((sum, entry) => sum + (entry.duration || 0), 0);
+                averageResponseTime = Math.round(totalTime / completedCalls.length);
+            }
+            
+            // エラーアラート処理
+            const recentErrors = apiCallLog.filter(entry => 
+                entry.status === 'error' && 
+                (Date.now() - entry.startTime) < 10000 // 過去10秒以内
+            );
+            
+            let alertText = '';
+            if (recentErrors.length >= 3) {
+                alertText = ' ⚠️ 連続エラー検出!';
+                statsDiv.style.background = '#744210'; // 警告色
+                statsDiv.style.color = '#fbbf24';
+            } else if (averageResponseTime > 5000) {
+                alertText = ' ⚠️ 応答時間遅延!';
+                statsDiv.style.background = '#744210'; // 警告色
+                statsDiv.style.color = '#fbbf24';
+            } else {
+                statsDiv.style.background = '#2d3748'; // 通常色
+                statsDiv.style.color = '#a0aec0';
+            }
+            
+            statsDiv.textContent = `統計: 成功 ${successCalls.length}, エラー ${errorCalls.length}, 平均応答時間 ${averageResponseTime}ms${alertText}`;
+        }
+        
+        function updateMonitoringStatus() {
+            const statusDiv = document.getElementById('api-monitoring-status');
+            if (!statusDiv) return;
+            
+            if (isMonitoring) {
+                const pendingCalls = apiCallLog.filter(entry => entry.status === 'pending').length;
+                const totalCalls = apiCallLog.length;
+                statusDiv.textContent = `🟢 監視中... (${totalCalls} calls, ${pendingCalls} pending)`;
+            }
+        }
+        
+        function addAPILogEntry(message, type = 'info') {
+            const logDiv = document.getElementById('api-log-display');
+            if (!logDiv) return;
+            
+            const time = new Date().toLocaleTimeString();
+            const icon = type === 'system' ? '⚙️' : 'ℹ️';
+            
+            const currentContent = logDiv.innerHTML;
+            if (currentContent === 'APIコールがここに表示されます...') {
+                logDiv.innerHTML = `${time} ${icon} ${message}`;
+            } else {
+                logDiv.innerHTML = `${time} ${icon} ${message}\n\n${currentContent}`;
+            }
+        }
+
         // 新規患者フォーム分析機能
         function analyzePatientForm() {
             const resultsDiv = document.getElementById('test-results');
@@ -1455,6 +1757,44 @@ try {
             resultsDiv.textContent = results.join('\n');
         }
         
+        // 重複除外テスト用の関数
+        window.testDuplicateFilter = function() {
+            console.log('=== 重複除外テスト ===');
+            console.log('現在のユーザーのvisitor_id:', window.APP_CONFIG.currentUserVisitorId);
+            console.log('来院者一覧数:', window.APP_CONFIG.companyPatients.length);
+            
+            const duplicates = window.APP_CONFIG.companyPatients.filter(patient => {
+                return patient.visitor_id === window.APP_CONFIG.currentUserVisitorId;
+            });
+            
+            console.log('重複した来院者:', duplicates.length > 0 ? duplicates : '重複なし');
+            
+            if (duplicates.length === 0) {
+                console.log('✅ 重複除外が正常に機能しています');
+            } else {
+                console.log('❌ 重複が残っています');
+            }
+        };
+        
+        // トグルボタンテスト用の関数
+        window.testToggleButtons = function() {
+            console.log('=== トグルボタンテスト ===');
+            const toggles = document.querySelectorAll('.toggle-checkbox');
+            console.log('トグルボタン数:', toggles.length);
+            
+            if (toggles.length > 0) {
+                console.log('✅ トグルボタンが見つかりました');
+                console.log('各ボタンの状態:');
+                toggles.forEach((toggle, index) => {
+                    const visitorId = toggle.getAttribute('data-visitor-id');
+                    const isChecked = toggle.checked;
+                    console.log(`  ${index + 1}. visitor_id: ${visitorId}, 公開: ${isChecked}`);
+                });
+            } else {
+                console.log('❌ トグルボタンが見つかりません');
+            }
+        };
+
         // グローバル関数として公開
         window.createAdvancedDebugPanel = createAdvancedDebugPanel;
         window.searchElement = searchElement;
@@ -1463,26 +1803,33 @@ try {
         window.findAllForms = findAllForms;
         window.findAllInputs = findAllInputs;
         window.findNewPatientElements = findNewPatientElements;
+        window.startAPIMonitoring = startAPIMonitoring;
+        window.stopAPIMonitoring = stopAPIMonitoring;
+        window.clearAPILog = clearAPILog;
+        window.updateAPIStatistics = updateAPIStatistics;
         
         // デバッグヘルプを表示（更新版）
         if (window.APP_CONFIG && window.APP_CONFIG.debugMode) {
-            console.group('🐛 Debug Mode Active');
-            console.log('Available debug functions:');
-            console.log('- showDebug() / hideDebug() - Simple debug panel');
-            console.log('- createAdvancedDebugPanel() - Advanced debug panel');
+            console.group('🐛 デバッグモードアクティブ');
+            console.log('利用可能なデバッグ機能:');
+            console.log('- showDebug() / hideDebug() - シンプルデバッグパネル');
+            console.log('- createAdvancedDebugPanel() - 高度デバッグパネル');
             console.log('- testGasApi(), testSession(), testMedicalForceApi()');
             console.log('- runAllTests()');
-            console.log('- searchElement() - DOM element search');
-            console.log('- updateSystemStatus() - System info refresh');
-            console.log('- analyzePatientForm() - Analyze patient form structure');
-            console.log('- findAllForms() - Find all forms in page');
-            console.log('- findAllInputs() - Find all input elements');
-            console.log('- findNewPatientElements() - Find newPatient related elements');
+            console.log('- searchElement() - DOM要素検索');
+            console.log('- updateSystemStatus() - システム情報更新');
+            console.log('- analyzePatientForm() - 患者フォーム構造解析');
+            console.log('- findAllForms() - ページ内全フォーム検索');
+            console.log('- findAllInputs() - 全入力要素検索');
+            console.log('- findNewPatientElements() - 患者関連要素検索');
+            console.log('- startAPIMonitoring() - APIモニタリング開始');
+            console.log('- stopAPIMonitoring() - APIモニタリング停止');
+            console.log('- clearAPILog() - APIログクリア');
             console.groupEnd();
             
             // デバッグモードの場合、2秒後に高度デバッグパネルを表示
             setTimeout(() => {
-                console.log('🔧 Creating Advanced Debug Panel...');
+                console.log('🔧 高度デバッグパネルを作成中...');
                 createAdvancedDebugPanel();
             }, 2000);
         }

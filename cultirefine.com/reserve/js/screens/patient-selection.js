@@ -135,7 +135,11 @@ export function updatePatientsList() {
         };
         
         // ログインユーザーが既に来院者リストにいないか確認
+        // visitor_idがある場合はvisitor_idで、ない場合は名前で重複チェック
         var userExists = appState.allPatients.some(function(patient) {
+            if (window.APP_CONFIG && window.APP_CONFIG.currentUserVisitorId && patient.id) {
+                return patient.id === window.APP_CONFIG.currentUserVisitorId;
+            }
             return patient.name === currentUser.name;
         });
         
@@ -259,8 +263,14 @@ export function updatePatientsList() {
                 '</div>' +
             '</div>';
 
+        // 親要素のクリックイベントを設定（トグルボタンがクリックされた場合はスキップ）
         patientElement.addEventListener('click', function(patientId) {
-            return function() {
+            return function(e) {
+                // トグルボタンまたはその内部要素がクリックされた場合はスキップ
+                if (e.target.closest('.toggle-switch')) {
+                    return;
+                }
+                
                 var disabled = appState.isPairBookingMode && 
                               appState.selectedPatientsForBooking.length >= 2 && 
                               !appState.selectedPatientsForBooking.some(function(p) { return p.id === patientId; });
@@ -278,10 +288,14 @@ export function updatePatientsList() {
         if (window.APP_CONFIG && window.APP_CONFIG.userRole === 'main') {
             var toggleCheckbox = patientElement.querySelector('.toggle-checkbox');
             if (toggleCheckbox) {
-                toggleCheckbox.addEventListener('change', function(e) {
+                toggleCheckbox.addEventListener('click', function(e) {
                     e.stopPropagation(); // 親要素のクリックイベントを防ぐ
+                });
+                
+                toggleCheckbox.addEventListener('change', function(e) {
                     var visitorId = this.getAttribute('data-visitor-id');
                     var isPublic = this.checked;
+                    console.log('Toggle changed:', visitorId, isPublic); // デバッグ用
                     updateVisitorPublicStatus(visitorId, isPublic);
                 });
             }

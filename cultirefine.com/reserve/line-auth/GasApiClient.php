@@ -757,13 +757,13 @@ class GasApiClient
      */
     public function updateVisitorVisibility(string $companyId, string $visitorId, bool $isPublic): array
     {
+        $path = "api/company/{$companyId}/visitors/{$visitorId}/visibility";
+        
         $requestData = [
-            'path' => "api/company/{$companyId}/visitors/{$visitorId}/visibility",
-            'authorization' => "Bearer {$this->apiKey}",
             'is_public' => $isPublic
         ];
         
-        return $this->request($requestData, 'POST');
+        return $this->makeRequest('POST', $path, $requestData);
     }
     
     /**
