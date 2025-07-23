@@ -141,7 +141,7 @@ class GasApiClient
             }
             
             // その他の情報も追加
-            if (isset($response['ticketInfo'])) {
+            /*if (isset($response['ticketInfo'])) {
                 $normalizedResponse['data']['membership_info']['ticket_balance'] = $response['ticketInfo'];
             }
             
@@ -151,7 +151,7 @@ class GasApiClient
             
             if (isset($response['docsinfo'])) {
                 $normalizedResponse['data']['documents'] = $response['docsinfo'];
-            }
+            }*/
             
             // 施術履歴と利用可能施術は空配列で初期化（必要に応じて後で追加）
             $normalizedResponse['data']['treatment_history'] = [];

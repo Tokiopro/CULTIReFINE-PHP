@@ -69,16 +69,16 @@ try {
         error_log('[DEBUG] GAS API Response: ' . json_encode($debugInfo['gas_api_response']));
     }
     
-    // GAS APIの実際のレスポンス形式に対応
-    if (isset($userInfo['visitor']) && isset($userInfo['company'])) {
-        // ログインユーザーのvisitor_idを取得
-        $currentUserVisitorId = $userInfo['visitor']['visitor_id'] ?? null;
+    // GAS APIの新しいレスポンス形式に対応
+    if (isset($userInfo['data']['membership_info']) && isset($userInfo['data']['user'])) {
+        // ログインユーザーのIDを取得
+        $currentUserVisitorId = $userInfo['data']['user']['id'] ?? null;
         
-        // 実際のGAS APIレスポンスから membership_info 形式に変換
+        // 新しいGAS APIレスポンスから membership_info を取得
         $membershipInfo = [
-            'company_id' => $userInfo['company']['company_id'] ?? null,
-            'company_name' => $userInfo['company']['name'] ?? '不明',
-            'member_type' => $userInfo['visitor']['member_type'] === true ? '本会員' : 'サブ会員'
+            'company_id' => $userInfo['data']['membership_info']['company_id'] ?? null,
+            'company_name' => $userInfo['data']['membership_info']['company_name'] ?? '不明',
+            'member_type' => $userInfo['data']['membership_info']['member_type'] ?? 'サブ会員'
         ];
         
         if (DEBUG_MODE) {
@@ -132,13 +132,13 @@ try {
         }
     } else {
         // GAS APIレスポンスの形式をチェックして適切なエラーメッセージを生成
-        $hasVisitorInfo = isset($userInfo['visitor']);
-        $hasCompanyInfo = isset($userInfo['company']);
+        $hasUserInfo = isset($userInfo['data']['user']);
+        $hasMembershipInfo = isset($userInfo['data']['membership_info']);
         
-        if ($hasVisitorInfo && !$hasCompanyInfo) {
-            $errorMessage = '来院者情報は取得できましたが、会社情報が見つかりません。';
-        } elseif (!$hasVisitorInfo && $hasCompanyInfo) {
-            $errorMessage = '会社情報は取得できましたが、来院者情報が見つかりません。';
+        if ($hasUserInfo && !$hasMembershipInfo) {
+            $errorMessage = 'ユーザー情報は取得できましたが、会員情報が見つかりません。';
+        } elseif (!$hasUserInfo && $hasMembershipInfo) {
+            $errorMessage = '会員情報は取得できましたが、ユーザー情報が見つかりません。';
         } elseif (isset($userInfo['status']) && $userInfo['status'] === 'error') {
             $errorMessage = 'GAS APIエラー: ' . ($userInfo['error']['message'] ?? $userInfo['message'] ?? 'Unknown error');
         } else {
@@ -148,11 +148,11 @@ try {
         // デバッグ: 失敗詳細
         if (DEBUG_MODE) {
             $debugInfo['failure_details'] = [
-                'has_visitor_info' => $hasVisitorInfo,
-                'has_company_info' => $hasCompanyInfo,
+                'has_user_info' => $hasUserInfo,
+                'has_membership_info' => $hasMembershipInfo,
                 'response_keys' => array_keys($userInfo),
-                'visitor_data' => $userInfo['visitor'] ?? null,
-                'company_data' => $userInfo['company'] ?? null,
+                'user_data' => $userInfo['data']['user'] ?? null,
+                'membership_data' => $userInfo['data']['membership_info'] ?? null,
                 'full_user_info' => $userInfo
             ];
             error_log('[DEBUG] Failure details: ' . json_encode($debugInfo['failure_details']));

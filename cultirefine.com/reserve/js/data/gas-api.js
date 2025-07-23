@@ -230,7 +230,6 @@ export async function getAvailableSlots(visitorId, menuId, startDate, dateRange 
     try {
         const params = {
             path: `api/patients/${visitorId}/available-slots`,
-            api_key: 'your_api_key_here', // 実際の環境では適切なAPIキーを設定
             menu_id: menuId,
             date: startDate,
             date_range: dateRange,
@@ -385,8 +384,7 @@ export async function getPatientMenus(visitorId, companyId = null) {
     try {
         // 新しいAPI仕様に合わせてパラメータを設定
         const params = {
-            path: `api/patients/${visitorId}/menus`,
-            api_key: 'your_api_key_here' // 実際の環境では適切なAPIキーを設定
+            path: `api/patients/${visitorId}/menus`
         };
         
         if (companyId) {

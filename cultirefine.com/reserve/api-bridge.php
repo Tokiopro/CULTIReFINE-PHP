@@ -542,35 +542,47 @@ function mapGasUserDataToJs(array $gasData): array
             'chartNumber' => $gasData['patient_info']['chart_number'] ?? '',
         ],
 		//チケット情報
-        'ticketInfo' => array_map(function($ticket) {
+		'ticketInfo' => array_map(function($ticket) {
         return [
             'treatment_id' => $ticket['treatment_id'] ?? '',
             'treatment_name' => $ticket['treatment_name'] ?? '',
             'remaining_count' => $ticket['remaining_count'] ?? 0,
             'used_count' => $ticket['used_count'] ?? 0,
-            'available_count' => max(0, ($ticket['remaining_count'] ?? 0) - ($ticket['used_count'] ?? 0))
+            'available_count' => max(0, ($ticket['remaining_count'] ?? 0) - ($ticket['used_count'] ?? 0)),
+            'last_used_date' => $ticket['last_used_date'] ?? 0
         ];
-    }, $membershipInfo['ticketInfo'] ?? []),
+    }, $gasData['ticketInfo'] ?? []),
 		//書類情報
     'docsinfo' => array_map(function($doc) {
         return [
             'docs_id' => $doc['docs_id'] ?? '',
             'docs_name' => $doc['docs_name'] ?? '',
-            'docs_url' => $doc['docs_url'] ?? ''
+            'docs_url' => $doc['docs_url'] ?? '',
+            'created_at' => $doc['created_at'] ?? '',
+            'treatment_name' => $doc['treatment_name'] ?? '',
+            'notes' => $doc['notes'] ?? ''
         ];
     }, $gasData['docsinfo'] ?? []),
-		//予約履歴
+		//予約履歴情報
     'ReservationHistory' => array_map(function($history) {
         return [
-            'history_id' => $history['history_id'] ?? $history['id'] ?? '',
-            'reservename' => $history['treatment_name'] ?? $history['reservename'] ?? '',
-            'reservedate' => $history['treatment_date'] ?? $history['reservedate'] ?? '',
-            'reservestatus' => $history['status'] ?? $history['reservestatus'] ?? '',
-            'reservepatient' => $history['patient_name'] ?? $history['reservepatient'] ?? ''
+            'history_id' => $history['history_id'] ?? '',
+            'reservename' => $history['reservename'] ?? '',
+            'reservedate' => $history['reservedate'] ?? '',
+            'reservetime' => $history['reservetime'] ?? '',
+            'reservestatus' => $history['reservestatus'] ?? '',
+            'reservepatient' => $history['reservepatient'] ?? '',
+            'patient_id' => $history['patient_id'] ?? '',
+            'patient_name' => $history['patient_name'] ?? '',
+            'visitor_id' => $history['visitor_id'] ?? '',
+            'end_time' => $history['end_time'] ?? '',
+            'created_at' => $history['created_at'] ?? '',
+            'notes' => $history['notes'] ?? '',
+            'company_id' => $history['company_id'] ?? ''
         ];
     }, $gasData['ReservationHistory'] ?? []),
         // 施術履歴
-        'treatmentHistory' => array_map(function($treatment) {
+        /*'treatmentHistory' => array_map(function($treatment) {
             return [
                 'id' => $treatment['id'] ?? '',
                 'treatmentId' => $treatment['treatment_id'] ?? '',
@@ -608,7 +620,7 @@ function mapGasUserDataToJs(array $gasData): array
                 'reason' => $treatment['reason'] ?? null,
             ];
         }, $gasData['available_treatments'] ?? []),
-        
+        */
         // 会員情報
         'membershipInfo' => [
             'isMember' => $gasData['membership_info']['is_member'] ?? false,
@@ -619,12 +631,12 @@ function mapGasUserDataToJs(array $gasData): array
         ],
         
         // 統計情報
-        'statistics' => [
+        /*'statistics' => [
             'totalVisits' => $gasData['statistics']['total_visits'] ?? 0,
             'totalTreatments' => $gasData['statistics']['total_treatments'] ?? [],
             'last30DaysVisits' => $gasData['statistics']['last_30_days_visits'] ?? 0,
             'favoriteTreatment' => $gasData['statistics']['favorite_treatment'] ?? '',
-        ],
+        ],*/
     ];
 }
 
