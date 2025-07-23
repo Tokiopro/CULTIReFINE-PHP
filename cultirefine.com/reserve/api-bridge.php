@@ -581,47 +581,6 @@ function mapGasUserDataToJs(array $gasData): array
             'company_id' => $history['company_id'] ?? ''
         ];
     }, $gasData['ReservationHistory'] ?? []),
-        // 施術履歴
-        /*'treatmentHistory' => array_map(function($treatment) {
-            return [
-                'id' => $treatment['id'] ?? '',
-                'treatmentId' => $treatment['treatment_id'] ?? '',
-                'treatmentName' => $treatment['treatment_name'] ?? '',
-                'treatmentDate' => $treatment['treatment_date'] ?? '',
-                'minIntervalDays' => $treatment['min_interval_days'] ?? 0,
-                'nextAvailableDate' => $treatment['next_available_date'] ?? '',
-            ];
-        }, $gasData['treatment_history'] ?? []),
-        
-        // 今後の予約
-        'upcomingReservations' => array_map(function($reservation) {
-            return [
-                'id' => $reservation['id'] ?? '',
-                'treatmentId' => $reservation['treatment_id'] ?? '',
-                'treatmentName' => $reservation['treatment_name'] ?? '',
-                'reservationDate' => $reservation['reservation_date'] ?? '',
-                'reservationTime' => $reservation['reservation_time'] ?? '',
-                'duration' => $reservation['duration'] ?? '',
-                'price' => $reservation['price'] ?? '',
-                'room' => $reservation['room'] ?? '',
-                'status' => $reservation['status'] ?? '',
-            ];
-        }, $gasData['upcoming_reservations'] ?? []),
-        
-        // 予約可能施術
-        'availableTreatments' => array_map(function($treatment) {
-            return [
-                'treatmentId' => $treatment['treatment_id'] ?? '',
-                'treatmentName' => $treatment['treatment_name'] ?? '',
-                'canBook' => $treatment['can_book'] ?? false,
-                'nextAvailableDate' => $treatment['next_available_date'] ?? '',
-                'price' => $treatment['price'] ?? '',
-                'duration' => $treatment['duration'] ?? '',
-                'reason' => $treatment['reason'] ?? null,
-            ];
-        }, $gasData['available_treatments'] ?? []),
-        */
-        // 会員情報
         'membershipInfo' => [
             'isMember' => $gasData['membership_info']['is_member'] ?? false,
             'memberType' => $gasData['membership_info']['member_type'] ?? '',
@@ -630,13 +589,6 @@ function mapGasUserDataToJs(array $gasData): array
             'ticketBalance' => $gasData['membership_info']['ticket_balance'] ?? [],
         ],
         
-        // 統計情報
-        /*'statistics' => [
-            'totalVisits' => $gasData['statistics']['total_visits'] ?? 0,
-            'totalTreatments' => $gasData['statistics']['total_treatments'] ?? [],
-            'last30DaysVisits' => $gasData['statistics']['last_30_days_visits'] ?? 0,
-            'favoriteTreatment' => $gasData['statistics']['favorite_treatment'] ?? '',
-        ],*/
     ];
 }
 

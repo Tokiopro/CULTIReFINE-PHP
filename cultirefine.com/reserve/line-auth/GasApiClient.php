@@ -70,7 +70,10 @@ class GasApiClient
             }
         }
         
-        if ($result['status'] === 'success') {
+        //if ($result['status'] === 'success') {
+		// 修正後：先に正規化してからstatusをチェック
+$normalizedResult = $this->normalizeGasApiResponse($result);
+if (isset($normalizedResult['status']) && $normalizedResult['status'] === 'success') {
             // 成功時のみキャッシュ
             $this->saveToCache($cacheKey, $result);
             if (defined('DEBUG_MODE') && DEBUG_MODE) {
