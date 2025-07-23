@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Check TypeScript types
+      run: npx tsc --noEmit
+
+    - name: Verify clasp configuration
+      run: |
+        if [ ! -f ".clasp.json" ]; then
+          echo "Error: .clasp.json file not found"
+          exit 1
+        fi
+        echo "clasp configuration found"
+
+    - name: Check source files
+      run: |
+        echo "Checking source files in src/ directory..."
+        file_count=$(find src -name "*.js" -o -name "*.html" | wc -l)
+        echo "Found $file_count source files"
+        if [ $file_count -eq 0 ]; then
+          echo "Error: No source files found in src/ directory"
+          exit 1
+        fi
+
+    # 将来的にESLintを追加する場合はここに追加
+    # - name: Run ESLint
+    #   run: npm run lint
+
+    # 将来的にテストを追加する場合はここに追加
+    # - name: Run tests
+    #   run: npm test

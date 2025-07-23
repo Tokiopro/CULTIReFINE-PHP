@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        max-width: 500px;
+        margin: 0 auto;
+        background-color: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      h2 {
+        color: #333;
+        margin-top: 0;
+      }
+      .step {
+        margin-bottom: 20px;
+        padding: 15px;
+        background-color: #f9f9f9;
+        border-radius: 5px;
+        border-left: 4px solid #4285f4;
+      }
+      .step h3 {
+        margin-top: 0;
+        color: #4285f4;
+      }
+      .button-container {
+        text-align: center;
+        margin-top: 30px;
+      }
+      button {
+        background-color: #4285f4;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        font-size: 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        margin: 0 5px;
+      }
+      button:hover {
+        background-color: #357ae8;
+      }
+      button:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+      .error {
+        color: #d93025;
+        margin-top: 10px;
+      }
+      .success {
+        color: #188038;
+        margin-top: 10px;
+      }
+      code {
+        background-color: #f1f3f4;
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Medical Force API 初期設定</h2>
+      
+      <div class="step">
+        <h3>ステップ 1: シートの初期化</h3>
+        <p>必要なシートとヘッダーを自動作成します。</p>
+        <button id="initButton" onclick="initializeSheets()">シートを初期化</button>
+        <div id="initResult"></div>
+      </div>
+      
+      <div class="step">
+        <h3>ステップ 2: API認証情報の設定</h3>
+        <p>以下の手順で認証情報を設定してください：</p>
+        <ol>
+          <li>スクリプトエディタを開く（拡張機能 → Apps Script）</li>
+          <li>プロジェクトの設定を開く（歯車アイコン）</li>
+          <li>「スクリプト プロパティを追加」をクリック</li>
+          <li>以下のプロパティを追加：
+            <ul>
+              <li><code>MEDICAL_FORCE_API_KEY</code>: APIキー</li>
+              <li><code>CLINIC_ID</code>: クリニックID</li>
+            </ul>
+          </li>
+        </ol>
+      </div>
+      
+      <div class="step">
+        <h3>ステップ 3: 接続テスト</h3>
+        <p>API接続が正しく設定されているか確認します。</p>
+        <button id="testButton" onclick="testConnection()" disabled>接続テスト</button>
+        <div id="testResult"></div>
+      </div>
+      
+      <div class="button-container">
+        <button onclick="google.script.host.close()">閉じる</button>
+      </div>
+    </div>
+    
+    <script>
+      function initializeSheets() {
+        const button = document.getElementById('initButton');
+        const result = document.getElementById('initResult');
+        
+        button.disabled = true;
+        result.innerHTML = '<p>初期化中...</p>';
+        
+        google.script.run
+          .withSuccessHandler(function(response) {
+            if (response.success) {
+              result.innerHTML = '<p class="success">✓ シートの初期化が完了しました</p>';
+              document.getElementById('testButton').disabled = false;
+            } else {
+              result.innerHTML = '<p class="error">✗ エラー: ' + response.error + '</p>';
+            }
+            button.disabled = false;
+          })
+          .withFailureHandler(function(error) {
+            result.innerHTML = '<p class="error">✗ エラー: ' + error + '</p>';
+            button.disabled = false;
+          })
+          .initializeSheets();
+      }
+      
+      function testConnection() {
+        const button = document.getElementById('testButton');
+        const result = document.getElementById('testResult');
+        
+        button.disabled = true;
+        result.innerHTML = '<p>接続テスト中...</p>';
+        
+        google.script.run
+          .withSuccessHandler(function(success) {
+            if (success) {
+              result.innerHTML = '<p class="success">✓ 接続テスト成功！APIが正常に動作しています。</p>';
+            } else {
+              result.innerHTML = '<p class="error">✗ 接続テスト失敗。認証情報を確認してください。</p>';
+            }
+            button.disabled = false;
+          })
+          .withFailureHandler(function(error) {
+            result.innerHTML = '<p class="error">✗ エラー: ' + error + '</p>';
+            button.disabled = false;
+          })
+          .testConnection();
+      }
+    </script>
+  </body>
+</html>

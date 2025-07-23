@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
+  <style>
+    body {
+      padding: 20px;
+      font-family: Arial, sans-serif;
+    }
+    
+    .container {
+      display: flex;
+      gap: 20px;
+      height: 600px;
+    }
+    
+    .left-panel {
+      flex: 1;
+      min-width: 300px;
+    }
+    
+    .right-panel {
+      flex: 2;
+      overflow-y: auto;
+    }
+    
+    .section {
+      margin-bottom: 20px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    
+    .section-title {
+      font-size: 16px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #333;
+    }
+    
+    .category-tree {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      height: 400px;
+      overflow-y: auto;
+      background-color: #f9f9f9;
+    }
+    
+    .category-item {
+      padding: 5px 10px;
+      margin: 2px 0;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: background-color 0.2s;
+    }
+    
+    .category-item:hover {
+      background-color: #e0e0e0;
+    }
+    
+    .category-item.selected {
+      background-color: #4285f4;
+      color: white;
+    }
+    
+    .category-level-1 {
+      margin-left: 0px;
+      font-weight: bold;
+    }
+    
+    .category-level-2 {
+      margin-left: 20px;
+    }
+    
+    .category-level-3 {
+      margin-left: 40px;
+      font-size: 14px;
+    }
+    
+    .menu-list {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+    }
+    
+    .menu-item {
+      padding: 10px;
+      margin: 5px 0;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      background-color: #fff;
+      cursor: move;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .menu-item:hover {
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .menu-item.dragging {
+      opacity: 0.5;
+    }
+    
+    .menu-info {
+      flex: 1;
+    }
+    
+    .menu-name {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    
+    .menu-details {
+      font-size: 12px;
+      color: #666;
+    }
+    
+    .menu-actions {
+      display: flex;
+      gap: 10px;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #555;
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    
+    .form-group textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+    
+    .success-message {
+      background-color: #d4edda;
+      color: #155724;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      display: none;
+    }
+    
+    .error-message {
+      background-color: #f8d7da;
+      color: #721c24;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      display: none;
+    }
+    
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+    
+    .tab-container {
+      border-bottom: 1px solid #ddd;
+      margin-bottom: 20px;
+    }
+    
+    .tab {
+      display: inline-block;
+      padding: 10px 20px;
+      cursor: pointer;
+      background-color: #f0f0f0;
+      border: 1px solid #ddd;
+      border-bottom: none;
+      margin-right: 5px;
+      border-radius: 5px 5px 0 0;
+    }
+    
+    .tab.active {
+      background-color: white;
+      font-weight: bold;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading" class="loading">
+    <img src="https://www.gstatic.com/images/spinner/spinner_48.gif" alt="Loading...">
+    <p>読み込み中...</p>
+  </div>
+  
+  <div id="success-message" class="success-message"></div>
+  <div id="error-message" class="error-message"></div>
+  
+  <div class="tab-container">
+    <div class="tab active" onclick="switchTab('category')">カテゴリ管理</div>
+    <div class="tab" onclick="switchTab('menu')">メニュー管理</div>
+  </div>
+  
+  <!-- カテゴリ管理タブ -->
+  <div id="category-tab" class="tab-content active">
+    <div class="container">
+      <div class="left-panel">
+        <div class="section">
+          <div class="section-title">カテゴリ階層</div>
+          <div id="category-tree" class="category-tree">
+            <!-- カテゴリツリーがここに表示されます -->
+          </div>
+          <div class="button-group">
+            <button class="action" onclick="addCategory()">新規追加</button>
+            <button class="action" onclick="deleteCategory()">削除</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="right-panel">
+        <div class="section">
+          <div class="section-title">カテゴリ詳細</div>
+          <form id="category-form">
+            <div class="form-group">
+              <label for="category-id">カテゴリID</label>
+              <input type="text" id="category-id" readonly>
+            </div>
+            
+            <div class="form-group">
+              <label for="category-level">カテゴリレベル</label>
+              <select id="category-level" onchange="updateParentCategoryOptions()">
+                <option value="大">大カテゴリ</option>
+                <option value="中">中カテゴリ</option>
+                <option value="小">小カテゴリ</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="category-name">カテゴリ名</label>
+              <input type="text" id="category-name" required>
+            </div>
+            
+            <div class="form-group">
+              <label for="parent-category">親カテゴリ</label>
+              <select id="parent-category">
+                <option value="">なし</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="category-order">表示順</label>
+              <input type="number" id="category-order" min="1" value="1">
+            </div>
+            
+            <div class="form-group">
+              <label for="category-active">有効フラグ</label>
+              <select id="category-active">
+                <option value="true">有効</option>
+                <option value="false">無効</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="category-description">説明</label>
+              <textarea id="category-description"></textarea>
+            </div>
+            
+            <div class="button-group">
+              <button type="button" class="action" onclick="saveCategory()">保存</button>
+              <button type="button" class="create" onclick="clearCategoryForm()">クリア</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- メニュー管理タブ -->
+  <div id="menu-tab" class="tab-content">
+    <div class="container">
+      <div class="left-panel">
+        <div class="section">
+          <div class="section-title">カテゴリ選択</div>
+          <div id="menu-category-tree" class="category-tree">
+            <!-- カテゴリツリーがここに表示されます -->
+          </div>
+        </div>
+      </div>
+      
+      <div class="right-panel">
+        <div class="section">
+          <div class="section-title">メニュー一覧</div>
+          <div class="form-group">
+            <input type="text" id="menu-search" placeholder="メニューを検索..." onkeyup="searchMenus()">
+          </div>
+          <div id="menu-list" class="menu-list">
+            <!-- メニュー一覧がここに表示されます -->
+          </div>
+        </div>
+        
+        <!-- メニュー詳細編集フォーム -->
+        <div class="section" id="menu-detail-section" style="display: none;">
+          <div class="section-title">メニュー詳細</div>
+          <form id="menu-form">
+            <input type="hidden" id="menu-id">
+            
+            <div class="form-group">
+              <label for="menu-name">メニュー名</label>
+              <input type="text" id="menu-name" readonly>
+            </div>
+            
+            <div class="form-group">
+              <label for="menu-category">カテゴリ</label>
+              <select id="menu-category">
+                <option value="">未設定</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="menu-ticket-type">チケットタイプ</label>
+              <select id="menu-ticket-type" onchange="updateTicketRequiredField()">
+                <option value="">なし（通常メニュー）</option>
+                <option value="幹細胞">幹細胞チケット</option>
+                <option value="施術">施術チケット</option>
+                <option value="点滴">点滴チケット</option>
+              </select>
+            </div>
+            
+            <div class="form-group" id="ticket-required-group" style="display: none;">
+              <label for="menu-ticket-required">必要チケット数</label>
+              <input type="number" id="menu-ticket-required" min="1" value="1">
+            </div>
+            
+            <div class="form-group">
+              <label for="menu-order">表示順</label>
+              <input type="number" id="menu-order" min="0">
+            </div>
+            
+            <div class="button-group">
+              <button type="button" class="action" onclick="saveMenuDetails()">保存</button>
+              <button type="button" onclick="clearMenuForm()">キャンセル</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    let categories = [];
+    let menus = [];
+    let selectedCategoryId = null;
+    let selectedMenuCategoryId = null;
+    
+    // 初期化
+    window.onload = function() {
+      loadCategories();
+      loadMenus();
+    };
+    
+    // タブ切り替え
+    function switchTab(tabName) {
+      // すべてのタブとコンテンツを非アクティブにする
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      
+      // 選択されたタブをアクティブにする
+      if (tabName === 'category') {
+        document.querySelector('.tab:nth-child(1)').classList.add('active');
+        document.getElementById('category-tab').classList.add('active');
+      } else {
+        document.querySelector('.tab:nth-child(2)').classList.add('active');
+        document.getElementById('menu-tab').classList.add('active');
+        loadMenuCategoryTree();
+      }
+    }
+    
+    // カテゴリ読み込み
+    function loadCategories() {
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(data) {
+          categories = data;
+          renderCategoryTree();
+          showLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          showError('カテゴリの読み込みに失敗しました: ' + error);
+          showLoading(false);
+        })
+        .getMenuCategories();
+    }
+    
+    // メニュー読み込み
+    function loadMenus() {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          menus = data;
+        })
+        .withFailureHandler(function(error) {
+          showError('メニューの読み込みに失敗しました: ' + error);
+        })
+        .getMenusWithCategories();
+    }
+    
+    // カテゴリツリー描画
+    function renderCategoryTree() {
+      const tree = document.getElementById('category-tree');
+      tree.innerHTML = '';
+      
+      // 大カテゴリから順に表示
+      const largeCategories = categories.filter(c => c.level === '大');
+      largeCategories.sort((a, b) => a.order - b.order);
+      
+      largeCategories.forEach(large => {
+        const largeDiv = createCategoryElement(large, 'category-level-1');
+        tree.appendChild(largeDiv);
+        
+        // 中カテゴリ
+        const mediumCategories = categories.filter(c => c.level === '中' && c.parentId === large.id);
+        mediumCategories.sort((a, b) => a.order - b.order);
+        
+        mediumCategories.forEach(medium => {
+          const mediumDiv = createCategoryElement(medium, 'category-level-2');
+          tree.appendChild(mediumDiv);
+          
+          // 小カテゴリ
+          const smallCategories = categories.filter(c => c.level === '小' && c.parentId === medium.id);
+          smallCategories.sort((a, b) => a.order - b.order);
+          
+          smallCategories.forEach(small => {
+            const smallDiv = createCategoryElement(small, 'category-level-3');
+            tree.appendChild(smallDiv);
+          });
+        });
+      });
+    }
+    
+    // カテゴリ要素作成
+    function createCategoryElement(category, className) {
+      const div = document.createElement('div');
+      div.className = 'category-item ' + className;
+      div.textContent = category.name + (category.active ? '' : ' (無効)');
+      div.dataset.categoryId = category.id;
+      div.onclick = function() {
+        selectCategory(category.id);
+      };
+      
+      if (selectedCategoryId === category.id) {
+        div.classList.add('selected');
+      }
+      
+      return div;
+    }
+    
+    // カテゴリ選択
+    function selectCategory(categoryId) {
+      selectedCategoryId = categoryId;
+      
+      // 選択状態を更新
+      document.querySelectorAll('.category-item').forEach(item => {
+        item.classList.remove('selected');
+      });
+      document.querySelector(`[data-category-id="${categoryId}"]`).classList.add('selected');
+      
+      // カテゴリ詳細を表示
+      const category = categories.find(c => c.id === categoryId);
+      if (category) {
+        document.getElementById('category-id').value = category.id;
+        document.getElementById('category-level').value = category.level;
+        document.getElementById('category-name').value = category.name;
+        document.getElementById('parent-category').value = category.parentId || '';
+        document.getElementById('category-order').value = category.order;
+        document.getElementById('category-active').value = category.active.toString();
+        document.getElementById('category-description').value = category.description || '';
+        
+        updateParentCategoryOptions();
+      }
+    }
+    
+    // 親カテゴリオプション更新
+    function updateParentCategoryOptions() {
+      const level = document.getElementById('category-level').value;
+      const parentSelect = document.getElementById('parent-category');
+      parentSelect.innerHTML = '<option value="">なし</option>';
+      
+      let parentCategories = [];
+      if (level === '中') {
+        parentCategories = categories.filter(c => c.level === '大');
+      } else if (level === '小') {
+        parentCategories = categories.filter(c => c.level === '中');
+      }
+      
+      parentCategories.forEach(category => {
+        const option = document.createElement('option');
+        option.value = category.id;
+        option.textContent = category.name;
+        parentSelect.appendChild(option);
+      });
+    }
+    
+    // カテゴリ保存
+    function saveCategory() {
+      const categoryData = {
+        id: document.getElementById('category-id').value,
+        level: document.getElementById('category-level').value,
+        name: document.getElementById('category-name').value,
+        parentId: document.getElementById('parent-category').value,
+        order: parseInt(document.getElementById('category-order').value),
+        active: document.getElementById('category-active').value === 'true',
+        description: document.getElementById('category-description').value
+      };
+      
+      if (!categoryData.name) {
+        showError('カテゴリ名を入力してください');
+        return;
+      }
+      
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showSuccess('カテゴリを保存しました');
+          loadCategories();
+          clearCategoryForm();
+          showLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          showError('カテゴリの保存に失敗しました: ' + error);
+          showLoading(false);
+        })
+        .saveMenuCategory(categoryData);
+    }
+    
+    // カテゴリ追加
+    function addCategory() {
+      clearCategoryForm();
+      // 新規IDを生成
+      const newId = 'CAT' + String(categories.length + 1).padStart(3, '0');
+      document.getElementById('category-id').value = newId;
+    }
+    
+    // カテゴリ削除
+    function deleteCategory() {
+      if (!selectedCategoryId) {
+        showError('削除するカテゴリを選択してください');
+        return;
+      }
+      
+      if (!confirm('選択したカテゴリを削除しますか？')) {
+        return;
+      }
+      
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showSuccess('カテゴリを削除しました');
+          loadCategories();
+          clearCategoryForm();
+          showLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          showError('カテゴリの削除に失敗しました: ' + error);
+          showLoading(false);
+        })
+        .deleteMenuCategory(selectedCategoryId);
+    }
+    
+    // フォームクリア
+    function clearCategoryForm() {
+      document.getElementById('category-form').reset();
+      document.getElementById('category-id').value = '';
+      selectedCategoryId = null;
+      document.querySelectorAll('.category-item').forEach(item => {
+        item.classList.remove('selected');
+      });
+    }
+    
+    // メニュー用カテゴリツリー読み込み
+    function loadMenuCategoryTree() {
+      const tree = document.getElementById('menu-category-tree');
+      tree.innerHTML = '';
+      
+      // 全メニュー表示オプション
+      const allDiv = document.createElement('div');
+      allDiv.className = 'category-item category-level-1';
+      allDiv.textContent = 'すべてのメニュー';
+      allDiv.onclick = function() {
+        selectMenuCategory(null);
+      };
+      tree.appendChild(allDiv);
+      
+      // カテゴリツリー表示
+      const largeCategories = categories.filter(c => c.level === '大' && c.active);
+      largeCategories.sort((a, b) => a.order - b.order);
+      
+      largeCategories.forEach(large => {
+        const largeDiv = createMenuCategoryElement(large, 'category-level-1');
+        tree.appendChild(largeDiv);
+        
+        const mediumCategories = categories.filter(c => c.level === '中' && c.parentId === large.id && c.active);
+        mediumCategories.sort((a, b) => a.order - b.order);
+        
+        mediumCategories.forEach(medium => {
+          const mediumDiv = createMenuCategoryElement(medium, 'category-level-2');
+          tree.appendChild(mediumDiv);
+          
+          const smallCategories = categories.filter(c => c.level === '小' && c.parentId === medium.id && c.active);
+          smallCategories.sort((a, b) => a.order - b.order);
+          
+          smallCategories.forEach(small => {
+            const smallDiv = createMenuCategoryElement(small, 'category-level-3');
+            tree.appendChild(smallDiv);
+          });
+        });
+      });
+    }
+    
+    // メニュー用カテゴリ要素作成
+    function createMenuCategoryElement(category, className) {
+      const div = document.createElement('div');
+      div.className = 'category-item ' + className;
+      div.textContent = category.name;
+      div.dataset.categoryId = category.id;
+      div.onclick = function() {
+        selectMenuCategory(category.id);
+      };
+      
+      if (selectedMenuCategoryId === category.id) {
+        div.classList.add('selected');
+      }
+      
+      return div;
+    }
+    
+    // メニューカテゴリ選択
+    function selectMenuCategory(categoryId) {
+      selectedMenuCategoryId = categoryId;
+      
+      // 選択状態を更新
+      document.querySelectorAll('#menu-category-tree .category-item').forEach(item => {
+        item.classList.remove('selected');
+      });
+      
+      if (categoryId) {
+        document.querySelector(`#menu-category-tree [data-category-id="${categoryId}"]`).classList.add('selected');
+      } else {
+        document.querySelector('#menu-category-tree .category-item').classList.add('selected');
+      }
+      
+      renderMenuList();
+    }
+    
+    // メニュー一覧表示
+    function renderMenuList() {
+      const menuList = document.getElementById('menu-list');
+      menuList.innerHTML = '';
+      
+      let filteredMenus = menus;
+      if (selectedMenuCategoryId) {
+        filteredMenus = menus.filter(m => m.categoryId === selectedMenuCategoryId);
+      }
+      
+      // 表示順でソート
+      filteredMenus.sort((a, b) => (a.order || 999) - (b.order || 999));
+      
+      filteredMenus.forEach((menu, index) => {
+        const menuDiv = createMenuElement(menu, index);
+        menuList.appendChild(menuDiv);
+      });
+      
+      if (filteredMenus.length === 0) {
+        menuList.innerHTML = '<p style="text-align: center; color: #999;">メニューがありません</p>';
+      }
+    }
+    
+    // メニュー要素作成
+    function createMenuElement(menu, index) {
+      const div = document.createElement('div');
+      div.className = 'menu-item';
+      div.draggable = true;
+      div.dataset.menuId = menu.id;
+      div.dataset.index = index;
+      
+      const infoDiv = document.createElement('div');
+      infoDiv.className = 'menu-info';
+      
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'menu-name';
+      nameDiv.textContent = menu.name;
+      
+      const detailsDiv = document.createElement('div');
+      detailsDiv.className = 'menu-details';
+      let detailsText = `カテゴリ: ${menu.categoryName || '未設定'} | 表示順: ${menu.order || '未設定'}`;
+      if (menu.ticketType) {
+        detailsText += ` | チケット: ${menu.ticketType}`;
+      }
+      detailsDiv.textContent = detailsText;
+      
+      infoDiv.appendChild(nameDiv);
+      infoDiv.appendChild(detailsDiv);
+      
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'menu-actions';
+      
+      const editButton = document.createElement('button');
+      editButton.textContent = '編集';
+      editButton.className = 'action';
+      editButton.onclick = function() {
+        editMenu(menu.id);
+      };
+      
+      actionsDiv.appendChild(editButton);
+      
+      div.appendChild(infoDiv);
+      div.appendChild(actionsDiv);
+      
+      // ドラッグ&ドロップイベント
+      div.ondragstart = function(e) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', this.innerHTML);
+        e.dataTransfer.setData('menuId', menu.id);
+        this.classList.add('dragging');
+      };
+      
+      div.ondragend = function(e) {
+        this.classList.remove('dragging');
+      };
+      
+      div.ondragover = function(e) {
+        if (e.preventDefault) {
+          e.preventDefault();
+        }
+        e.dataTransfer.dropEffect = 'move';
+        return false;
+      };
+      
+      div.ondrop = function(e) {
+        if (e.stopPropagation) {
+          e.stopPropagation();
+        }
+        
+        const draggedMenuId = e.dataTransfer.getData('menuId');
+        if (draggedMenuId !== menu.id) {
+          reorderMenus(draggedMenuId, menu.id);
+        }
+        
+        return false;
+      };
+      
+      return div;
+    }
+    
+    // メニュー順序変更
+    function reorderMenus(draggedMenuId, targetMenuId) {
+      // ここでメニューの順序を更新する処理を実装
+      showSuccess('メニューの順序を更新しました');
+      // 実際の更新処理を追加
+    }
+    
+    // メニュー編集
+    function editMenu(menuId) {
+      const menu = menus.find(m => m.id === menuId);
+      if (!menu) return;
+      
+      // フォームに値をセット
+      document.getElementById('menu-id').value = menu.id;
+      document.getElementById('menu-name').value = menu.name;
+      document.getElementById('menu-category').value = menu.categoryId || '';
+      document.getElementById('menu-ticket-type').value = menu.ticketType || '';
+      document.getElementById('menu-ticket-required').value = menu.requiredTickets || 1;
+      document.getElementById('menu-order').value = menu.order || '';
+      
+      // カテゴリオプションを更新
+      updateMenuCategoryOptions();
+      
+      // チケット必要数フィールドの表示/非表示
+      updateTicketRequiredField();
+      
+      // 詳細セクションを表示
+      document.getElementById('menu-detail-section').style.display = 'block';
+    }
+    
+    // メニュー検索
+    function searchMenus() {
+      const searchText = document.getElementById('menu-search').value.toLowerCase();
+      const menuItems = document.querySelectorAll('.menu-item');
+      
+      menuItems.forEach(item => {
+        const menuName = item.querySelector('.menu-name').textContent.toLowerCase();
+        if (menuName.includes(searchText)) {
+          item.style.display = 'flex';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    }
+    
+    // メニューフォームクリア
+    function clearMenuForm() {
+      document.getElementById('menu-form').reset();
+      document.getElementById('menu-detail-section').style.display = 'none';
+    }
+    
+    // チケット必要数フィールドの表示/非表示
+    function updateTicketRequiredField() {
+      const ticketType = document.getElementById('menu-ticket-type').value;
+      const ticketRequiredGroup = document.getElementById('ticket-required-group');
+      
+      if (ticketType && ticketType !== '') {
+        ticketRequiredGroup.style.display = 'block';
+      } else {
+        ticketRequiredGroup.style.display = 'none';
+      }
+    }
+    
+    // メニューカテゴリオプション更新
+    function updateMenuCategoryOptions() {
+      const select = document.getElementById('menu-category');
+      select.innerHTML = '<option value="">未設定</option>';
+      
+      // カテゴリを階層的に追加
+      const largeCategories = categories.filter(c => c.level === '大' && c.active);
+      largeCategories.sort((a, b) => a.order - b.order);
+      
+      largeCategories.forEach(large => {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = large.name;
+        
+        // 大カテゴリ自体も選択可能
+        const largeOption = document.createElement('option');
+        largeOption.value = large.id;
+        largeOption.textContent = large.name;
+        optgroup.appendChild(largeOption);
+        
+        // 中カテゴリ
+        const mediumCategories = categories.filter(c => c.level === '中' && c.parentId === large.id && c.active);
+        mediumCategories.sort((a, b) => a.order - b.order);
+        
+        mediumCategories.forEach(medium => {
+          const mediumOption = document.createElement('option');
+          mediumOption.value = medium.id;
+          mediumOption.textContent = '　' + medium.name;
+          optgroup.appendChild(mediumOption);
+          
+          // 小カテゴリ
+          const smallCategories = categories.filter(c => c.level === '小' && c.parentId === medium.id && c.active);
+          smallCategories.sort((a, b) => a.order - b.order);
+          
+          smallCategories.forEach(small => {
+            const smallOption = document.createElement('option');
+            smallOption.value = small.id;
+            smallOption.textContent = '　　' + small.name;
+            optgroup.appendChild(smallOption);
+          });
+        });
+        
+        select.appendChild(optgroup);
+      });
+    }
+    
+    // メニュー詳細保存
+    function saveMenuDetails() {
+      const menuData = {
+        menuId: document.getElementById('menu-id').value,
+        categoryId: document.getElementById('menu-category').value,
+        ticketType: document.getElementById('menu-ticket-type').value,
+        requiredTickets: parseInt(document.getElementById('menu-ticket-required').value) || 1,
+        order: parseInt(document.getElementById('menu-order').value) || 999
+      };
+      
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showSuccess('メニュー情報を更新しました');
+          loadMenus();
+          clearMenuForm();
+          showLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          showError('メニューの更新に失敗しました: ' + error);
+          showLoading(false);
+        })
+        .updateMenuDetails(menuData);
+    }
+    
+    // ローディング表示
+    function showLoading(show) {
+      document.getElementById('loading').style.display = show ? 'block' : 'none';
+    }
+    
+    // 成功メッセージ表示
+    function showSuccess(message) {
+      const successDiv = document.getElementById('success-message');
+      successDiv.textContent = message;
+      successDiv.style.display = 'block';
+      setTimeout(() => {
+        successDiv.style.display = 'none';
+      }, 3000);
+    }
+    
+    // エラーメッセージ表示
+    function showError(message) {
+      const errorDiv = document.getElementById('error-message');
+      errorDiv.textContent = message;
+      errorDiv.style.display = 'block';
+      setTimeout(() => {
+        errorDiv.style.display = 'none';
+      }, 5000);
+    }
+  </script>
+</body>
+</html>
