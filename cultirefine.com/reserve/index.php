@@ -69,6 +69,35 @@ try {
         error_log('[DEBUG] GAS API Response: ' . json_encode($debugInfo['gas_api_response']));
     }
     
+    // GAS APIのレスポンス形式を確認して変換
+    // 古い形式（visitor, company）の場合は新しい形式に変換
+    if (isset($userInfo['visitor']) && isset($userInfo['company'])) {
+        // 古い形式を新しい形式に変換
+        $userInfo = [
+            'status' => 'success',
+            'data' => [
+                'user' => [
+                    'id' => $userInfo['visitor']['visitor_id'],
+                    'name' => $userInfo['visitor']['visitor_name'],
+                    'member_type' => $userInfo['visitor']['member_type'] ?? true
+                ],
+                'membership_info' => [
+                    'company_id' => $userInfo['company']['company_id'],
+                    'company_name' => $userInfo['company']['name'],
+                    'plan' => $userInfo['company']['plan'] ?? '',
+                    'member_type' => $userInfo['visitor']['member_type'] ? '本会員' : 'サブ会員',
+                    'tickets' => $userInfo['ticketInfo'] ?? []
+                ],
+                'documents' => $userInfo['docsinfo'] ?? [],
+                'reservation_history' => $userInfo['ReservationHistory'] ?? []
+            ]
+        ];
+        
+        if (DEBUG_MODE) {
+            error_log('[DEBUG] Converted old GAS API format to new format');
+        }
+    }
+    
     // GAS APIの新しいレスポンス形式に対応
     if (isset($userInfo['data']['membership_info']) && isset($userInfo['data']['user'])) {
         // ログインユーザーのIDを取得
