@@ -239,14 +239,16 @@ export async function getAvailableSlots(visitorId, menuId, startDate, dateRange 
         };
         
         // api-bridge.php経由でGAS APIを呼び出す
-        const response = await fetch(API_BASE_URL, {
+        const url = new URL(API_BASE_URL);
+        url.searchParams.set('action', 'getAvailableSlots');
+        
+        const response = await fetch(url.toString(), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             credentials: 'same-origin',
             body: JSON.stringify({
-                action: 'getAvailableSlots',
                 params: params
             })
         });
@@ -392,14 +394,16 @@ export async function getPatientMenus(visitorId, companyId = null) {
         }
         
         // api-bridge.php経由でGAS APIを呼び出す
-        const response = await fetch(API_BASE_URL, {
+        const url = new URL(API_BASE_URL);
+        url.searchParams.set('action', 'getPatientMenus');
+        
+        const response = await fetch(url.toString(), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             credentials: 'same-origin',
             body: JSON.stringify({
-                action: 'getPatientMenus',
                 params: params
             })
         });

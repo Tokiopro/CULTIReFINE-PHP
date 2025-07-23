@@ -32,15 +32,15 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
         const data = result.data;
         container.innerHTML = '';
         
-        // 患者情報表示
+        // 患者情報表示（新形式対応）
         if (data.patient_info || data.visitor) {
             const infoElement = createPatientInfoElement(data);
             container.appendChild(infoElement);
         }
         
-        // メニュー表示
-        const menuCategories = data.menu_categories || data.menus;
-        if (menuCategories && Object.keys(menuCategories).length > 0) {
+        // メニュー表示（新形式のcategories配列に対応）
+        const menuCategories = data.categories || data.menu_categories || data.menus;
+        if (menuCategories && (Array.isArray(menuCategories) ? menuCategories.length > 0 : Object.keys(menuCategories).length > 0)) {
             const menuElement = createMenuAccordion(menuCategories, data.recommended_category, patientId, onSelectCallback);
             container.appendChild(menuElement);
         } else {
@@ -63,29 +63,45 @@ function createPatientInfoElement(data) {
     
     // 新・旧両方の形式に対応
     const patientInfo = data.patient_info || data.visitor;
-    html += '<p>名前: ' + (patientInfo.name || '---') + '</p>';
+    const companyInfo = data.company_info || data.company;
     
-    if (patientInfo.company_id || data.company) {
-        const companyName = data.company ? data.company.name : patientInfo.company_id;
-        html += '<p>会社: ' + companyName;
-        if (data.company && data.company.plan) {
-            html += ' (' + data.company.plan + ')';
+    if (patientInfo && patientInfo.visitor_id) {
+        html += '<p>患者ID: ' + patientInfo.visitor_id + '</p>';
+    }
+    
+    // 会社情報表示（新形式対応）
+    if (companyInfo) {
+        html += '<p>会社: ' + (companyInfo.name || companyInfo.company_name || '---');
+        if (companyInfo.plan) {
+            html += ' (' + companyInfo.plan + ')';
         }
         html += '</p>';
     }
     
-    // 来院履歴表示
-    if (data.visit_history) {
-        html += '<p>来院履歴: ';
-        if (data.visit_history.has_visits) {
-            html += data.visit_history.visit_count + '回 (最終: ' + data.visit_history.last_visit_date + ')';
-        } else {
-            html += '初回来院';
+    // 来院履歴表示（新形式対応）
+    if (patientInfo) {
+        if (patientInfo.has_visit_history !== undefined) {
+            // 新形式
+            html += '<p>来院履歴: ';
+            if (patientInfo.has_visit_history) {
+                html += patientInfo.visit_count_6months + '回 (最終: ' + patientInfo.last_visit_date + ')';
+            } else {
+                html += '初回来院';
+            }
+            html += '</p>';
+        } else if (data.visit_history) {
+            // 旧形式（後方互換性）
+            html += '<p>来院履歴: ';
+            if (data.visit_history.has_visits) {
+                html += data.visit_history.visit_count + '回 (最終: ' + data.visit_history.last_visit_date + ')';
+            } else {
+                html += '初回来院';
+            }
+            html += '</p>';
         }
-        html += '</p>';
     }
     
-    // チケット残数表示
+    // チケット残数表示（新形式対応）
     const ticketBalance = data.ticket_balance || data.ticketBalance;
     if (ticketBalance && Object.keys(ticketBalance).length > 0) {
         html += '<div class="mt-2"><strong>チケット残数:</strong>';
@@ -116,8 +132,17 @@ function createPatientInfoElement(data) {
 function createMenuAccordion(menuCategories, recommendedCategory, patientId, onSelectCallback) {
     const accordionDiv = createElement('div', 'space-y-2');
     
-    // 新形式の場合
-    if (menuCategories.first_time_menus || menuCategories.repeat_menus) {
+    // 新形式のcategories配列の場合
+    if (Array.isArray(menuCategories)) {
+        menuCategories.forEach(category => {
+            if (category.menus && category.menus.length > 0) {
+                const categoryDiv = createCategoryAccordion(category, patientId, onSelectCallback);
+                accordionDiv.appendChild(categoryDiv);
+            }
+        });
+    }
+    // 中間形式（first_time_menus/repeat_menus）の場合  
+    else if (menuCategories.first_time_menus || menuCategories.repeat_menus) {
         // 推奨カテゴリを先に表示
         const categoryOrder = recommendedCategory === 'first_time_menus' 
             ? ['first_time_menus', 'repeat_menus']
@@ -135,8 +160,9 @@ function createMenuAccordion(menuCategories, recommendedCategory, patientId, onS
                 accordionDiv.appendChild(categoryDiv);
             }
         });
-    } else {
-        // 旧形式の場合
+    } 
+    // 旧形式の場合
+    else {
         Object.entries(menuCategories).forEach(([majorCategory, middleCategories]) => {
             const majorDiv = createMajorCategoryAccordion(majorCategory, middleCategories, patientId, onSelectCallback);
             accordionDiv.appendChild(majorDiv);
@@ -147,7 +173,41 @@ function createMenuAccordion(menuCategories, recommendedCategory, patientId, onS
 }
 
 /**
- * 新形式のカテゴリアコーディオンを作成
+ * 新形式のカテゴリアコーディオンを作成（categories配列用）
+ */
+function createCategoryAccordion(category, patientId, onSelectCallback) {
+    const categoryDiv = createElement('div', 'border border-gray-200 rounded-lg');
+    const categoryId = 'cat-' + category.category_id;
+    const contentId = 'content-' + categoryId;
+    
+    // ヘッダー
+    const headerButton = createElement('button', 'w-full px-4 py-3 text-left font-medium hover:bg-gray-50 flex justify-between items-center');
+    headerButton.innerHTML = category.category_name + '<span class="accordion-arrow">▼</span>';
+    headerButton.onclick = () => toggleMenuAccordion(categoryId, contentId);
+    headerButton.id = categoryId;
+    
+    // コンテンツ
+    const contentDiv = createElement('div', 'hidden px-4 py-2');
+    contentDiv.id = contentId;
+    
+    // メニューアイテムを直接追加
+    const itemsDiv = createElement('div', 'space-y-2');
+    category.menus.forEach(menu => {
+        if (menu.should_display) {
+            const menuItem = createMenuItem(menu, patientId, onSelectCallback);
+            itemsDiv.appendChild(menuItem);
+        }
+    });
+    
+    contentDiv.appendChild(itemsDiv);
+    categoryDiv.appendChild(headerButton);
+    categoryDiv.appendChild(contentDiv);
+    
+    return categoryDiv;
+}
+
+/**
+ * 中間形式のカテゴリアコーディオンを作成
  */
 function createNewFormatCategoryAccordion(categoryName, subCategories, patientId, onSelectCallback) {
     const categoryDiv = createElement('div', 'border border-gray-200 rounded-lg');
@@ -265,68 +325,75 @@ function createMiddleCategoryAccordion(categoryName, smallCategories, patientId,
  * メニューアイテムを作成
  */
 function createMenuItem(menu, patientId, onSelectCallback) {
-    // 新形式と旧形式の両方に対応
+    // 新形式に対応（旧形式との互換性も維持）
     const menuId = menu.menu_id || menu.id;
-    const menuName = menu.menu_name || menu.name;
+    const menuName = menu.name || menu.menu_name;
     const duration = menu.duration_minutes || menu.duration;
-    const canReserve = menu.is_available !== undefined ? menu.is_available : menu.canReserve;
+    const canReserve = menu.can_reserve !== undefined ? menu.can_reserve : (menu.is_available !== undefined ? menu.is_available : menu.canReserve);
+    const price = menu.price;
     
-    const itemDiv = createElement('div', 'p-2 rounded cursor-pointer transition-all ' + 
+    const itemDiv = createElement('div', 'p-3 rounded cursor-pointer transition-all ' + 
         (canReserve ? 'bg-white hover:bg-blue-50 border border-gray-200' : 'bg-gray-100 opacity-60 cursor-not-allowed'));
     
     let html = '<div class="flex justify-between items-start">';
     html += '<div class="flex-1">';
     html += '<div class="font-medium">' + menuName + '</div>';
+    
+    // メニュータイプ表示（新形式）
+    if (menu.menu_type) {
+        html += '<div class="text-xs text-blue-600 mb-1">' + menu.menu_type;
+        if (menu.is_first_time) {
+            html += ' (初回限定)';
+        }
+        html += '</div>';
+    }
+    
     html += '<div class="text-sm text-gray-600">';
     html += '時間: ' + duration + '分';
     
-    // 新形式のチケット情報
-    if (menu.requires_ticket) {
-        const ticketTypeLabels = {
-            'stem_cell': '幹細胞',
-            'treatment': '施術',
-            'drip': '点滴'
-        };
-        const ticketLabel = ticketTypeLabels[menu.ticket_type] || menu.ticket_type;
-        html += ' | ' + ticketLabel + 'チケット: ' + menu.ticket_consumption + '枚';
-    } else if (menu.ticketType) {
-        // 旧形式
-        html += ' | ' + menu.ticketType + 'チケット: ' + menu.requiredTickets + '枚';
-    } else if (menu.price) {
-        html += ' | ¥' + menu.price.toLocaleString();
+    // 価格表示
+    if (price) {
+        html += ' | ¥' + price.toLocaleString();
     }
     
-    // カテゴリ表示（新形式）
-    if (menu.category) {
-        html += ' | ' + menu.category;
+    // チケットメニューの場合
+    if (menu.is_ticket_menu) {
+        html += ' | チケットメニュー';
     }
     
-    // 利用回数（旧形式）
-    if (menu.usageCount > 0) {
-        html += ' | 利用回数: ' + menu.usageCount + '回';
+    // 利用回数表示（新形式）
+    if (menu.usage_count !== undefined) {
+        html += ' | 利用回数: ' + menu.usage_count + '回';
     }
     
     html += '</div>';
     
-    // 説明（新形式）
+    // 説明表示（新形式）
     if (menu.description) {
         html += '<div class="text-xs text-gray-600 mt-1">' + menu.description + '</div>';
     }
     
-    // 利用不可理由
+    // 予約不可理由表示
     if (!canReserve) {
-        const reason = menu.availability_reason || menu.reason;
+        const reason = menu.reason || menu.availability_reason;
         if (reason) {
-            html += '<div class="text-xs text-red-600 mt-1">※ ' + reason;
-            if (menu.nextAvailableDate) {
-                const date = new Date(menu.nextAvailableDate);
-                html += ' (次回可能日: ' + date.toLocaleDateString('ja-JP') + ')';
-            }
-            html += '</div>';
+            html += '<div class="text-xs text-red-600 mt-1">※ ' + reason + '</div>';
+        } else {
+            html += '<div class="text-xs text-red-600 mt-1">※ 現在予約できません</div>';
         }
     }
     
     html += '</div>';
+    
+    // 予約可能ステータス表示
+    html += '<div class="ml-2 text-right">';
+    if (canReserve) {
+        html += '<span class="text-xs text-green-600 bg-green-100 px-2 py-1 rounded">予約可</span>';
+    } else {
+        html += '<span class="text-xs text-red-600 bg-red-100 px-2 py-1 rounded">予約不可</span>';
+    }
+    html += '</div>';
+    
     html += '</div>';
     
     itemDiv.innerHTML = html;
