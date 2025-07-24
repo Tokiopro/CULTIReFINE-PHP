@@ -16,21 +16,36 @@ define('LINE_CALLBACK_URL', getLineCallbackUrl());
 // セッション設定
 define('SESSION_LIFETIME', 3600); // 1時間
 
-// セッションの初期設定
+// セッションの初期設定（一度だけ実行）
 if (session_status() === PHP_SESSION_NONE) {
-    // セッションクッキーの設定
-    ini_set('session.cookie_lifetime', SESSION_LIFETIME);
-    ini_set('session.gc_maxlifetime', SESSION_LIFETIME);
-    ini_set('session.cookie_httponly', true);
-    ini_set('session.cookie_samesite', 'Lax');
+    // HTTPS環境の確認
+    $isSecure = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ||
+                (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
     
-    // HTTPSの場合はセキュアクッキーを使用
-    if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
-        ini_set('session.cookie_secure', true);
-    }
+    // セッションパラメータを設定
+    $sessionParams = [
+        'lifetime' => SESSION_LIFETIME,
+        'path' => '/',
+        'domain' => '',
+        'secure' => $isSecure,
+        'httponly' => true,
+        'samesite' => 'Lax'
+    ];
+    
+    // セッションクッキーパラメータを設定
+    session_set_cookie_params($sessionParams);
+    
+    // セッションのガベージコレクション設定
+    ini_set('session.gc_maxlifetime', SESSION_LIFETIME);
     
     // セッションを開始
     session_start();
+    
+    // デバッグ情報
+    if (defined('DEBUG_MODE') && DEBUG_MODE) {
+        error_log('[Config] Session started with ID: ' . session_id());
+        error_log('[Config] Session cookie params: ' . json_encode($sessionParams));
+    }
 }
 
 // GAS API設定
@@ -65,12 +80,9 @@ foreach ($requiredConfigs as $name => $value) {
     }
 }
 
-// セッション開始
+// セッション開始の重複チェック（既に上で開始済みなのでここでは何もしない）
 if (session_status() == PHP_SESSION_NONE) {
-    session_start([
-        'cookie_lifetime' => SESSION_LIFETIME,
-        'cookie_httponly' => true,
-        'cookie_secure' => true,
-        'cookie_samesite' => 'Lax'
-    ]);
+    // このブロックは通常実行されない（既にセッション開始済みのため）
+    error_log('[Config] WARNING: Session was not started, starting now');
+    session_start();
 }

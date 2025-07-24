@@ -1,4 +1,12 @@
 <?php
+// セッションを最初に開始（config.phpより前に）
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// セッションIDを記録
+$callbackSessionId = session_id();
+
 require_once 'config.php';
 require_once 'url-helper.php';
 require_once 'LineAuth.php';
@@ -7,13 +15,26 @@ require_once 'logger.php';
 
 $logger = new Logger();
 
+// セッションIDの確認
+$logger->info('Callback開始 - セッション情報', [
+    'callback_session_id' => $callbackSessionId,
+    'current_session_id' => session_id(),
+    'session_status' => session_status(),
+    'has_oauth_state' => isset($_SESSION['oauth_state'])
+]);
+
 // エラーハンドリング
 if (isset($_GET['error'])) {
     die('認証エラー: ' . htmlspecialchars($_GET['error']));
 }
 
 // state検証
-if (!isset($_GET['state']) || $_GET['state'] !== $_SESSION['oauth_state']) {
+if (!isset($_GET['state']) || !isset($_SESSION['oauth_state']) || $_GET['state'] !== $_SESSION['oauth_state']) {
+    $logger->error('State検証失敗', [
+        'get_state' => $_GET['state'] ?? 'not_set',
+        'session_oauth_state' => $_SESSION['oauth_state'] ?? 'not_set',
+        'session_id' => session_id()
+    ]);
     die('不正なリクエストです');
 }
 
@@ -51,8 +72,14 @@ $logger->info('LINE認証コールバック開始', [
     'line_user_id' => $lineUserId,
     'display_name' => $displayName,
     'session_id' => session_id(),
-    'session_status' => session_status()
+    'session_status' => session_status(),
+    'session_save_path' => session_save_path(),
+    'session_name' => session_name()
 ]);
+
+// セッションデータを明示的に保存
+session_write_close();
+session_start();
 
 // GAS APIからユーザー情報を取得
 $externalApi = new ExternalApi();
@@ -164,10 +191,16 @@ try {
 if ($userData) {
     // 既存ユーザーの場合
     $_SESSION['user_data'] = $userData;
+    
+    // セッションデータを明示的に保存
+    session_write_close();
+    
     $logger->info('既存ユーザーとして予約ページへリダイレクト', [
         'user_id' => $userData['id'] ?? $userData['visitor_id'] ?? 'unknown',
         'visitor_id' => $userData['visitor_id'] ?? null,
-        'has_user_data' => true
+        'has_user_data' => true,
+        'session_id' => session_id(),
+        'session_data_keys' => array_keys($_SESSION)
     ]);
     
     // 予約ページへリダイレクト
