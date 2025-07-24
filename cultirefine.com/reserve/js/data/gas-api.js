@@ -393,6 +393,8 @@ export async function getPatientMenus(visitorId, companyId = null) {
             params.company_id = companyId;
         }
         
+        console.log('[GAS API] Request params:', params);
+        
         // api-bridge.php経由でGAS APIを呼び出す
         const url = new URL(API_BASE_URL);
         url.searchParams.set('action', 'getPatientMenus');
@@ -408,12 +410,21 @@ export async function getPatientMenus(visitorId, companyId = null) {
             })
         });
         
+        console.log('[GAS API] Response status:', response.status);
+        
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
         const result = await response.json();
+        console.log('[GAS API] Raw API response:', result);
         
+        // エラーチェック（successフィールドがある場合）
+        if (result.success === false) {
+            throw new Error(result.message || result.error?.message || 'メニュー情報の取得に失敗しました');
+        }
+        
+        // statusフィールドでのエラーチェック
         if (result.status === 'error') {
             throw new Error(result.error?.message || 'メニュー情報の取得に失敗しました');
         }
@@ -422,6 +433,12 @@ export async function getPatientMenus(visitorId, companyId = null) {
         
         // 新形式と旧形式の両方に対応
         const data = result.data || result;
+        
+        if (window.DEBUG_MODE) {
+            console.log('[GAS API] Extracted data:', data);
+            console.log('[GAS API] Data type:', typeof data);
+            console.log('[GAS API] Data keys:', data ? Object.keys(data) : 'null');
+        }
         
         return {
             success: true,
@@ -432,7 +449,8 @@ export async function getPatientMenus(visitorId, companyId = null) {
         console.error('[GAS API] Error getting patient menus:', error);
         return {
             success: false,
-            message: error.message || 'メニュー情報の取得に失敗しました'
+            message: error.message || 'メニュー情報の取得に失敗しました',
+            error: error
         };
     }
 }

@@ -573,96 +573,184 @@ function getUserFullInfoByLineId(lineUserId) {
  */
 function getUserFullInfoByLineIdFormatted(lineUserId) {
   try {
-    Logger.log(`getUserFullInfoByLineIdFormatted: 開始 - LINE ID: ${lineUserId}`);
+    Logger.log(`=== getUserFullInfoByLineIdFormatted START ===`);
+    Logger.log(`LINE ID: ${lineUserId}`);
     
     // 1. 基本的なユーザー情報を取得
-    const userInfo = getPhpUserByLineId(lineUserId);
-    if (!userInfo) {
-      Logger.log(`getUserFullInfoByLineIdFormatted: ユーザー情報が見つかりません`);
+    Logger.log(`ステップ1: ユーザー情報取得開始`);
+    let userInfo;
+    try {
+      userInfo = getPhpUserByLineId(lineUserId);
+      if (!userInfo) {
+        Logger.log(`ユーザー情報が見つかりません`);
+        return {
+          error: "指定されたLINE IDのユーザーが見つかりません"
+        };
+      }
+      Logger.log(`ユーザー情報取得成功: ${JSON.stringify(userInfo)}`);
+    } catch (userError) {
+      Logger.log(`ユーザー情報取得エラー: ${userError.toString()}`);
       return {
-        error: "指定されたLINE IDのユーザーが見つかりません"
+        error: "ユーザー情報の取得中にエラーが発生しました: " + userError.message
       };
     }
     
     const visitorId = userInfo.id;
-    Logger.log(`getUserFullInfoByLineIdFormatted: visitor_id取得成功: ${visitorId}`);
+    Logger.log(`visitor_id: ${visitorId}`);
     
     // 2. 会社情報を取得
-    const companyVisitorSheet = SpreadsheetApp.openById(Config.getSpreadsheetId())
-      .getSheetByName(Config.getSheetNames().companyVisitors);
-    
+    Logger.log(`ステップ2: 会社情報取得開始`);
     let companyData = null;
-    if (companyVisitorSheet) {
-      const data = companyVisitorSheet.getDataRange().getValues();
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][2] === visitorId) { // visitor_id列
-          companyData = {
-            '会社ID': data[i][0],
-            '会社名': data[i][1],
-            companyId: data[i][0],
-            companyName: data[i][1],
-            memberType: data[i][6] || 'サブ会員',
-            isPublic: data[i][7]
-          };
-          break;
-        }
-      }
-    }
-    
     let companyInfo = {
       company_id: null,
       name: null,
       plan: null
     };
     
-    let ticketInfo = [];
-    let docsinfo = [];
-    
-    if (companyData) {
-      Logger.log(`getUserFullInfoByLineIdFormatted: 会社情報取得成功: ${companyData.companyId}`);
+    try {
+      const companyVisitorSheet = SpreadsheetApp.openById(Config.getSpreadsheetId())
+        .getSheetByName(Config.getSheetNames().companyVisitors);
       
-      // 会社マスタからプラン情報を取得
-      const companyMasterSheet = SpreadsheetApp.openById(Config.getSpreadsheetId())
-        .getSheetByName('会社マスタ');
-      if (companyMasterSheet) {
-        const companyMasterData = companyMasterSheet.getDataRange().getValues();
-        for (let i = 1; i < companyMasterData.length; i++) {
-          if (companyMasterData[i][0] === companyData.companyId) {
-            companyInfo = {
-              company_id: companyData.companyId,
-              name: companyData.companyName,
-              plan: companyMasterData[i][2] || null
+      if (companyVisitorSheet) {
+        const data = companyVisitorSheet.getDataRange().getValues();
+        Logger.log(`会社別来院者シートのデータ行数: ${data.length}`);
+        
+        for (let i = 1; i < data.length; i++) {
+          if (data[i][2] === visitorId) { // visitor_id列
+            companyData = {
+              companyId: data[i][0],
+              companyName: data[i][1],
+              memberType: data[i][6] || 'サブ会員',
+              isPublic: data[i][7]
             };
+            Logger.log(`会社情報発見: ${JSON.stringify(companyData)}`);
             break;
           }
         }
+        
+        if (companyData) {
+          // 会社マスタからプラン情報を取得
+          try {
+            const companyMasterSheet = SpreadsheetApp.openById(Config.getSpreadsheetId())
+              .getSheetByName('会社マスタ');
+            if (companyMasterSheet) {
+              const companyMasterData = companyMasterSheet.getDataRange().getValues();
+              for (let i = 1; i < companyMasterData.length; i++) {
+                if (companyMasterData[i][0] === companyData.companyId) {
+                  companyInfo = {
+                    company_id: companyData.companyId,
+                    name: companyData.companyName,
+                    plan: companyMasterData[i][2] || null
+                  };
+                  Logger.log(`プラン情報取得成功: ${JSON.stringify(companyInfo)}`);
+                  break;
+                }
+              }
+            }
+          } catch (planError) {
+            Logger.log(`プラン情報取得エラー: ${planError.toString()}`);
+            // エラーでも基本情報は設定
+            companyInfo = {
+              company_id: companyData.companyId,
+              name: companyData.companyName,
+              plan: null
+            };
+          }
+        } else {
+          Logger.log(`visitor_id ${visitorId} に対する会社情報が見つかりません`);
+        }
+      } else {
+        Logger.log(`会社別来院者シートが見つかりません`);
       }
-      
-      // チケット情報を取得
-      const ticketService = new TicketManagementService();
-      const tickets = getPhpTicketBalance(companyData.companyId);
-      ticketInfo = formatTicketInfoForJson(tickets);
-      Logger.log(`formatTicketInfoForJson: チケット情報取得成功: ${JSON.stringify(ticketInfo)}`);
+    } catch (companyError) {
+      Logger.log(`会社情報取得エラー: ${companyError.toString()}`);
+      // エラーでもデフォルト情報で続行
     }
     
-    // 3. 書類情報を取得
-    const documentService = new DocumentService();
-    const documents = documentService.getDocuments({ visitorId: visitorId });
-    Logger.log(`formatDocumentInfoForJson: 書類情報取得成功: ${JSON.stringify(documents)}`);
-    docsinfo = formatDocumentInfoForJson(documents);
+    // 3. チケット情報を取得
+    Logger.log(`ステップ3: チケット情報取得開始`);
+    let ticketInfo = [];
+    if (companyData) {
+      try {
+        Logger.log(`チケット情報取得開始 - companyId: ${companyData.companyId}`);
+        const tickets = getPhpTicketBalance(companyData.companyId);
+        Logger.log(`getPhpTicketBalance結果: ${JSON.stringify(tickets)}`);
+        ticketInfo = formatTicketInfoForJson(tickets);
+        Logger.log(`formatTicketInfoForJson結果: ${JSON.stringify(ticketInfo)}`);
+      } catch (ticketError) {
+        Logger.log(`チケット情報取得エラー: ${ticketError.toString()}`);
+        // デフォルトのチケット情報を設定
+        ticketInfo = [
+          {
+            treatment_id: "stem_cell",
+            treatment_name: "幹細胞",
+            remaining_count: 0,
+            used_count: 0,
+            available_count: 0,
+            last_used_date: null
+          },
+          {
+            treatment_id: "treatment",
+            treatment_name: "施術",
+            remaining_count: 0,
+            used_count: 0,
+            available_count: 0,
+            last_used_date: null
+          },
+          {
+            treatment_id: "drip",
+            treatment_name: "点滴",
+            remaining_count: 0,
+            used_count: 0,
+            available_count: 0,
+            last_used_date: null
+          }
+        ];
+      }
+    } else {
+      Logger.log(`会社情報がないため、チケット情報取得をスキップ`);
+      ticketInfo = [];
+    }
     
-    // 4. 予約履歴を取得
-    const reservationService = new ReservationService();
-    const reservations = reservationService.getReservationsByPatientId(visitorId);
-    const reservationHistory = formatReservationHistoryForJson(reservations);
+    // 4. 書類情報を取得
+    Logger.log(`ステップ4: 書類情報取得開始`);
+    let docsinfo = [];
+    try {
+      const documentService = new DocumentService();
+      const documents = documentService.getDocuments({ visitorId: visitorId });
+      Logger.log(`書類取得結果: ${JSON.stringify(documents)}`);
+      docsinfo = formatDocumentInfoForJson(documents);
+      Logger.log(`書類フォーマット結果: ${JSON.stringify(docsinfo)}`);
+    } catch (docError) {
+      Logger.log(`書類情報取得エラー: ${docError.toString()}`);
+      docsinfo = [];
+    }
     
-    // 5. 指定された形式でレスポンスを構築
-    Logger.log(`formatTicketInfoForJson: チケット情報取得成功: ${ticketInfo}`);
+    // 5. 予約履歴を取得
+    Logger.log(`ステップ5: 予約履歴取得開始`);
+    let reservationHistory = [];
+    try {
+      const reservationService = new ReservationService();
+      const reservations = reservationService.getReservationsByPatientId(visitorId);
+      Logger.log(`予約履歴取得結果: ${JSON.stringify(reservations)}`);
+      reservationHistory = formatReservationHistoryForJson(reservations);
+      Logger.log(`予約履歴フォーマット結果: ${JSON.stringify(reservationHistory)}`);
+    } catch (reservationError) {
+      Logger.log(`予約履歴取得エラー: ${reservationError.toString()}`);
+      reservationHistory = [];
+    }
+    
+    // 6. 指定された形式でレスポンスを構築
+    Logger.log(`ステップ6: レスポンス構築開始`);
+    
+    // member_typeを真偽値に変換
+    const memberType = companyData?.memberType === '本会員' ? true : false;
+    
     const response = {
       visitor: {
         visitor_id: visitorId,
-        visitor_name: userInfo.name || userInfo.visitor_name,
-        member_type: companyData?.memberType || "main"
+        visitor_name: userInfo.name || userInfo.visitor_name || '',
+        member_type: memberType
       },
       company: companyInfo,
       ticketInfo: ticketInfo,
@@ -670,13 +758,102 @@ function getUserFullInfoByLineIdFormatted(lineUserId) {
       ReservationHistory: reservationHistory
     };
     
-    Logger.log(`getUserFullInfoByLineIdFormatted: 正常完了`);
+    Logger.log(`最終レスポンス: ${JSON.stringify(response)}`);
+    Logger.log(`=== getUserFullInfoByLineIdFormatted END (SUCCESS) ===`);
     return response;
     
   } catch (error) {
-    Logger.log(`getUserFullInfoByLineIdFormatted Error: ${error.toString()}`);
+    Logger.log(`=== getUserFullInfoByLineIdFormatted END (ERROR) ===`);
+    Logger.log(`Fatal Error: ${error.toString()}`);
+    Logger.log(`Error Stack: ${error.stack}`);
     return {
       error: error.message || "データ取得中にエラーが発生しました"
+    };
+  }
+}
+
+/**
+ * getUserFullInfoByLineIdFormattedのテスト版
+ * 段階的な実装とデバッグのために使用
+ * @param {string} lineUserId - LINE ユーザーID
+ * @return {Object} フォーマット済みユーザー情報またはエラー
+ */
+function getUserFullInfoByLineIdFormattedTest(lineUserId) {
+  try {
+    Logger.log(`=== getUserFullInfoByLineIdFormattedTest START ===`);
+    Logger.log(`LINE ID: ${lineUserId}`);
+    
+    // ステップ1: 基本的なユーザー情報のみ取得してテスト
+    Logger.log(`ステップ1: ユーザー情報取得開始`);
+    let userInfo;
+    try {
+      userInfo = getPhpUserByLineId(lineUserId);
+      if (!userInfo) {
+        Logger.log(`ユーザー情報が見つかりません`);
+        return {
+          error: "指定されたLINE IDのユーザーが見つかりません"
+        };
+      }
+      Logger.log(`ユーザー情報取得成功: ${JSON.stringify(userInfo)}`);
+    } catch (userError) {
+      Logger.log(`ユーザー情報取得エラー: ${userError.toString()}`);
+      return {
+        error: "ユーザー情報の取得中にエラーが発生しました: " + userError.message
+      };
+    }
+    
+    // テスト段階では基本情報のみ返す
+    const testResponse = {
+      visitor: {
+        visitor_id: userInfo.visitor_id || '',
+        visitor_name: userInfo.name || userInfo.visitor_name || '',
+        member_type: userInfo.member_type || 'sub'
+      },
+      company: {
+        company_id: userInfo.company_id || '',
+        company_name: userInfo.company_name || '',
+        plan_name: userInfo.plan_name || ''
+      },
+      ticketInfo: [
+        {
+          treatment_id: "stem_cell",
+          treatment_name: "幹細胞",
+          remaining_count: 0,
+          used_count: 0,
+          available_count: 0,
+          last_used_date: null
+        },
+        {
+          treatment_id: "treatment", 
+          treatment_name: "施術",
+          remaining_count: 0,
+          used_count: 0,
+          available_count: 0,
+          last_used_date: null
+        },
+        {
+          treatment_id: "drip",
+          treatment_name: "点滴",
+          remaining_count: 0,
+          used_count: 0,
+          available_count: 0,
+          last_used_date: null
+        }
+      ],
+      docsinfo: [],
+      ReservationHistory: []
+    };
+    
+    Logger.log(`テスト版レスポンス: ${JSON.stringify(testResponse)}`);
+    Logger.log(`=== getUserFullInfoByLineIdFormattedTest END (SUCCESS) ===`);
+    return testResponse;
+    
+  } catch (error) {
+    Logger.log(`=== getUserFullInfoByLineIdFormattedTest END (ERROR) ===`);
+    Logger.log(`Test Fatal Error: ${error.toString()}`);
+    Logger.log(`Test Error Stack: ${error.stack}`);
+    return {
+      error: error.message || "テスト版でエラーが発生しました"
     };
   }
 }
@@ -688,35 +865,122 @@ function getUserFullInfoByLineIdFormatted(lineUserId) {
  */
 function formatTicketInfoForJson(tickets) {
   try {
+    Logger.log(`formatTicketInfoForJson 開始 - tickets: ${JSON.stringify(tickets)}`);
+    
+    // 入力値の詳細検証
+    if (tickets === null || tickets === undefined) {
+      Logger.log('formatTicketInfoForJson: ticketsがnullまたはundefined、デフォルト値を使用');
+    } else if (typeof tickets !== 'object') {
+      Logger.log(`formatTicketInfoForJson: tickets型が無効 - ${typeof tickets}, デフォルト値を使用`);
+      tickets = null;
+    } else {
+      Logger.log('formatTicketInfoForJson: 有効なtickets オブジェクトを受信');
+    }
+    
+    // ticketsがnullまたはundefinedの場合のデフォルト値
+    const defaultTickets = {
+      stem_cell: { balance: 0, used: 0, last_used_date: null },
+      treatment: { balance: 0, used: 0, last_used_date: null },
+      drip: { balance: 0, used: 0, last_used_date: null }
+    };
+    
+    const safeTickets = tickets || defaultTickets;
+    Logger.log(`formatTicketInfoForJson: 処理するチケット情報 - ${JSON.stringify(safeTickets)}`);
+    
+    // 各チケットタイプの処理で個別エラーハンドリング
+    const ticketTypes = ['stem_cell', 'treatment', 'drip'];
+    const treatmentNames = {
+      stem_cell: '幹細胞',
+      treatment: '施術', 
+      drip: '点滴'
+    };
+    
+    const result = [];
+    
+    for (const ticketType of ticketTypes) {
+      try {
+        const ticketData = safeTickets[ticketType] || {};
+        Logger.log(`formatTicketInfoForJson: ${ticketType}の処理 - ${JSON.stringify(ticketData)}`);
+        
+        // 数値の安全な変換
+        const balance = parseInt(ticketData.balance) || 0;
+        const used = parseInt(ticketData.used) || 0;
+        
+        // 日付の安全な処理
+        let lastUsedDate = null;
+        if (ticketData.last_used_date) {
+          try {
+            // 日付が既に文字列形式の場合はそのまま使用、Dateオブジェクトの場合は変換
+            lastUsedDate = typeof ticketData.last_used_date === 'string' 
+              ? ticketData.last_used_date 
+              : formatDate(ticketData.last_used_date);
+          } catch (dateError) {
+            Logger.log(`formatTicketInfoForJson: ${ticketType}の日付変換エラー - ${dateError.toString()}`);
+            lastUsedDate = null;
+          }
+        }
+        
+        const ticketInfo = {
+          treatment_id: ticketType,
+          treatment_name: treatmentNames[ticketType],
+          remaining_count: balance,
+          used_count: used,
+          available_count: balance,
+          last_used_date: lastUsedDate
+        };
+        
+        result.push(ticketInfo);
+        Logger.log(`formatTicketInfoForJson: ${ticketType}の処理完了 - ${JSON.stringify(ticketInfo)}`);
+        
+      } catch (ticketError) {
+        Logger.log(`formatTicketInfoForJson: ${ticketType}の処理中エラー - ${ticketError.toString()}`);
+        
+        // エラー時もデフォルト値で追加
+        result.push({
+          treatment_id: ticketType,
+          treatment_name: treatmentNames[ticketType],
+          remaining_count: 0,
+          used_count: 0,
+          available_count: 0,
+          last_used_date: null
+        });
+      }
+    }
+    
+    Logger.log(`formatTicketInfoForJson 完了 - 結果: ${JSON.stringify(result)}`);
+    return result;
+    
+  } catch (error) {
+    Logger.log(`formatTicketInfoForJson 致命的エラー: ${error.toString()}`);
+    Logger.log(`formatTicketInfoForJson エラースタック: ${error.stack}`);
+    
+    // 致命的エラー時も最低限のデフォルト値を返す
     return [
       {
         treatment_id: "stem_cell",
         treatment_name: "幹細胞",
-        remaining_count: tickets.stem_cell.balance,
-        used_count: tickets.stem_cell.used,
-        available_count: tickets.stem_cell.balance,
-        last_used_date: tickets.stem_cell.last_used_date
+        remaining_count: 0,
+        used_count: 0,
+        available_count: 0,
+        last_used_date: null
       },
       {
         treatment_id: "treatment", 
         treatment_name: "施術",
-        remaining_count: tickets.treatment.balance,
-        used_count: tickets.treatment.used,
-        available_count: tickets.treatment.balance,
-        last_used_date: tickets.treatment.last_used_date
+        remaining_count: 0,
+        used_count: 0,
+        available_count: 0,
+        last_used_date: null
       },
       {
         treatment_id: "drip",
         treatment_name: "点滴",
-        remaining_count: tickets.drip.balance,
-        used_count: tickets.drip.used,
-        available_count: tickets.drip.balance,
-        last_used_date: tickets.drip.last_used_date
+        remaining_count: 0,
+        used_count: 0,
+        available_count: 0,
+        last_used_date: null
       }
     ];
-  } catch (error) {
-    Logger.log(`formatTicketInfoForJson Error: ${error.toString()}`);
-    return [];
   }
 }
 
@@ -1928,7 +2192,7 @@ function getMenuCategory(menuName) {
 
 /**
  * 予約履歴を取得
- * @param {string} memberType - 会員種別（本会員/サブ会員）
+ * @param {string} memberType - 会員種別（main/sub）
  * @param {string} date - 基準日（YYYY-MM-DD形式）
  * @param {string} companyId - 会社ID
  * @return {Object} 予約履歴レスポンス
@@ -1967,7 +2231,7 @@ function getReservationHistory(memberType, date, companyId) {
         const isPublic = companyVisitorData[i][6]; // 公開フラグ
         
         // 会員種別によるフィルタリング
-        if (memberType === '本会員' || (memberType === 'サブ会員' && isPublic === true)) {
+        if (memberType === 'main' || (memberType === 'sub' && isPublic === true)) {
           companyVisitors.push({
             visitorId: companyVisitorData[i][2], // visitor_id
             visitorName: companyVisitorData[i][3], // 氏名
@@ -2994,9 +3258,38 @@ function aggregateMenuUsage(reservations) {
 function filterMenusByUsageHistory(allMenus, menuUsage) {
   const filteredMenus = [];
   
-  allMenus.forEach(menu => {
+  // デバッグログ: 入力データの確認（サマリー情報のみ）
+  Logger.log('=== filterMenusByUsageHistory START ===');
+  Logger.log(`全メニュー数: ${allMenus.length}`);
+  Logger.log(`メニュー使用履歴のキー数: ${Object.keys(menuUsage).length}`);
+  
+  // 最初の数個のメニューだけ詳細を出力
+  const debugMenuCount = Math.min(3, allMenus.length);
+  for (let i = 0; i < debugMenuCount; i++) {
+    const menu = allMenus[i];
+    Logger.log(`メニュー[${i}] サンプル: ${menu.name} (ID: ${menu.menu_id})`);
+  }
+  
+  let skipCount = 0;
+  let displayCount = 0;
+  
+  allMenus.forEach((menu, index) => {
     // 有効かつオンライン予約可能なメニューのみ
-    if (!menu.is_active || !menu.is_online) {
+    // 注意: スプレッドシートのカラム名が日本語の場合も考慮
+    const isActive = menu.is_active !== undefined ? menu.is_active : 
+                    (menu['有効フラグ'] === true || menu['有効フラグ'] === 'TRUE' || 
+                     menu['有効フラグ'] === 'true' || menu['有効フラグ'] === 1 || 
+                     menu['有効フラグ'] === '1' || menu['有効フラグ'] === '' || 
+                     menu['有効フラグ'] === null || menu['有効フラグ'] === undefined);
+    
+    const isOnline = menu.is_online !== undefined ? menu.is_online :
+                    (menu['オンライン予約フラグ'] === true || menu['オンライン予約フラグ'] === 'TRUE' || 
+                     menu['オンライン予約フラグ'] === 'true' || menu['オンライン予約フラグ'] === 1 || 
+                     menu['オンライン予約フラグ'] === '1' || menu['オンライン予約フラグ'] === '' || 
+                     menu['オンライン予約フラグ'] === null || menu['オンライン予約フラグ'] === undefined);
+    
+    if (!isActive || !isOnline) {
+      skipCount++;
       return;
     }
     
@@ -3009,16 +3302,22 @@ function filterMenusByUsageHistory(allMenus, menuUsage) {
     // 表示条件の判定
     let shouldDisplay = true;
     
-    // 初回メニューは初回のみ表示
-    if (isFirstTimeMenu && !isFirstTime) {
-      shouldDisplay = false;
-    }
-    // 通常メニューで「2回目以降」などの表記がある場合は、初回は非表示
-    else if (/2回目|２回目|以降/.test(menu.name) && isFirstTime) {
-      shouldDisplay = false;
+    // 開発環境では全メニューを表示（デバッグ用）
+    const isDevelopment = true; // TODO: 環境変数から取得するように変更
+    
+    if (!isDevelopment) {
+      // 初回メニューは初回のみ表示
+      if (isFirstTimeMenu && !isFirstTime) {
+        shouldDisplay = false;
+      }
+      // 通常メニューで「2回目以降」などの表記がある場合は、初回は非表示
+      else if (/2回目|２回目|以降/.test(menu.name) && isFirstTime) {
+        shouldDisplay = false;
+      }
     }
     
     if (shouldDisplay) {
+      displayCount++;
       filteredMenus.push({
         menu_id: menu.menu_id,
         name: menu.name,
@@ -3037,6 +3336,9 @@ function filterMenusByUsageHistory(allMenus, menuUsage) {
       });
     }
   });
+  
+  Logger.log(`フィルタリング結果: 表示${displayCount}件、スキップ${skipCount}件 (合計${allMenus.length}件)`);
+  Logger.log('=== filterMenusByUsageHistory END ===');
   
   // 表示優先度でソート（初回メニューを上位に）
   filteredMenus.sort((a, b) => {

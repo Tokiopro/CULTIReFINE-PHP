@@ -56,44 +56,44 @@ class Router {
     return {
       GET: [
         // ヘルスチェック
-        { pattern: '/api/v1/health', handler: (e) => this.healthCheck(e) },
+        { pattern: '/api/health', handler: (e) => this.healthCheck(e) },
         
         // 患者管理
-        { pattern: '/api/v1/patients/:id', handler: (e) => PatientController.show(e) },
-        { pattern: '/api/v1/patients/:id/menus', handler: (e) => PatientController.menus(e) },
-        { pattern: '/api/v1/patients/:id/available-slots', handler: (e) => PatientController.availableSlots(e) },
+        { pattern: '/api/patients/:id', handler: (e) => PatientController.show(e) },
+        { pattern: '/api/patients/:id/menus', handler: (e) => PatientController.menus(e) },
+        { pattern: '/api/patients/:id/available-slots', handler: (e) => PatientController.availableSlots(e) },
         
         // 予約管理
-        { pattern: '/api/v1/reservations', handler: (e) => ReservationController.index(e) },
-        { pattern: '/api/v1/reservations/history', handler: (e) => ReservationController.history(e) },
-        { pattern: '/api/v1/reservations/:id', handler: (e) => ReservationController.show(e) },
+        { pattern: '/api/reservations', handler: (e) => ReservationController.index(e) },
+        { pattern: '/api/reservations/history', handler: (e) => ReservationController.history(e) },
+        { pattern: '/api/reservations/:id', handler: (e) => ReservationController.show(e) },
         
         // 会社管理
-        { pattern: '/api/v1/companies/:id/visitors', handler: (e) => CompanyController.visitors(e) },
+        { pattern: '/api/companies/:id/visitors', handler: (e) => CompanyController.visitors(e) },
         
         // 書類管理
-        { pattern: '/api/v1/documents', handler: (e) => DocumentController.index(e) },
+        { pattern: '/api/documents', handler: (e) => DocumentController.index(e) },
         
         // LINEユーザー
-        { pattern: '/api/v1/users/line/:lineId', handler: (e) => LineUserController.show(e) },
-        { pattern: '/api/v1/users/line/:lineId/full', handler: (e) => LineUserController.fullInfo(e) },
+        { pattern: '/api/users/line/:lineId', handler: (e) => LineUserController.show(e) },
+        { pattern: '/api/users/line/:lineId/full', handler: (e) => LineUserController.fullInfo(e) },
+        { pattern: '/api/users/line/:lineId/full/test', handler: (e) => LineUserController.fullInfoTest(e) },
         
         // 後方互換性のための旧エンドポイント
-        { pattern: '/api/health', handler: (e) => this.healthCheck(e) },
-        { pattern: '/api/patients/:id/menus', handler: (e) => PatientController.menus(e) },
-        { pattern: '/api/users/line/:lineId/full', handler: (e) => LineUserController.fullInfo(e) }
+        { pattern: '/api/company/:id/visitors', handler: (e) => CompanyController.visitors(e) },
+        { pattern: '/api/visitors', handler: (e) => CompanyController.createVisitor(e) }
       ],
       
       POST: [
         // 患者管理
-        { pattern: '/api/v1/patients', handler: (e) => PatientController.create(e) },
-        { pattern: '/api/v1/patients/search', handler: (e) => PatientController.search(e) },
+        { pattern: '/api/patients', handler: (e) => PatientController.create(e) },
+        { pattern: '/api/patients/search', handler: (e) => PatientController.search(e) },
         
         // 予約管理
-        { pattern: '/api/v1/reservations', handler: (e) => ReservationController.create(e) },
+        { pattern: '/api/reservations', handler: (e) => ReservationController.create(e) },
         
         // 会社管理
-        { pattern: '/api/v1/companies/:id/visitors', handler: (e) => CompanyController.addVisitor(e) },
+        { pattern: '/api/companies/:id/visitors', handler: (e) => CompanyController.addVisitor(e) },
         
         // 後方互換性
         { pattern: '/api/visitors', handler: (e) => CompanyController.createVisitor(e) }
@@ -101,11 +101,11 @@ class Router {
       
       PUT: [
         // 患者管理
-        { pattern: '/api/v1/patients/:id', handler: (e) => PatientController.update(e) },
+        { pattern: '/api/patients/:id', handler: (e) => PatientController.update(e) },
         
         // 会社管理
-        { pattern: '/api/v1/companies/:companyId/visitors/:visitorId', handler: (e) => CompanyController.updateVisitor(e) },
-        { pattern: '/api/v1/companies/:companyId/visitors/:visitorId/visibility', handler: (e) => CompanyController.updateVisibility(e) },
+        { pattern: '/api/companies/:companyId/visitors/:visitorId', handler: (e) => CompanyController.updateVisitor(e) },
+        { pattern: '/api/companies/:companyId/visitors/:visitorId/visibility', handler: (e) => CompanyController.updateVisibility(e) },
         
         // 後方互換性
         { pattern: '/api/company/:companyId/visitors/:visitorId/visibility', handler: (e) => CompanyController.updateVisibility(e) }
@@ -113,10 +113,10 @@ class Router {
       
       DELETE: [
         // 患者管理
-        { pattern: '/api/v1/patients/:id', handler: (e) => PatientController.delete(e) },
+        { pattern: '/api/patients/:id', handler: (e) => PatientController.delete(e) },
         
         // 予約管理
-        { pattern: '/api/v1/reservations/:id', handler: (e) => ReservationController.delete(e) }
+        { pattern: '/api/reservations/:id', handler: (e) => ReservationController.delete(e) }
       ]
     };
   }
@@ -197,10 +197,10 @@ function testRouter() {
   
   // パスマッチングテスト
   const testCases = [
-    { path: '/api/v1/patients/123', pattern: '/api/v1/patients/:id', expected: { id: '123' } },
-    { path: '/api/v1/companies/456/visitors/789', pattern: '/api/v1/companies/:companyId/visitors/:visitorId', expected: { companyId: '456', visitorId: '789' } },
-    { path: '/api/v1/health', pattern: '/api/v1/health', expected: {} },
-    { path: '/api/v1/patients', pattern: '/api/v1/patients/:id', expected: null }
+    { path: '/api/patients/123', pattern: '/api/patients/:id', expected: { id: '123' } },
+    { path: '/api/companies/456/visitors/789', pattern: '/api/companies/:companyId/visitors/:visitorId', expected: { companyId: '456', visitorId: '789' } },
+    { path: '/api/health', pattern: '/api/health', expected: {} },
+    { path: '/api/patients', pattern: '/api/patients/:id', expected: null }
   ];
   
   testCases.forEach(test => {

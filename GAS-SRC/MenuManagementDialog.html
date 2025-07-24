@@ -68,15 +68,44 @@
     .category-level-1 {
       margin-left: 0px;
       font-weight: bold;
+      font-size: 16px;
+      background-color: #f0f0f0;
+      border-left: 4px solid #4285f4;
     }
     
     .category-level-2 {
       margin-left: 20px;
+      border-left: 3px solid #66a3ff;
     }
     
     .category-level-3 {
       margin-left: 40px;
       font-size: 14px;
+      border-left: 2px solid #99c2ff;
+    }
+    
+    .level-indicator {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      margin-right: 5px;
+      font-weight: normal;
+    }
+    
+    .level-indicator.large {
+      background-color: #ff6b6b;
+      color: white;
+    }
+    
+    .level-indicator.medium {
+      background-color: #ffd43b;
+      color: #333;
+    }
+    
+    .level-indicator.small {
+      background-color: #51cf66;
+      color: white;
     }
     
     .menu-list {
@@ -222,6 +251,7 @@
   <div class="tab-container">
     <div class="tab active" onclick="switchTab('category')">カテゴリ管理</div>
     <div class="tab" onclick="switchTab('menu')">メニュー管理</div>
+    <div class="tab" onclick="switchTab('mapping')">メニュー振り分け</div>
   </div>
   
   <!-- カテゴリ管理タブ -->
@@ -369,6 +399,35 @@
     </div>
   </div>
   
+  <!-- メニュー振り分けタブ -->
+  <div id="mapping-tab" class="tab-content">
+    <div class="section">
+      <div class="section-title">一括メニュー振り分け</div>
+      <p style="margin-bottom: 20px;">メニューをカテゴリにドラッグ&ドロップで振り分けます。</p>
+      
+      <div style="display: flex; gap: 20px;">
+        <!-- 左側：カテゴリツリー（ドロップ先） -->
+        <div style="flex: 1;">
+          <h4>カテゴリ（ドロップ先）</h4>
+          <div id="mapping-category-tree" class="category-tree" style="min-height: 500px;">
+            <!-- カテゴリツリーがここに表示されます -->
+          </div>
+        </div>
+        
+        <!-- 右側：未分類メニュー一覧（ドラッグ元） -->
+        <div style="flex: 1;">
+          <h4>未分類メニュー</h4>
+          <div class="form-group">
+            <input type="text" id="mapping-menu-search" placeholder="メニューを検索..." onkeyup="searchMappingMenus()">
+          </div>
+          <div id="uncategorized-menu-list" class="menu-list" style="max-height: 450px; overflow-y: auto;">
+            <!-- 未分類メニューがここに表示されます -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
   <script>
     let categories = [];
     let menus = [];
@@ -379,7 +438,21 @@
     window.onload = function() {
       loadCategories();
       loadMenus();
+      initializeDefaultCategories();
     };
+    
+    // デフォルトカテゴリの初期化
+    function initializeDefaultCategories() {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          console.log('デフォルトカテゴリを初期化しました');
+          loadCategories(); // カテゴリを再読み込み
+        })
+        .withFailureHandler(function(error) {
+          console.error('デフォルトカテゴリの初期化に失敗:', error);
+        })
+        .initializeDefaultMenuCategories();
+    }
     
     // タブ切り替え
     function switchTab(tabName) {
@@ -395,10 +468,14 @@
       if (tabName === 'category') {
         document.querySelector('.tab:nth-child(1)').classList.add('active');
         document.getElementById('category-tab').classList.add('active');
-      } else {
+      } else if (tabName === 'menu') {
         document.querySelector('.tab:nth-child(2)').classList.add('active');
         document.getElementById('menu-tab').classList.add('active');
         loadMenuCategoryTree();
+      } else if (tabName === 'mapping') {
+        document.querySelector('.tab:nth-child(3)').classList.add('active');
+        document.getElementById('mapping-tab').classList.add('active');
+        loadMappingView();
       }
     }
     
@@ -467,7 +544,18 @@
     function createCategoryElement(category, className) {
       const div = document.createElement('div');
       div.className = 'category-item ' + className;
-      div.textContent = category.name + (category.active ? '' : ' (無効)');
+      
+      // レベルインジケーターを追加
+      let levelIndicator = '';
+      if (category.level === '大') {
+        levelIndicator = '<span class="level-indicator large">大</span>';
+      } else if (category.level === '中') {
+        levelIndicator = '<span class="level-indicator medium">中</span>';
+      } else if (category.level === '小') {
+        levelIndicator = '<span class="level-indicator small">小</span>';
+      }
+      
+      div.innerHTML = levelIndicator + category.name + (category.active ? '' : ' (無効)');
       div.dataset.categoryId = category.id;
       div.onclick = function() {
         selectCategory(category.id);
@@ -564,6 +652,10 @@
       // 新規IDを生成
       const newId = 'CAT' + String(categories.length + 1).padStart(3, '0');
       document.getElementById('category-id').value = newId;
+      
+      // デフォルトで大カテゴリを選択
+      document.getElementById('category-level').value = '大';
+      updateParentCategoryOptions();
     }
     
     // カテゴリ削除
@@ -933,6 +1025,172 @@
       setTimeout(() => {
         errorDiv.style.display = 'none';
       }, 5000);
+    }
+    
+    // メニュー振り分けビューを読み込み
+    function loadMappingView() {
+      loadMappingCategoryTree();
+      loadUncategorizedMenus();
+    }
+    
+    // 振り分け用カテゴリツリーを読み込み
+    function loadMappingCategoryTree() {
+      const tree = document.getElementById('mapping-category-tree');
+      tree.innerHTML = '';
+      
+      // カテゴリツリー表示
+      const largeCategories = categories.filter(c => c.level === '大' && c.active);
+      largeCategories.sort((a, b) => a.order - b.order);
+      
+      largeCategories.forEach(large => {
+        const largeDiv = createMappingCategoryElement(large, 'category-level-1');
+        tree.appendChild(largeDiv);
+        
+        const mediumCategories = categories.filter(c => c.level === '中' && c.parentId === large.id && c.active);
+        mediumCategories.sort((a, b) => a.order - b.order);
+        
+        mediumCategories.forEach(medium => {
+          const mediumDiv = createMappingCategoryElement(medium, 'category-level-2');
+          tree.appendChild(mediumDiv);
+          
+          const smallCategories = categories.filter(c => c.level === '小' && c.parentId === medium.id && c.active);
+          smallCategories.sort((a, b) => a.order - b.order);
+          
+          smallCategories.forEach(small => {
+            const smallDiv = createMappingCategoryElement(small, 'category-level-3');
+            tree.appendChild(smallDiv);
+          });
+        });
+      });
+    }
+    
+    // 振り分け用カテゴリ要素作成
+    function createMappingCategoryElement(category, className) {
+      const div = document.createElement('div');
+      div.className = 'category-item ' + className;
+      div.dataset.categoryId = category.id;
+      
+      // レベルインジケーターを追加
+      let levelIndicator = '';
+      if (category.level === '大') {
+        levelIndicator = '<span class="level-indicator large">大</span>';
+      } else if (category.level === '中') {
+        levelIndicator = '<span class="level-indicator medium">中</span>';
+      } else if (category.level === '小') {
+        levelIndicator = '<span class="level-indicator small">小</span>';
+      }
+      
+      div.innerHTML = levelIndicator + category.name;
+      
+      // ドロップ可能にする
+      div.ondragover = function(e) {
+        e.preventDefault();
+        this.style.backgroundColor = '#e3f2fd';
+      };
+      
+      div.ondragleave = function(e) {
+        this.style.backgroundColor = '';
+      };
+      
+      div.ondrop = function(e) {
+        e.preventDefault();
+        this.style.backgroundColor = '';
+        
+        const menuId = e.dataTransfer.getData('menuId');
+        if (menuId) {
+          assignMenuToCategory(menuId, category.id);
+        }
+      };
+      
+      return div;
+    }
+    
+    // 未分類メニューを読み込み
+    function loadUncategorizedMenus() {
+      const menuList = document.getElementById('uncategorized-menu-list');
+      menuList.innerHTML = '';
+      
+      // カテゴリが設定されていないメニューのみ表示
+      const uncategorizedMenus = menus.filter(m => !m.categoryId || m.categoryId === '');
+      
+      if (uncategorizedMenus.length === 0) {
+        menuList.innerHTML = '<p style="text-align: center; color: #999;">すべてのメニューがカテゴリに振り分けられています</p>';
+        return;
+      }
+      
+      uncategorizedMenus.forEach(menu => {
+        const menuDiv = createDraggableMenuItem(menu);
+        menuList.appendChild(menuDiv);
+      });
+    }
+    
+    // ドラッグ可能なメニューアイテムを作成
+    function createDraggableMenuItem(menu) {
+      const div = document.createElement('div');
+      div.className = 'menu-item';
+      div.draggable = true;
+      div.dataset.menuId = menu.id;
+      
+      const infoDiv = document.createElement('div');
+      infoDiv.className = 'menu-info';
+      
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'menu-name';
+      nameDiv.textContent = menu.name;
+      
+      const detailsDiv = document.createElement('div');
+      detailsDiv.className = 'menu-details';
+      detailsDiv.textContent = 'チケットタイプ: ' + (menu.ticketType || 'なし');
+      
+      infoDiv.appendChild(nameDiv);
+      infoDiv.appendChild(detailsDiv);
+      div.appendChild(infoDiv);
+      
+      // ドラッグイベント
+      div.ondragstart = function(e) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('menuId', menu.id);
+        this.classList.add('dragging');
+      };
+      
+      div.ondragend = function(e) {
+        this.classList.remove('dragging');
+      };
+      
+      return div;
+    }
+    
+    // メニューをカテゴリに割り当て
+    function assignMenuToCategory(menuId, categoryId) {
+      showLoading(true);
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showSuccess('メニューをカテゴリに振り分けました');
+          loadMenus(); // メニューを再読み込み
+          loadUncategorizedMenus(); // 未分類メニューを更新
+          showLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          showError('メニューの振り分けに失敗しました: ' + error);
+          showLoading(false);
+        })
+        .updateMenuCategory(menuId, categoryId);
+    }
+    
+    // 振り分け用メニュー検索
+    function searchMappingMenus() {
+      const searchText = document.getElementById('mapping-menu-search').value.toLowerCase();
+      const menuItems = document.querySelectorAll('#uncategorized-menu-list .menu-item');
+      
+      menuItems.forEach(item => {
+        const menuName = item.querySelector('.menu-name').textContent.toLowerCase();
+        if (menuName.includes(searchText)) {
+          item.style.display = 'flex';
+        } else {
+          item.style.display = 'none';
+        }
+      });
     }
   </script>
 </body>

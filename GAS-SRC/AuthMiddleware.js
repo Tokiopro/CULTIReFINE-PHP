@@ -180,9 +180,7 @@ class AuthMiddleware {
   static isPublicEndpoint(e) {
     const publicEndpoints = [
       '/api/health',
-      '/api/v1/health',
       '/api/',
-      '/api/v1/',
       ''  // 空のpathも許可（ヘルスチェック表示のため）
     ];
     
@@ -252,7 +250,7 @@ function testAuthMiddleware() {
   const e1 = {
     parameter: {
       Authorization: 'Bearer php_api_key_123',
-      path: '/api/v1/patients/123'  // 保護されたエンドポイント
+      path: '/api/patients/123'  // 保護されたエンドポイント
     }
   };
   console.log('Bearer token test (protected endpoint):', AuthMiddleware.authenticate(e1));
@@ -261,7 +259,7 @@ function testAuthMiddleware() {
   const e2 = {
     parameter: {
       Authorization: 'ApiKey test-api-key',
-      path: '/api/v1/reservations'  // 保護されたエンドポイント
+      path: '/api/reservations'  // 保護されたエンドポイント
     }
   };
   console.log('API key test (protected endpoint):', AuthMiddleware.authenticate(e2));
@@ -269,7 +267,7 @@ function testAuthMiddleware() {
   // テストケース3: 認証なし（保護されたエンドポイント）
   const e3 = {
     parameter: {
-      path: '/api/v1/patients'  // 保護されたエンドポイント
+      path: '/api/patients'  // 保護されたエンドポイント
     }
   };
   console.log('No auth test (protected endpoint):', AuthMiddleware.authenticate(e3));
@@ -286,7 +284,7 @@ function testAuthMiddleware() {
   const e5 = {
     parameter: {
       Authorization: 'Bearer invalid-token',
-      path: '/api/v1/patients/123'  // 保護されたエンドポイント
+      path: '/api/patients/123'  // 保護されたエンドポイント
     }
   };
   console.log('Invalid token test:', AuthMiddleware.authenticate(e5));
@@ -298,7 +296,7 @@ function testAuthMiddleware() {
     const e6 = {
       parameter: {
         Authorization: `Bearer ${lineToken}`,
-        path: '/api/v1/patients/123'  // 保護されたエンドポイント
+        path: '/api/patients/123'  // 保護されたエンドポイント
       }
     };
     console.log('LINE token test (should fail):', AuthMiddleware.authenticate(e6));

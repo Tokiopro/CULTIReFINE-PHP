@@ -8,6 +8,47 @@ class ReservationService {
   }
   
   /**
+   * 実行時間を監視しながら予約情報を同期
+   */
+  syncReservationsWithTimeLimit(params = {}, maxExecutionTime = 300000) { // 5分
+    const startTime = new Date().getTime();
+    const syncStatus = {
+      totalSynced: 0,
+      completed: false,
+      lastOffset: 0,
+      dateFrom: params.date_from,
+      dateTo: params.date_to
+    };
+    
+    try {
+      // キャッシュから前回の同期状態を取得
+      const cache = CacheService.getScriptCache();
+      const savedStatus = cache.get('reservation_sync_status');
+      
+      if (savedStatus) {
+        const parsed = JSON.parse(savedStatus);
+        // 前回の同期が未完了の場合は続きから
+        if (!parsed.completed) {
+          syncStatus.lastOffset = parsed.lastOffset;
+          syncStatus.dateFrom = parsed.dateFrom;
+          syncStatus.dateTo = parsed.dateTo;
+          Logger.log(`前回の同期を再開: offset=${syncStatus.lastOffset}`);
+        }
+      }
+      
+      const result = this._syncReservationsInternal(syncStatus, startTime, maxExecutionTime);
+      
+      // 同期状態をキャッシュに保存
+      cache.put('reservation_sync_status', JSON.stringify(result), 3600); // 1時間保持
+      
+      return result;
+    } catch (error) {
+      Logger.log(`同期エラー: ${error.toString()}`);
+      throw error;
+    }
+  }
+  
+  /**
    * 予約情報を同期（ページネーション対応）
    */
   syncReservations(params = {}) {
@@ -19,17 +60,18 @@ class ReservationService {
         params.date_from = Utils.getToday();
       }
       
-      // 3か月後の日付を設定
+      // デフォルトは14日後まで（日次同期用）
       if (!params.date_to) {
-        const threeMonthsLater = new Date();
-        threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
-        params.date_to = Utils.formatDate(threeMonthsLater);
+        const twoWeeksLater = new Date();
+        twoWeeksLater.setDate(twoWeeksLater.getDate() + 14);
+        params.date_to = Utils.formatDate(twoWeeksLater);
       }
       
       const allReservations = [];
-      const limit = 100;
+      const limit = 500; // ページサイズを拡大
       let offset = 0;
       let hasMore = true;
+      const startTime = new Date().getTime();
       
       // 全データを取得するまでループ
       while (hasMore) {
@@ -67,9 +109,22 @@ class ReservationService {
           }
         }
         
-        // API制限を考慮して少し待機
+        // 実行時間チェック
+        const currentTime = new Date().getTime();
+        const elapsedTime = currentTime - startTime;
+        
+        if (elapsedTime > 270000) { // 4.5分経過したら中断
+          Logger.log('実行時間制限に近づいたため、同期を中断します');
+          hasMore = false;
+          // 次回再開用の情報を保存
+          const cache = CacheService.getScriptCache();
+          cache.put('reservation_sync_offset', String(offset), 3600);
+          cache.put('reservation_sync_params', JSON.stringify(params), 3600);
+        }
+        
+        // API制限を考慮して少し待機（短縮）
         if (hasMore) {
-          Utilities.sleep(500);  // 0.5秒待機
+          Utilities.sleep(100);  // 0.1秒待機
         }
       }
       
@@ -82,6 +137,142 @@ class ReservationService {
       
       return allReservations.length;
     }, '予約情報同期');
+  }
+  
+  /**
+   * 内部同期処理（実行時間監視付き）
+   */
+  _syncReservationsInternal(syncStatus, startTime, maxExecutionTime) {
+    const allReservations = [];
+    const limit = 500;
+    let offset = syncStatus.lastOffset || 0;
+    let hasMore = true;
+    
+    const params = {
+      date_from: syncStatus.dateFrom || Utils.getToday(),
+      date_to: syncStatus.dateTo || Utils.formatDate(new Date(new Date().setDate(new Date().getDate() + 14)))
+    };
+    
+    while (hasMore) {
+      const currentTime = new Date().getTime();
+      const elapsedTime = currentTime - startTime;
+      
+      // 実行時間チェック
+      if (elapsedTime > maxExecutionTime - 60000) { // 1分の余裕を持って終了
+        Logger.log(`実行時間制限に近づいたため、同期を中断します（経過時間: ${elapsedTime}ms）`);
+        syncStatus.completed = false;
+        syncStatus.lastOffset = offset;
+        syncStatus.totalSynced = allReservations.length;
+        return syncStatus;
+      }
+      
+      Logger.log(`予約情報を取得中... (offset: ${offset})`);
+      
+      const requestParams = {
+        ...params,
+        limit: limit,
+        offset: offset
+      };
+      
+      try {
+        const response = this.apiClient.getReservations(requestParams);
+        
+        if (!response.success || !response.data) {
+          throw new Error('予約情報の取得に失敗しました');
+        }
+        
+        const reservations = Array.isArray(response.data) ? response.data : (response.data.items || []);
+        const totalCount = response.data.count || 0;
+        
+        Logger.log(`${reservations.length}件を取得 (全${totalCount}件中)`);
+        
+        if (reservations.length === 0) {
+          hasMore = false;
+        } else {
+          allReservations.push(...reservations);
+          offset += limit;
+          
+          if (allReservations.length >= totalCount || reservations.length < limit) {
+            hasMore = false;
+          }
+        }
+        
+        // API制限を考慮
+        if (hasMore) {
+          Utilities.sleep(100);
+        }
+        
+      } catch (error) {
+        Logger.log(`APIエラー: ${error.toString()}`);
+        // エラー時も現在の進捗を保存
+        syncStatus.completed = false;
+        syncStatus.lastOffset = offset;
+        syncStatus.totalSynced = allReservations.length;
+        syncStatus.error = error.toString();
+        return syncStatus;
+      }
+    }
+    
+    // 同期完了
+    Logger.log(`合計${allReservations.length}件の予約情報を取得しました`);
+    
+    if (allReservations.length > 0) {
+      this._writeReservationsToSheetBatch(allReservations);
+    }
+    
+    syncStatus.completed = true;
+    syncStatus.totalSynced = allReservations.length;
+    syncStatus.lastOffset = 0; // リセット
+    
+    return syncStatus;
+  }
+  
+  /**
+   * 日次増分同期（過去7日分のみ）
+   */
+  dailyIncrementalSync() {
+    Logger.log('=== 日次増分同期開始 ===');
+    
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const params = {
+      date_from: Utils.formatDate(sevenDaysAgo),
+      date_to: Utils.formatDate(new Date(new Date().setDate(new Date().getDate() + 7)))
+    };
+    
+    return this.syncReservationsWithTimeLimit(params, 240000); // 4分制限
+  }
+  
+  /**
+   * 週次同期（過去30日分）
+   */
+  weeklySync() {
+    Logger.log('=== 週次同期開始 ===');
+    
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const params = {
+      date_from: Utils.formatDate(thirtyDaysAgo),
+      date_to: Utils.formatDate(new Date(new Date().setMonth(new Date().getMonth() + 1)))
+    };
+    
+    return this.syncReservationsWithTimeLimit(params, 300000); // 5分制限
+  }
+  
+  /**
+   * 月次フル同期（3ヶ月分）
+   */
+  monthlyFullSync() {
+    Logger.log('=== 月次フル同期開始 ===');
+    
+    const params = {
+      date_from: Utils.getToday(),
+      date_to: Utils.formatDate(new Date(new Date().setMonth(new Date().getMonth() + 3)))
+    };
+    
+    return this.syncReservationsWithTimeLimit(params, 300000); // 5分制限
   }
   
   /**
@@ -693,6 +884,87 @@ class ReservationService {
   }
   
   /**
+   * 予約情報をバッチで効率的に書き込み
+   */
+  _writeReservationsToSheetBatch(reservations) {
+    const sheet = Utils.getOrCreateSheet(this.sheetName);
+    
+    if (reservations.length === 0) {
+      Logger.log('書き込む予約データがありません');
+      return;
+    }
+    
+    // 既存データを取得
+    const lastRow = sheet.getLastRow();
+    const existingData = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues() : [];
+    
+    // reservation_idでインデックスを作成
+    const existingMap = new Map();
+    existingData.forEach((row, index) => {
+      if (row[0]) { // reservation_id
+        existingMap.set(row[0], index + 2); // 行番号（1-indexed + ヘッダー行）
+      }
+    });
+    
+    // 新規・更新データを分類
+    const newReservations = [];
+    const updateOperations = [];
+    
+    reservations.forEach(reservation => {
+      const rowData = this._reservationToRow(reservation);
+      const existingRowNum = existingMap.get(reservation.reservation_id);
+      
+      if (existingRowNum) {
+        // 更新
+        updateOperations.push({
+          row: existingRowNum,
+          data: rowData
+        });
+      } else {
+        // 新規
+        newReservations.push(rowData);
+      }
+    });
+    
+    // 更新を一括で実行
+    if (updateOperations.length > 0) {
+      // 連続した行をグループ化して一括更新
+      updateOperations.sort((a, b) => a.row - b.row);
+      
+      let currentGroup = [];
+      let startRow = updateOperations[0].row;
+      
+      updateOperations.forEach((op, index) => {
+        if (currentGroup.length === 0 || op.row === startRow + currentGroup.length) {
+          currentGroup.push(op.data);
+        } else {
+          // グループを書き込み
+          if (currentGroup.length > 0) {
+            sheet.getRange(startRow, 1, currentGroup.length, currentGroup[0].length).setValues(currentGroup);
+          }
+          // 新しいグループを開始
+          currentGroup = [op.data];
+          startRow = op.row;
+        }
+        
+        // 最後の要素の場合
+        if (index === updateOperations.length - 1 && currentGroup.length > 0) {
+          sheet.getRange(startRow, 1, currentGroup.length, currentGroup[0].length).setValues(currentGroup);
+        }
+      });
+      
+      Logger.log(`${updateOperations.length}件の予約を更新しました`);
+    }
+    
+    // 新規データを一括追加
+    if (newReservations.length > 0) {
+      const startRow = sheet.getLastRow() + 1;
+      sheet.getRange(startRow, 1, newReservations.length, newReservations[0].length).setValues(newReservations);
+      Logger.log(`${newReservations.length}件の新規予約を追加しました`);
+    }
+  }
+  
+  /**
    * 予約情報をマージして更新
    */
   _mergeReservationsToSheet(reservations) {
@@ -826,28 +1098,49 @@ class ReservationService {
       }
     }
     
-    // 新しい列構成に対応
+    // patient_id、患者名、患者属性を取得
+    // patient_id = 予約した人のvisitor_idなので、visitorIdをそのまま使用
+    const patientId = visitorId;  // patient_id = 予約者のvisitor_id
+    const patientName = visitorName;  // 患者名 = 予約者名
+    
+    // 患者属性を判定（初回/リピーターなど）
+    let patientAttribute = '一般';  // デフォルト
+    
+    // 予約履歴から患者属性を判定（オプション）
+    try {
+      const historyCount = this.getReservationsByPatientId(patientId).length;
+      if (historyCount === 0) {
+        patientAttribute = '初回';
+      } else if (historyCount >= 5) {
+        patientAttribute = 'リピーター';
+      }
+    } catch (e) {
+      Logger.log('患者属性判定エラー: ' + e.toString());
+    }
+    
+    // 新しい列構成に対応（ヘッダーに合わせる）
     return [
-      this._getStatusLabel(reservation.status),  // A列: ステータス
-      reservationId,                             // B列: reservation_id
-      visitorId,                                 // C列: visitor_id
-      visitorName,                               // D列: 予約者
-      Utils.formatDate(startAt),                 // E列: 予約日
-      Utils.formatDate(startAt, 'HH:mm'),       // F列: 予約時間
-      endAt ? Utils.formatDate(endAt, 'HH:mm') : '', // G列: 終了時間
-      menuName,                                  // H列: メニュー
-      staffName,                                 // I列: 担当スタッフ
-      memo,                                      // J列: メモ
-      Utils.formatDateTime(reservation.created_at), // K列: 作成日時
-      Utils.formatDateTime(reservation.updated_at), // L列: 更新日時
-      companyId,                                 // M列: 会社ID
-      companyName,                               // N列: 会社名
-      memberType,                                // O列: 会員種別
-      isPublic,                                  // P列: 公開設定
-      reservation.booked_by || visitorId,        // Q列: 予約者
-      staffId,                                   // R列: スタッフID
-      roomId,                                    // S列: 部屋ID
-      roomName                                   // T列: 部屋名
+      reservationId,                             // A列: reservation_id
+      patientId,                                 // B列: patient_id (予約者のvisitor_id)
+      patientName,                               // C列: 患者名 (予約者名)
+      patientAttribute,                          // D列: 患者属性
+      visitorId,                                 // E列: visitor_id
+      visitorName,                               // F列: 予約者
+      Utils.formatDate(startAt),                 // G列: 予約日
+      Utils.formatDate(startAt, 'HH:mm'),       // H列: 予約時間
+      endAt ? Utils.formatDate(endAt, 'HH:mm') : '', // I列: 終了時間
+      menuName,                                  // J列: メニュー
+      staffName,                                 // K列: 担当スタッフ
+      this._getStatusLabel(reservation.status),  // L列: ステータス
+      memo,                                      // M列: メモ
+      Utils.formatDateTime(reservation.created_at), // N列: 作成日時
+      Utils.formatDateTime(reservation.updated_at), // O列: 更新日時
+      companyId,                                 // P列: 会社ID
+      companyName,                               // Q列: 会社名
+      memberType,                                // R列: 会員種別
+      isPublic,                                  // S列: 公開設定
+      roomId,                                    // T列: 部屋ID
+      roomName                                   // U列: 部屋名
     ];
   }
   

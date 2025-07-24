@@ -20,13 +20,17 @@ class PatientMenuService {
    */
   getPatientMenus(visitorId, companyId) {
     try {
+      console.log('getPatientMenus 開始 - visitorId:', visitorId, 'companyId:', companyId);
+      
       // 1. 患者の過去6ヶ月の予約履歴を取得
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
       const reservationHistory = this.getPatientReservationHistory(visitorId, sixMonthsAgo);
+      console.log('予約履歴数:', reservationHistory.length);
       
       // 2. メニューごとの利用回数を集計
       const menuUsageMap = this.aggregateMenuUsage(reservationHistory);
+      console.log('利用メニュー数:', menuUsageMap.size);
       
       // 3. 会社情報を取得（会社IDが指定されている場合）
       let companyInfo = null;
@@ -44,12 +48,16 @@ class PatientMenuService {
           ticketBalance = this.getCompanyTicketBalance(companyId);
         }
       }
+      console.log('会社情報:', companyInfo);
+      console.log('チケット残数:', ticketBalance);
       
       // 4. 全メニューを取得
       const allMenus = this.getAllMenus();
+      console.log('全メニュー数 (フィルタリング後):', allMenus.length);
       
       // 5. メニューを分類（初回/2回目以降、通常/チケット）
       const categorizedMenus = this.categorizeMenusByHistory(allMenus, menuUsageMap, ticketBalance);
+      console.log('カテゴライズ後のメニュー数:', categorizedMenus.length);
       
       // 患者情報を追加
       const hasVisitHistory = reservationHistory.length > 0;
@@ -57,7 +65,7 @@ class PatientMenuService {
         Math.max(...reservationHistory.map(r => new Date(r['予約日時']).getTime())) : 
         null;
       
-      return {
+      const result = {
         status: 'success',
         data: {
           categories: this.groupMenusByCategory(categorizedMenus),
@@ -76,6 +84,11 @@ class PatientMenuService {
           total_menus: categorizedMenus.length
         }
       };
+      
+      console.log('カテゴリ数:', result.data.categories.length);
+      console.log('レスポンスデータ:', JSON.stringify(result, null, 2));
+      
+      return result;
 
     } catch (error) {
       console.error('getPatientMenus エラー:', error);
@@ -161,13 +174,32 @@ class PatientMenuService {
    * @returns {Object} チケット残数
    */
   getCompanyTicketBalance(companyId) {
-    const ticketInfo = this.ticketManagementService.getCompanyTickets(companyId);
+    console.log(`getCompanyTicketBalance: 会社ID ${companyId} のチケット情報を取得中...`);
     
-    return {
-      '幹細胞': ticketInfo ? (ticketInfo['幹細胞チケット残数'] || 0) : 0,
-      '施術': ticketInfo ? (ticketInfo['施術チケット残数'] || 0) : 0,
-      '点滴': ticketInfo ? (ticketInfo['点滴チケット残数'] || 0) : 0
+    // 新しいメソッドを使用して特定の会社のチケット情報を取得
+    const result = this.ticketManagementService.getCompanyTicketById(companyId);
+    
+    if (!result.success || !result.company) {
+      console.log(`getCompanyTicketBalance: 会社ID ${companyId} のチケット情報が見つかりません`);
+      console.log('エラー詳細:', result.error);
+      return {
+        '幹細胞': 0,
+        '施術': 0,
+        '点滴': 0
+      };
+    }
+    
+    const ticketInfo = result.company;
+    console.log('取得したチケット情報:', ticketInfo);
+    
+    const balance = {
+      '幹細胞': ticketInfo.stemCellTickets || 0,
+      '施術': ticketInfo.treatmentTickets || 0,
+      '点滴': ticketInfo.infusionTickets || 0
     };
+    
+    console.log('チケット残高:', balance);
+    return balance;
   }
 
   /**
@@ -178,12 +210,41 @@ class PatientMenuService {
     // メニューマスターからデータを取得
     const menus = this.spreadsheetManager.getSheetData(Config.SHEET_NAMES.MENUS);
     
+    console.log('取得したメニューデータ数:', menus.length);
+    if (menus.length > 0) {
+      console.log('サンプルメニューデータ:', JSON.stringify(menus[0], null, 2));
+    }
+    
     // 有効なメニューのみフィルタリング
-    return menus.filter(menu => {
-      const isActive = menu['有効フラグ'] === true || menu['有効フラグ'] === 'TRUE' || menu['有効フラグ'] === 1;
-      const isOnlineReservable = menu['オンライン予約可'] === true || menu['オンライン予約可'] === 'TRUE' || menu['オンライン予約可'] === 1;
+    const filteredMenus = menus.filter(menu => {
+      // フィルタリング条件を緩和 - 文字列'true'や'1'も許可
+      const isActive = menu['有効フラグ'] === true || 
+                      menu['有効フラグ'] === 'TRUE' || 
+                      menu['有効フラグ'] === 'true' || 
+                      menu['有効フラグ'] === 1 || 
+                      menu['有効フラグ'] === '1';
+      
+      const isOnlineReservable = menu['オンライン予約可'] === true || 
+                                menu['オンライン予約可'] === 'TRUE' || 
+                                menu['オンライン予約可'] === 'true' || 
+                                menu['オンライン予約可'] === 1 || 
+                                menu['オンライン予約可'] === '1';
+      
+      // デバッグ情報
+      if (!isActive || !isOnlineReservable) {
+        console.log('フィルタリングで除外:', {
+          menuName: menu['メニュー名'],
+          isActive: menu['有効フラグ'],
+          isOnlineReservable: menu['オンライン予約可']
+        });
+      }
+      
       return isActive && isOnlineReservable;
-    }).map(menu => {
+    });
+    
+    console.log('フィルタリング後のメニュー数:', filteredMenus.length);
+    
+    return filteredMenus.map(menu => {
       // チケットタイプと必要チケット数を確実に含める
       return {
         ...menu,
@@ -300,8 +361,14 @@ class PatientMenuService {
   groupMenusByCategory(menus) {
     const categoryMap = new Map();
     
+    // メニューが空の場合は空配列を返す
+    if (!menus || menus.length === 0) {
+      console.log('groupMenusByCategory: メニューが空です');
+      return [];
+    }
+    
     menus.forEach(menu => {
-      const categoryId = menu.category_id || menu.category;
+      const categoryId = menu.category_id || menu.category || 'uncategorized';
       const categoryName = menu.category || '未分類';
       
       if (!categoryMap.has(categoryId)) {
@@ -317,7 +384,10 @@ class PatientMenuService {
     });
     
     // カテゴリをソートして配列として返す
-    return Array.from(categoryMap.values()).sort((a, b) => a.category_order - b.category_order);
+    const result = Array.from(categoryMap.values()).sort((a, b) => a.category_order - b.category_order);
+    console.log('グループ化されたカテゴリ数:', result.length);
+    
+    return result;
   }
 }
 

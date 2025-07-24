@@ -38,7 +38,10 @@ try {
         if (isset($membershipInfo['company_id']) && !empty($membershipInfo['company_id'])) {
             $companyId = $membershipInfo['company_id'];
             $companyName = $membershipInfo['company_name'] ?? '不明';
-            $memberType = $membershipInfo['member_type'] ?? 'サブ会員';
+            $memberTypeJp = $membershipInfo['member_type'] ?? 'サブ会員';
+            
+            // member_typeを英語に変換
+            $memberType = ($memberTypeJp === '本会員') ? 'main' : 'sub';
             
             // 2. 予約履歴を取得（現在日付で前後3ヶ月）
             $currentDate = date('Y-m-d');

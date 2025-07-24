@@ -55,6 +55,59 @@ class TicketManagementService {
   }
   
   /**
+   * 特定の会社のチケット情報を取得
+   * @param {string} companyId - 会社ID
+   * @return {Object} チケット情報
+   */
+  getCompanyTicketById(companyId) {
+    return Utils.executeWithErrorHandling(() => {
+      Logger.log(`getCompanyTicketById: 開始 - companyId: ${companyId}`);
+      
+      const companySheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.sheetNames.companyMaster);
+      
+      if (!companySheet || companySheet.getLastRow() <= 1) {
+        Logger.log('getCompanyTicketById: 会社マスタシートが空です');
+        return { success: false, error: '会社マスタシートが見つかりません' };
+      }
+      
+      // 会社データを取得
+      const companyData = companySheet.getDataRange().getValues();
+      const companyHeaders = companyData[0];
+      
+      // インデックスを取得
+      const idIndex = companyHeaders.indexOf('会社ID');
+      const nameIndex = companyHeaders.indexOf('会社名');
+      const planIndex = companyHeaders.indexOf('プラン');
+      const stemCellIndex = companyHeaders.indexOf('幹細胞チケット残数');
+      const treatmentIndex = companyHeaders.indexOf('施術チケット残数');
+      const infusionIndex = companyHeaders.indexOf('点滴チケット残数');
+      
+      Logger.log(`getCompanyTicketById: ヘッダーインデックス - ID: ${idIndex}, 幹細胞: ${stemCellIndex}, 施術: ${treatmentIndex}, 点滴: ${infusionIndex}`);
+      
+      // 指定された会社IDの行を検索
+      for (let i = 1; i < companyData.length; i++) {
+        const row = companyData[i];
+        if (row[idIndex] === companyId) {
+          const ticketInfo = {
+            id: row[idIndex],
+            name: row[nameIndex] || '',
+            plan: row[planIndex] || '',
+            stemCellTickets: parseInt(row[stemCellIndex]) || 0,
+            treatmentTickets: parseInt(row[treatmentIndex]) || 0,
+            infusionTickets: parseInt(row[infusionIndex]) || 0
+          };
+          
+          Logger.log(`getCompanyTicketById: 会社情報を取得 - ${JSON.stringify(ticketInfo)}`);
+          return { success: true, company: ticketInfo };
+        }
+      }
+      
+      Logger.log(`getCompanyTicketById: 会社ID ${companyId} が見つかりません`);
+      return { success: false, error: `会社ID ${companyId} が見つかりません` };
+    });
+  }
+  
+  /**
    * 会社ごとのメンバー数を取得
    * @private
    */

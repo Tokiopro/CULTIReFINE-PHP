@@ -215,19 +215,24 @@ class DocumentManagerService {
     const documents = [];
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
-      documents.push({
+      // 患者IDが一致する書類のみ取得
+      if (row[4] !== patientId) continue;
       
-        documentId: row[0],
-        patientId: row[1],
-        patientName: row[2],
-        folderId: row[3],
-        folderName: row[4],
-        documentName: row[5],
-        uploadDate: row[6],
-        expiryDate: row[7],
-        status: row[8] || '有効',
-        treatmentName: row[9] || '一般書類', // treatmentNameとして取得
-        remarks: row[9] || '' // 後方互換性のため残す
+      documents.push({
+        folderId: row[0],
+        documentId: row[1],
+        documentName: row[2],
+        url: row[3],
+        patientId: row[4],
+        patientName: row[5],
+        treatmentName: row[6] || '一般書類',
+        uploadDate: row[7],
+        updateDate: row[8],
+        remarks: row[9] || '',
+        // 互換性のため追加
+        folderName: '', // フォルダ名は別シートから取得する必要がある
+        expiryDate: null,
+        status: '有効'
       });
     }
 

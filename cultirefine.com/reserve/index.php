@@ -69,59 +69,34 @@ try {
         error_log('[DEBUG] GAS API Response: ' . json_encode($debugInfo['gas_api_response']));
     }
     
-    // GAS APIのレスポンス形式を確認して変換
-    // 古い形式（visitor, company）の場合は新しい形式に変換
-    if (isset($userInfo['visitor']) && isset($userInfo['company'])) {
-        // 古い形式を新しい形式に変換
-        $userInfo = [
-            'status' => 'success',
-            'data' => [
-                'user' => [
-                    'id' => $userInfo['visitor']['visitor_id'],
-                    'name' => $userInfo['visitor']['visitor_name'],
-                    'member_type' => $userInfo['visitor']['member_type'] ?? true
-                ],
-                'membership_info' => [
-                    'company_id' => $userInfo['company']['company_id'],
-                    'company_name' => $userInfo['company']['name'],
-                    'plan' => $userInfo['company']['plan'] ?? '',
-                    'member_type' => $userInfo['visitor']['member_type'] ? '本会員' : 'サブ会員',
-                    'tickets' => $userInfo['ticketInfo'] ?? []
-                ],
-                'documents' => $userInfo['docsinfo'] ?? [],
-                'reservation_history' => $userInfo['ReservationHistory'] ?? []
-            ]
-        ];
-        
-        if (DEBUG_MODE) {
-            error_log('[DEBUG] Converted old GAS API format to new format');
-        }
-    }
+    // GAS APIのレスポンス形式を確認
+    // 現在の形式（visitor, company, ticketInfo）をそのまま使用
     
-    // GAS APIの新しいレスポンス形式に対応
-    if (isset($userInfo['data']['membership_info']) && isset($userInfo['data']['user'])) {
+    // GAS APIのレスポンス形式に対応（visitor, company, ticketInfo）
+    if (isset($userInfo['data']['visitor']) && isset($userInfo['data']['company'])) {
         // ログインユーザーのIDを取得
-        $currentUserVisitorId = $userInfo['data']['user']['id'] ?? null;
+        $currentUserVisitorId = $userInfo['data']['visitor']['visitor_id'] ?? null;
         
-        // 新しいGAS APIレスポンスから membership_info を取得
-        $membershipInfo = [
-            'company_id' => $userInfo['data']['membership_info']['company_id'] ?? null,
-            'company_name' => $userInfo['data']['membership_info']['company_name'] ?? '不明',
-            'member_type' => $userInfo['data']['membership_info']['member_type'] ?? 'サブ会員'
-        ];
+        // 会社情報を取得
+        $companyData = $userInfo['data']['company'] ?? null;
         
         if (DEBUG_MODE) {
             error_log('[DEBUG] Current user visitor_id: ' . $currentUserVisitorId);
-            error_log('[DEBUG] Converted membership info: ' . json_encode($membershipInfo));
+            error_log('[DEBUG] Company data: ' . json_encode($companyData));
         }
         
-        // 会社情報を取得
-        if (isset($membershipInfo['company_id']) && !empty($membershipInfo['company_id'])) {
+        // 会社情報の処理
+        if ($companyData && isset($companyData['company_id']) && !empty($companyData['company_id'])) {
+            // member_typeの判定（visitor.member_typeがtrueなら本会員、falseならサブ会員）
+            $isMemberType = $userInfo['data']['visitor']['member_type'] ?? false;
+            $memberTypeLabel = $isMemberType ? '本会員' : 'サブ会員';
+            
             $companyInfo = [
-                'id' => $membershipInfo['company_id'],
-                'name' => $membershipInfo['company_name'] ?? '不明',
-                'member_type' => $membershipInfo['member_type'] ?? 'サブ会員',
-                'role' => ($membershipInfo['member_type'] === '本会員') ? 'main' : 'sub'
+                'id' => $companyData['company_id'],
+                'name' => $companyData['name'] ?? '不明',
+                'plan' => $companyData['plan'] ?? '',
+                'member_type' => $memberTypeLabel,
+                'role' => $isMemberType ? 'main' : 'sub'
             ];
             
             $userRole = $companyInfo['role'];
@@ -161,13 +136,13 @@ try {
         }
     } else {
         // GAS APIレスポンスの形式をチェックして適切なエラーメッセージを生成
-        $hasUserInfo = isset($userInfo['data']['user']);
-        $hasMembershipInfo = isset($userInfo['data']['membership_info']);
+        $hasVisitorInfo = isset($userInfo['data']['visitor']);
+        $hasCompanyInfo = isset($userInfo['data']['company']);
         
-        if ($hasUserInfo && !$hasMembershipInfo) {
-            $errorMessage = 'ユーザー情報は取得できましたが、会員情報が見つかりません。';
-        } elseif (!$hasUserInfo && $hasMembershipInfo) {
-            $errorMessage = '会員情報は取得できましたが、ユーザー情報が見つかりません。';
+        if ($hasVisitorInfo && !$hasCompanyInfo) {
+            $errorMessage = '来院者情報は取得できましたが、会社情報が見つかりません。';
+        } elseif (!$hasVisitorInfo && $hasCompanyInfo) {
+            $errorMessage = '会社情報は取得できましたが、来院者情報が見つかりません。';
         } elseif (isset($userInfo['status']) && $userInfo['status'] === 'error') {
             $errorMessage = 'GAS APIエラー: ' . ($userInfo['error']['message'] ?? $userInfo['message'] ?? 'Unknown error');
         } else {
@@ -177,11 +152,11 @@ try {
         // デバッグ: 失敗詳細
         if (DEBUG_MODE) {
             $debugInfo['failure_details'] = [
-                'has_user_info' => $hasUserInfo,
-                'has_membership_info' => $hasMembershipInfo,
-                'response_keys' => array_keys($userInfo),
-                'user_data' => $userInfo['data']['user'] ?? null,
-                'membership_data' => $userInfo['data']['membership_info'] ?? null,
+                'has_visitor_info' => $hasVisitorInfo,
+                'has_company_info' => $hasCompanyInfo,
+                'response_keys' => isset($userInfo['data']) ? array_keys($userInfo['data']) : array_keys($userInfo),
+                'visitor_data' => $userInfo['data']['visitor'] ?? null,
+                'company_data' => $userInfo['data']['company'] ?? null,
                 'full_user_info' => $userInfo
             ];
             error_log('[DEBUG] Failure details: ' . json_encode($debugInfo['failure_details']));

@@ -91,8 +91,10 @@ class SpreadsheetManager {
     const sheet = Utils.getOrCreateSheet(Config.getSheetNames().reservations);
     
     const headers = [
-      'ステータス',
       'reservation_id',
+      'patient_id',
+      '患者名',
+      '患者属性',
       'visitor_id',
       '予約者',
       '予約日',
@@ -100,6 +102,7 @@ class SpreadsheetManager {
       '終了時間',
       'メニュー',
       '担当スタッフ',
+      'ステータス',
       'メモ',
       '作成日時',
       '更新日時',
@@ -107,8 +110,6 @@ class SpreadsheetManager {
       '会社名',
       '会員種別',
       '公開設定',
-      '予約者',
-      'スタッフID',
       '部屋ID',
       '部屋名'
     ];

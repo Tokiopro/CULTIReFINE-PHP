@@ -148,11 +148,19 @@ class MenuService {
       duration_minutes: row[5],
       price: row[6],
       price_with_tax: row[7],
-      is_active: row[8] === 'TRUE',
-      is_online: row[9] === 'TRUE',
+      // より柔軟な判定に変更（TRUE, true, 1, '1', 空文字、null、undefinedを有効とみなす）
+      is_active: row[8] === true || row[8] === 'TRUE' || row[8] === 'true' || 
+                 row[8] === 1 || row[8] === '1' || row[8] === '' || 
+                 row[8] === null || row[8] === undefined,
+      is_online: row[9] === true || row[9] === 'TRUE' || row[9] === 'true' || 
+                 row[9] === 1 || row[9] === '1' || row[9] === '' || 
+                 row[9] === null || row[9] === undefined,
       description: row[10],
       ticketType: ticketTypeIndex >= 0 ? row[ticketTypeIndex] : '',
-      requiredTickets: requiredTicketsIndex >= 0 ? (row[requiredTicketsIndex] || 1) : 1
+      requiredTickets: requiredTicketsIndex >= 0 ? (row[requiredTicketsIndex] || 1) : 1,
+      // デバッグ用: 元の値も保持
+      '有効フラグ': row[8],
+      'オンライン予約フラグ': row[9]
     }));
   }
   
@@ -526,4 +534,210 @@ class MenuService {
       return true;
     }, 'メニューカテゴリ更新');
   }
+  
+  /**
+   * デフォルトメニューカテゴリを初期化
+   */
+  initializeDefaultMenuCategories() {
+    return Utils.executeWithErrorHandling(() => {
+      Logger.log('デフォルトメニューカテゴリを初期化します');
+      
+      const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.categorySheetName);
+      if (!sheet) {
+        throw new Error('メニューカテゴリシートが見つかりません');
+      }
+      
+      // 既存のカテゴリを確認
+      const existingCategories = this.getMenuCategories();
+      
+      // チケット付与メニューと通常メニューが存在するか確認
+      const hasTicketCategory = existingCategories.some(c => c.name === 'チケット付与メニュー' && c.level === '大');
+      const hasRegularCategory = existingCategories.some(c => c.name === '通常メニュー' && c.level === '大');
+      
+      const newCategories = [];
+      
+      // チケット付与メニューカテゴリを追加
+      if (!hasTicketCategory) {
+        newCategories.push([
+          'TICKET_MAIN',
+          '大',
+          'チケット付与メニュー',
+          '',
+          1,
+          true,
+          'チケットを必要とするメニューのカテゴリ',
+          new Date(),
+          new Date()
+        ]);
+        
+        // サブカテゴリも追加
+        newCategories.push([
+          'TICKET_STEM',
+          '中',
+          '幹細胞チケットメニュー',
+          'TICKET_MAIN',
+          1,
+          true,
+          '幹細胞チケットを使用するメニュー',
+          new Date(),
+          new Date()
+        ]);
+        
+        newCategories.push([
+          'TICKET_TREAT',
+          '中',
+          '施術チケットメニュー',
+          'TICKET_MAIN',
+          2,
+          true,
+          '施術チケットを使用するメニュー',
+          new Date(),
+          new Date()
+        ]);
+        
+        newCategories.push([
+          'TICKET_DRIP',
+          '中',
+          '点滴チケットメニュー',
+          'TICKET_MAIN',
+          3,
+          true,
+          '点滴チケットを使用するメニュー',
+          new Date(),
+          new Date()
+        ]);
+      }
+      
+      // 通常メニューカテゴリを追加
+      if (!hasRegularCategory) {
+        newCategories.push([
+          'REGULAR_MAIN',
+          '大',
+          '通常メニュー',
+          '',
+          2,
+          true,
+          'チケットを必要としない通常のメニューカテゴリ',
+          new Date(),
+          new Date()
+        ]);
+        
+        // サブカテゴリも追加
+        newCategories.push([
+          'REGULAR_FIRST',
+          '中',
+          '初回メニュー',
+          'REGULAR_MAIN',
+          1,
+          true,
+          'お客様の予約が初回のものはこちらになります',
+          new Date(),
+          new Date()
+        ]);
+        
+        newCategories.push([
+          'REGULAR_REPEAT',
+          '中',
+          'リピートメニュー',
+          'REGULAR_MAIN',
+          2,
+          true,
+          '2回目以降のメニューはこちらになります',
+          new Date(),
+          new Date()
+        ]);
+      }
+      
+      // 新しいカテゴリを追加
+      if (newCategories.length > 0) {
+        const lastRow = sheet.getLastRow();
+        sheet.getRange(lastRow + 1, 1, newCategories.length, newCategories[0].length).setValues(newCategories);
+        Logger.log(`${newCategories.length}件のデフォルトカテゴリを追加しました`);
+      }
+      
+      return true;
+    }, 'デフォルトカテゴリ初期化');
+  }
+}
+
+/**
+ * デバッグ用：MenuServiceのデータ取得を詳細に確認する関数
+ */
+function debugMenuServiceData() {
+  console.log('=== MenuService データ取得デバッグ開始 ===');
+  
+  try {
+    const menuService = new MenuService();
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(menuService.sheetName);
+    
+    if (!sheet) {
+      console.log('メニューシートが見つかりません');
+      return;
+    }
+    
+    // ヘッダー情報を取得
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    console.log('ヘッダー列:', headers);
+    
+    // データの行数を確認
+    const lastRow = sheet.getLastRow();
+    console.log('データ行数（ヘッダー含む）:', lastRow);
+    
+    if (lastRow <= 1) {
+      console.log('データがありません');
+      return;
+    }
+    
+    // 最初の5行のデータを詳細表示
+    const sampleSize = Math.min(5, lastRow - 1);
+    const sampleData = sheet.getRange(2, 1, sampleSize, sheet.getLastColumn()).getValues();
+    
+    console.log(`\n最初の${sampleSize}行のデータ詳細:`);
+    for (let i = 0; i < sampleSize; i++) {
+      console.log(`\n--- 行${i + 2} ---`);
+      headers.forEach((header, index) => {
+        console.log(`${header}: ${sampleData[i][index]}`);
+      });
+    }
+    
+    // getMenusFromSheetメソッドの結果を確認
+    const menus = menuService.getMenusFromSheet();
+    console.log('\n\ngetMenusFromSheet()の結果:');
+    console.log('取得メニュー数:', menus.length);
+    
+    if (menus.length > 0) {
+      console.log('\n最初のメニューオブジェクト:');
+      console.log(JSON.stringify(menus[0], null, 2));
+    }
+    
+    // 有効フラグとオンライン予約フラグの値を集計
+    const flagValues = {
+      active: {},
+      online: {}
+    };
+    
+    menus.forEach(menu => {
+      const activeValue = String(menu['有効フラグ']);
+      const onlineValue = String(menu['オンライン予約フラグ']);
+      
+      flagValues.active[activeValue] = (flagValues.active[activeValue] || 0) + 1;
+      flagValues.online[onlineValue] = (flagValues.online[onlineValue] || 0) + 1;
+    });
+    
+    console.log('\n有効フラグの値の分布:');
+    Object.entries(flagValues.active).forEach(([value, count]) => {
+      console.log(`  "${value}": ${count}件`);
+    });
+    
+    console.log('\nオンライン予約フラグの値の分布:');
+    Object.entries(flagValues.online).forEach(([value, count]) => {
+      console.log(`  "${value}": ${count}件`);
+    });
+    
+  } catch (error) {
+    console.error('デバッグエラー:', error);
+    console.error('スタックトレース:', error.stack);
+  }
+  
+  console.log('\n=== MenuService デバッグ完了 ===');
 }

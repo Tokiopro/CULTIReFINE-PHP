@@ -19,7 +19,7 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
     }
     
     // ローディング表示
-    container.innerHTML = '<div class="text-center py-8"><div class="loading-spinner"></div><p class="mt-2">メニューを読み込んでいます...</p></div>';
+    container.innerHTML = '<div class="text-center py-8"><div class="loading-spinner"></div><p class="mt-2 text-gray-600">メニュー情報を取得中です...</p></div>';
     
     try {
         // 患者別メニューを取得
@@ -32,6 +32,12 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
         const data = result.data;
         container.innerHTML = '';
         
+        // デバッグ: データ構造を確認
+        if (window.DEBUG_MODE) {
+            console.log('Patient menu data structure:', data);
+            console.log('Data keys:', Object.keys(data));
+        }
+        
         // 患者情報表示（新形式対応）
         if (data.patient_info || data.visitor) {
             const infoElement = createPatientInfoElement(data);
@@ -39,12 +45,73 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
         }
         
         // メニュー表示（新形式のcategories配列に対応）
-        const menuCategories = data.categories || data.menu_categories || data.menus;
-        if (menuCategories && (Array.isArray(menuCategories) ? menuCategories.length > 0 : Object.keys(menuCategories).length > 0)) {
+        let menuCategories = data.categories || data.menu_categories || data.menus;
+        let hasMenus = false;
+        
+        // メニューの存在チェック（改善版）
+        if (menuCategories) {
+            if (Array.isArray(menuCategories)) {
+                // 配列形式の場合 - 表示可能なメニューがあるかチェック
+                hasMenus = menuCategories.length > 0;
+                
+                // カテゴリ形式とフラットなメニュー配列の両方に対応
+                if (menuCategories.length > 0) {
+                    // 最初の要素がカテゴリ形式かメニュー形式かを判定
+                    const firstItem = menuCategories[0];
+                    if (firstItem.menus && Array.isArray(firstItem.menus)) {
+                        // カテゴリ形式の場合
+                        hasMenus = menuCategories.some(cat => {
+                            return cat.menus && cat.menus.length > 0 && cat.menus.some(menu => 
+                                menu.should_display !== false && menu.is_active !== false
+                            );
+                        });
+                    } else if (firstItem.menu_id || firstItem.name) {
+                        // フラットなメニュー配列の場合
+                        hasMenus = menuCategories.some(menu => 
+                            menu.should_display !== false && menu.is_active !== false
+                        );
+                    }
+                }
+            } else if (typeof menuCategories === 'object') {
+                // オブジェクト形式の場合
+                if (menuCategories.first_time_menus || menuCategories.repeat_menus) {
+                    // 中間形式
+                    hasMenus = (menuCategories.first_time_menus && Object.keys(menuCategories.first_time_menus).length > 0) ||
+                               (menuCategories.repeat_menus && Object.keys(menuCategories.repeat_menus).length > 0);
+                } else {
+                    // 旧形式
+                    hasMenus = Object.keys(menuCategories).length > 0;
+                }
+            }
+        }
+        
+        // デバッグ: API レスポンス全体を確認
+        if (window.DEBUG_MODE) {
+            console.log('Full API response:', result);
+            console.log('Data object:', data);
+            console.log('Categories found:', menuCategories);
+        }
+        
+        if (window.DEBUG_MODE) {
+            console.log('Menu categories:', menuCategories);
+            console.log('Has menus:', hasMenus);
+        }
+        
+        if (hasMenus) {
             const menuElement = createMenuAccordion(menuCategories, data.recommended_category, patientId, onSelectCallback);
             container.appendChild(menuElement);
         } else {
-            container.innerHTML += '<p class="text-center text-gray-500 py-8">利用可能なメニューがありません</p>';
+            // メニューがない場合の詳細なメッセージ
+            let emptyMessage = '<div class="text-center py-8">';
+            if (data.message) {
+                // APIからのメッセージがある場合
+                emptyMessage += '<p class="text-gray-600">' + data.message + '</p>';
+            } else {
+                emptyMessage += '<p class="text-gray-600">現在利用可能なメニューがありません</p>';
+                emptyMessage += '<p class="text-sm text-gray-500 mt-2">メニューの追加については管理者にお問い合わせください</p>';
+            }
+            emptyMessage += '</div>';
+            container.innerHTML += emptyMessage;
         }
         
     } catch (error) {
@@ -134,12 +201,71 @@ function createMenuAccordion(menuCategories, recommendedCategory, patientId, onS
     
     // 新形式のcategories配列の場合
     if (Array.isArray(menuCategories)) {
-        menuCategories.forEach(category => {
-            if (category.menus && category.menus.length > 0) {
-                const categoryDiv = createCategoryAccordion(category, patientId, onSelectCallback);
-                accordionDiv.appendChild(categoryDiv);
+        if (window.DEBUG_MODE) {
+            console.log('Processing categories array:', menuCategories);
+        }
+        
+        // フラットなメニュー配列かカテゴリ配列かを判定
+        if (menuCategories.length > 0) {
+            const firstItem = menuCategories[0];
+            
+            if (firstItem.menus && Array.isArray(firstItem.menus)) {
+                // カテゴリ形式の場合
+                menuCategories.forEach((category, index) => {
+                    if (window.DEBUG_MODE) {
+                        console.log(`Category ${index}:`, category);
+                    }
+                    
+                    // メニューが存在し、表示すべきメニューがある場合のみカテゴリを表示
+                    if (category.menus && category.menus.length > 0) {
+                        const displayableMenus = category.menus.filter(menu => 
+                            menu.should_display !== false && menu.is_active !== false
+                        );
+                        
+                        if (displayableMenus.length > 0) {
+                            const categoryDiv = createCategoryAccordion(category, patientId, onSelectCallback);
+                            accordionDiv.appendChild(categoryDiv);
+                        }
+                    }
+                });
+            } else if (firstItem.menu_id || firstItem.name) {
+                // フラットなメニュー配列の場合 - 階層構造を作成
+                const hierarchicalMenus = createHierarchicalStructure(menuCategories);
+                
+                // チケット付与メニューと通常メニューで分類
+                const ticketMenusCategory = {
+                    category_id: 'ticket-menus',
+                    category_name: 'チケット付与メニュー',
+                    menus: []
+                };
+                
+                const regularMenusCategory = {
+                    category_id: 'regular-menus',
+                    category_name: '通常メニュー',
+                    menus: []
+                };
+                
+                // メニューを分類
+                hierarchicalMenus.forEach(menu => {
+                    if (menu.is_ticket_menu) {
+                        ticketMenusCategory.menus.push(menu);
+                    } else {
+                        regularMenusCategory.menus.push(menu);
+                    }
+                });
+                
+                // カテゴリを表示（メニューがある場合のみ）
+                if (ticketMenusCategory.menus.length > 0) {
+                    const ticketDiv = createCategoryAccordion(ticketMenusCategory, patientId, onSelectCallback);
+                    accordionDiv.appendChild(ticketDiv);
+                }
+                
+                if (regularMenusCategory.menus.length > 0) {
+                    const regularDiv = createCategoryAccordion(regularMenusCategory, patientId, onSelectCallback);
+                    accordionDiv.appendChild(regularDiv);
+                }
             }
-        });
+        }
     }
     // 中間形式（first_time_menus/repeat_menus）の場合  
     else if (menuCategories.first_time_menus || menuCategories.repeat_menus) {
@@ -407,6 +533,43 @@ function createMenuItem(menu, patientId, onSelectCallback) {
     }
     
     return itemDiv;
+}
+
+/**
+ * フラットなメニュー配列から階層構造を作成
+ */
+function createHierarchicalStructure(flatMenus) {
+    // カテゴリごとにメニューをグループ化
+    const categoryMap = new Map();
+    
+    flatMenus.forEach(menu => {
+        // カテゴリ情報がない場合は「未分類」とする
+        const categoryId = menu.category_id || menu.category || 'uncategorized';
+        const categoryName = menu.category || '未分類';
+        
+        if (!categoryMap.has(categoryId)) {
+            categoryMap.set(categoryId, {
+                category_id: categoryId,
+                category_name: categoryName,
+                menus: []
+            });
+        }
+        
+        categoryMap.get(categoryId).menus.push(menu);
+    });
+    
+    // カテゴリごとにメニューをソート
+    categoryMap.forEach(category => {
+        category.menus.sort((a, b) => {
+            // 表示順でソート
+            const orderA = a.menu_order || a.order || 999;
+            const orderB = b.menu_order || b.order || 999;
+            return orderA - orderB;
+        });
+    });
+    
+    // フラット配列として返す（カテゴリ情報を保持したまま）
+    return flatMenus;
 }
 
 /**
