@@ -1,5 +1,11 @@
 <?php
-session_start();
+// セッションを最初に開始
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// デバッグモードの設定を確認
+require_once __DIR__ . '/line-auth/config.php';
 
 // セッションデバッグ情報
 $sessionDebug = [
@@ -7,8 +13,13 @@ $sessionDebug = [
     'session_status' => session_status(),
     'line_user_id' => $_SESSION['line_user_id'] ?? 'not_set',
     'line_display_name' => $_SESSION['line_display_name'] ?? 'not_set',
-    'session_data_count' => count($_SESSION)
+    'session_data_count' => count($_SESSION),
+    'session_keys' => array_keys($_SESSION)
 ];
+
+if (defined('DEBUG_MODE') && DEBUG_MODE) {
+    error_log('[Not-Registered] Session debug: ' . json_encode($sessionDebug));
+}
 
 // LINE認証チェック（セッションエラー時は直接エラー表示）
 if (!isset($_SESSION['line_user_id'])) {

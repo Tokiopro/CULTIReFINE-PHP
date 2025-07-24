@@ -1,13 +1,21 @@
 <?php
-session_start();
+// セッションを最初に開始
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once __DIR__ . '/line-auth/url-helper.php';
 
 // セッションデバッグ情報
 $sessionDebug = [
     'session_id' => session_id(),
     'session_status' => session_status(),
-    'has_line_user_id' => isset($_SESSION['line_user_id'])
+    'has_line_user_id' => isset($_SESSION['line_user_id']),
+    'has_user_data' => isset($_SESSION['user_data']),
+    'session_keys' => array_keys($_SESSION)
 ];
+
+error_log('[Index] Session Debug: ' . json_encode($sessionDebug));
 
 // LINE認証チェック
 if (!isset($_SESSION['line_user_id'])) {
@@ -23,6 +31,12 @@ $lineUserId = $_SESSION['line_user_id'];
 $displayName = $_SESSION['line_display_name'] ?? 'ゲスト';
 $pictureUrl = $_SESSION['line_picture_url'] ?? null;
 $userData = $_SESSION['user_data'] ?? null;
+
+// user_dataがない場合のデバッグ情報
+if (!$userData && defined('DEBUG_MODE') && DEBUG_MODE) {
+    error_log('[Index] user_data not found in session, will fetch from GAS API');
+    error_log('[Index] Session data: ' . json_encode($_SESSION));
+}
 
 // 権限管理とGAS APIから来院者データを取得
 require_once __DIR__ . '/line-auth/config.php';
@@ -42,7 +56,9 @@ try {
             'line_user_id' => $_SESSION['line_user_id'] ?? 'not_set',
             'line_display_name' => $_SESSION['line_display_name'] ?? 'not_set',
             'session_id' => session_id(),
-            'all_session_data' => $_SESSION
+            'has_user_data' => isset($_SESSION['user_data']),
+            'user_data_keys' => isset($_SESSION['user_data']) ? array_keys($_SESSION['user_data']) : [],
+            'all_session_keys' => array_keys($_SESSION)
         ];
         error_log('[DEBUG] Session info: ' . json_encode($debugInfo['session']));
     }
@@ -80,6 +96,12 @@ try {
     
     // GAS APIのレスポンス形式を確認
     // 現在の形式（visitor, company, ticketInfo）をそのまま使用
+    
+    // user_dataがセッションにない場合は保存
+    if (!$userData && $userInfo['status'] === 'success' && isset($userInfo['data'])) {
+        $_SESSION['user_data'] = $userInfo['data'];
+        error_log('[Index] Saved user_data to session from GAS API');
+    }
     
     // GAS APIのレスポンス形式に対応（visitor, company, ticketInfo）
     if (isset($userInfo['data']['visitor']) && isset($userInfo['data']['company'])) {

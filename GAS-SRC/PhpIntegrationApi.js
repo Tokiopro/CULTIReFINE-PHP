@@ -1129,18 +1129,38 @@ function getPhpUserByLineId(lineUserId) {
     
     if (companyVisitorSheet) {
       const companyData = companyVisitorSheet.getDataRange().getValues();
+      const headers = companyData[0];
       
-      // 会社別来院者管理シートのカラムインデックス（固定）
-      const companyVisitorIdIndex = 2; // C列: visitor_id
-      const companyLineIdIndex = 4; // E列: LINE_ID
-      const companyLineDisplayNameIndex = 12; // M列: LINE表示名
+      // ヘッダー情報をログ出力（デバッグ用）
+      Logger.log(`会社別来院者管理シートのヘッダー: ${JSON.stringify(headers)}`);
+      
+      // カラムインデックスを動的に取得
+      const companyVisitorIdIndex = headers.indexOf('visitor_id');
+      const companyLineIdIndex = headers.indexOf('LINE_ID');
+      const companyLineDisplayNameIndex = headers.indexOf('LINE表示名');
+      
+      Logger.log(`カラムインデックス - visitor_id: ${companyVisitorIdIndex}, LINE_ID: ${companyLineIdIndex}, LINE表示名: ${companyLineDisplayNameIndex}`);
+      
+      // インデックスが見つからない場合は固定値を使用（後方互換性）
+      const visitorIdCol = companyVisitorIdIndex >= 0 ? companyVisitorIdIndex : 2; // C列
+      const lineIdCol = companyLineIdIndex >= 0 ? companyLineIdIndex : 4; // E列 
+      const lineDisplayNameCol = companyLineDisplayNameIndex >= 0 ? companyLineDisplayNameIndex : 12; // M列
+      
+      Logger.log(`使用するカラムインデックス - visitor_id: ${visitorIdCol}, LINE_ID: ${lineIdCol}, LINE表示名: ${lineDisplayNameCol}`);
       
       // LINE IDで検索
       for (let i = 1; i < companyData.length; i++) {
-        if (companyData[i][companyLineIdIndex] === lineUserId) {
-          Logger.log(`会社別来院者管理シートで見つかりました: visitor_id=${companyData[i][companyVisitorIdIndex]}`);
-          const visitorId = companyData[i][companyVisitorIdIndex];
-          const lineDisplayName = companyData[i][companyLineDisplayNameIndex];
+        const rowLineId = companyData[i][lineIdCol];
+        
+        // デバッグ: 各行のLINE_IDと比較対象を出力
+        if (i <= 5 || (rowLineId && rowLineId.toString().trim())) { // 最初の5行または値がある行
+          Logger.log(`Row ${i}: LINE_ID='${rowLineId}' vs 検索ID='${lineUserId}' (一致: ${rowLineId === lineUserId})`);
+        }
+        
+        if (rowLineId === lineUserId) {
+          Logger.log(`会社別来院者管理シートで見つかりました: visitor_id=${companyData[i][visitorIdCol]}`);
+          const visitorId = companyData[i][visitorIdCol];
+          const lineDisplayName = companyData[i][lineDisplayNameCol];
           
           // visitor_idで患者マスタから詳細情報を取得
           const patientInfo = getPatientInfoByVisitorId(visitorId);
@@ -1168,6 +1188,9 @@ function getPhpUserByLineId(lineUserId) {
     const data = patientSheet.getDataRange().getValues();
     const headers = data[0];
     
+    // ヘッダー情報をログ出力（デバッグ用）
+    Logger.log(`患者マスタシートのヘッダー: ${JSON.stringify(headers)}`);
+    
     // カラムインデックスを取得
     const idIndex = headers.indexOf('visitor_id');
     const nameIndex = headers.indexOf('氏名');
@@ -1179,9 +1202,18 @@ function getPhpUserByLineId(lineUserId) {
     const createdAtIndex = headers.indexOf('登録日時');
     const updatedAtIndex = headers.indexOf('更新日時');
     
+    Logger.log(`患者マスタシート LINE_IDカラムインデックス: ${lineIdIndex}`);
+    
     // LINE IDで検索
     for (let i = 1; i < data.length; i++) {
-      if (data[i][lineIdIndex] === lineUserId) {
+      const rowLineId = data[i][lineIdIndex];
+      
+      // デバッグ: 最初の5行またはLINE_IDがある行をログ出力
+      if (i <= 5 || (rowLineId && rowLineId.toString().trim())) {
+        Logger.log(`患者マスタ Row ${i}: LINE_ID='${rowLineId}' vs 検索ID='${lineUserId}' (一致: ${rowLineId === lineUserId})`);
+      }
+      
+      if (rowLineId === lineUserId) {
         Logger.log(`患者マスタシートで見つかりました: visitor_id=${data[i][idIndex]}`);
         return {
           id: data[i][idIndex] || null,
