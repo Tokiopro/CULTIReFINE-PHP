@@ -66,14 +66,28 @@ try {
     
     $userData = $externalApi->getUserData($lineUserId);
     
+    // GAS APIレスポンスの詳細ログ
+    if (defined('DEBUG_MODE') && DEBUG_MODE) {
+        $logger->info('GAS APIレスポンス詳細', [
+            'userData_is_null' => is_null($userData),
+            'userData_is_array' => is_array($userData),
+            'userData_keys' => is_array($userData) ? array_keys($userData) : null,
+            'userData_preview' => is_array($userData) ? substr(json_encode($userData), 0, 300) : null
+        ]);
+    }
+    
     if ($userData !== null) {
         $logger->info('GAS APIからユーザーデータ取得成功', [
-            'user_id' => $userData['id'],
+            'user_id' => $userData['id'] ?? 'unknown',
+            'visitor_id' => $userData['visitor_id'] ?? null,
+            'name' => $userData['name'] ?? $userData['visitor_name'] ?? null,
+            'member_type' => $userData['member_type'] ?? null,
             'line_user_id' => $lineUserId
         ]);
     } else {
         $logger->info('GAS APIでユーザー未発見（正常ケース）', [
-            'line_user_id' => $lineUserId
+            'line_user_id' => $lineUserId,
+            'response_type' => gettype($userData)
         ]);
     }
     
@@ -150,7 +164,11 @@ try {
 if ($userData) {
     // 既存ユーザーの場合
     $_SESSION['user_data'] = $userData;
-    $logger->info('既存ユーザーとして予約ページへリダイレクト', ['user_id' => $userData['id']]);
+    $logger->info('既存ユーザーとして予約ページへリダイレクト', [
+        'user_id' => $userData['id'] ?? $userData['visitor_id'] ?? 'unknown',
+        'visitor_id' => $userData['visitor_id'] ?? null,
+        'has_user_data' => true
+    ]);
     
     // 予約ページへリダイレクト
     header('Location: ' . getRedirectUrl('/reserve/'));
@@ -158,14 +176,24 @@ if ($userData) {
     // 新規ユーザーの場合（GAS APIエラーではない）
     $logger->info('未登録ユーザーとして登録案内ページへ', [
         'line_user_id' => $lineUserId,
-        'session_id' => session_id()
+        'session_id' => session_id(),
+        'gas_api_response' => 'null'
     ]);
     
     // セッション情報が正しく設定されていることを確認
     $logger->info('セッション状態確認', [
         'session_data' => array_keys($_SESSION),
-        'line_user_id_set' => isset($_SESSION['line_user_id'])
+        'line_user_id_set' => isset($_SESSION['line_user_id']),
+        'line_user_id_value' => $_SESSION['line_user_id'] ?? 'not_set'
     ]);
+    
+    // 追加デバッグ: LINEプロフィール情報を確認
+    if (defined('DEBUG_MODE') && DEBUG_MODE) {
+        $logger->info('LINEプロフィール情報確認', [
+            'display_name' => $_SESSION['line_display_name'] ?? 'not_set',
+            'picture_url' => isset($_SESSION['line_picture_url']) ? 'set' : 'not_set'
+        ]);
+    }
     
     header('Location: ' . getRedirectUrl('/reserve/not-registered.php'));
 }

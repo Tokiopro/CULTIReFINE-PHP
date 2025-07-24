@@ -47,15 +47,34 @@ class ExternalApi
                     'error_code' => $result['error']['code'] ?? null,
                     'error_message' => $result['error']['message'] ?? null
                 ]));
+                
+                // 詳細なレスポンス情報
+                error_log('[ExternalApi] Full response keys: ' . implode(', ', array_keys($result ?? [])));
+                if (isset($result['data'])) {
+                    error_log('[ExternalApi] Data keys: ' . implode(', ', array_keys($result['data'])));
+                    // フラット形式の確認
+                    if (isset($result['data']['visitor_id'])) {
+                        error_log('[ExternalApi] Found visitor_id in flat format: ' . $result['data']['visitor_id']);
+                    }
+                }
             }
             
             // エラー処理
             if ($result['status'] === 'error') {
                 $errorCode = $result['error']['code'] ?? '';
                 $errorMessage = $result['error']['message'] ?? 'Unknown error';
+                $errorDetails = $result['error']['details'] ?? null;
+                
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    error_log('[ExternalApi] GAS API Error:');
+                    error_log('[ExternalApi]   Code: ' . $errorCode);
+                    error_log('[ExternalApi]   Message: ' . $errorMessage);
+                    error_log('[ExternalApi]   Details: ' . json_encode($errorDetails));
+                }
                 
                 // ユーザー未発見の場合はnullを返す（正常なケース）
-                if ($errorCode === 'USER_NOT_FOUND' || $errorCode === 'NOT_FOUND') {
+                if ($errorCode === 'USER_NOT_FOUND' || $errorCode === 'NOT_FOUND' || 
+                    strpos($errorMessage, '指定されたLINE IDのユーザーが見つかりません') !== false) {
                     if (defined('DEBUG_MODE') && DEBUG_MODE) {
                         error_log('[ExternalApi] User not found in GAS API (normal case): ' . $lineUserId);
                     }
@@ -70,12 +89,28 @@ class ExternalApi
             
             // 成功時のデータ変換
             if (!isset($result['data']) || !is_array($result['data'])) {
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    error_log('[ExternalApi] Invalid response: missing data field');
+                }
                 throw new Exception('GAS API returned invalid data structure');
             }
             
             $gasData = $result['data'];
             
-            // データ構造の検証
+            // 新形式のレスポンスに対応（フラット構造）
+            if (isset($gasData['visitor_id']) || isset($gasData['visitor_name'])) {
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    error_log('[ExternalApi] Detected new flat format response from GAS API');
+                    error_log('[ExternalApi] visitor_id: ' . ($gasData['visitor_id'] ?? 'not_set'));
+                    error_log('[ExternalApi] visitor_name: ' . ($gasData['visitor_name'] ?? 'not_set'));
+                    error_log('[ExternalApi] member_type: ' . ($gasData['member_type'] ?? 'not_set'));
+                }
+                
+                // 新形式のデータをそのまま返す
+                return $gasData;
+            }
+            
+            // 旧形式のデータ構造の検証
             if (!isset($gasData['user']) || !is_array($gasData['user'])) {
                 if (defined('DEBUG_MODE') && DEBUG_MODE) {
                     error_log('[ExternalApi] Invalid user data structure from GAS API: ' . json_encode($gasData));
@@ -86,16 +121,20 @@ class ExternalApi
             
             // GAS APIのデータ構造を旧ExternalApi互換形式に変換
             $userData = [
-                'id' => $gasData['user']['id'] ?? null,
+                'id' => $gasData['user']['id'] ?? $gasData['visitor']['visitor_id'] ?? null,
+                'visitor_id' => $gasData['user']['id'] ?? $gasData['visitor']['visitor_id'] ?? null,
                 'line_user_id' => $lineUserId,
-                'name' => $gasData['user']['name'] ?? null,
+                'name' => $gasData['user']['name'] ?? $gasData['visitor']['visitor_name'] ?? null,
+                'visitor_name' => $gasData['user']['name'] ?? $gasData['visitor']['visitor_name'] ?? null,
                 'email' => $gasData['user']['email'] ?? null,
                 'phone' => $gasData['user']['phone'] ?? null,
-                'created_at' => $gasData['user']['created_at'] ?? date('Y-m-d H:i:s')
+                'created_at' => $gasData['user']['created_at'] ?? date('Y-m-d H:i:s'),
+                'member_type' => $gasData['user']['member_type'] ?? $gasData['visitor']['member_type'] ?? 'sub'
             ];
             
             if (defined('DEBUG_MODE') && DEBUG_MODE) {
                 error_log('[ExternalApi] Successfully converted user data: ' . json_encode($userData));
+                error_log('[ExternalApi] Returning user data with visitor_id: ' . ($userData['visitor_id'] ?? 'null'));
             }
             
             return $userData;
