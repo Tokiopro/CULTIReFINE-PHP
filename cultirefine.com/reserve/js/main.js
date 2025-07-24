@@ -155,6 +155,23 @@ window.updateProceedButton = updateProceedButton;
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing app...');
     
+    // デバッグ情報を出力
+    if (window.SESSION_USER_DATA && window.SESSION_USER_DATA.debugMode) {
+        console.log('=== DEBUG MODE ENABLED ===');
+        console.log('Debug Info:', window.SESSION_USER_DATA.debugInfo);
+        
+        // エラーがある場合は強調表示
+        if (window.SESSION_USER_DATA.errorMessage) {
+            console.error('Error Message:', window.SESSION_USER_DATA.errorMessage);
+        }
+        
+        // GAS API関連のエラーを特に確認
+        const gasApiResponse = window.SESSION_USER_DATA.debugInfo?.gas_api_response;
+        if (gasApiResponse && gasApiResponse.error) {
+            console.error('GAS API Error Details:', gasApiResponse.error);
+        }
+    }
+    
     // Set current year in footer
     var currentYearElement = document.getElementById('current-year');
     if (currentYearElement) {
@@ -165,29 +182,89 @@ document.addEventListener('DOMContentLoaded', function() {
     initPatientSelectionScreen();
     initAddPatientModal();
     
+    
     // Set LINE user from PHP session data
     if (window.SESSION_USER_DATA) {
+        console.log('Session user data found:', {
+            lineUserId: window.SESSION_USER_DATA.lineUserId,
+            displayName: window.SESSION_USER_DATA.displayName,
+            hasUserData: !!window.SESSION_USER_DATA.userData
+        });
+        
         appState.setLineUser({
             userId: window.SESSION_USER_DATA.lineUserId,
             displayName: window.SESSION_USER_DATA.displayName,
             pictureUrl: window.SESSION_USER_DATA.pictureUrl
         });
         
-        // Fetch full user information from API
+        // Fetch full user information from API with timeout
+        const loadingTimeout = setTimeout(() => {
+            console.warn('API呼び出しがタイムアウトしました。基本画面を表示します。');
+            // タイムアウト時も画面を表示
+            appState.setScreen('patient-selection');
+            hideLoadingOverlay();
+            showErrorMessage('データの読み込みに時間がかかっています。一部機能が利用できない場合があります。');
+        }, 10000); // 10秒でタイムアウト（短縮）
+        
         getUserFullInfo().then(function(data) {
-            mapGasDataToAppState(data);
-            updatePatientsList();
+            clearTimeout(loadingTimeout);
+            
+            if (!data || !data.success) {
+                console.warn('API returned invalid data:', data);
+                // データが無効でも画面は表示
+                appState.setScreen('patient-selection');
+                hideLoadingOverlay();
+                showErrorMessage('ユーザーデータの読み込みに失敗しました。一部機能が制限される可能性があります。');
+                return;
+            }
+            
+            // 正常な場合のみデータをマップ
+            try {
+                mapGasDataToAppState(data);
+                updatePatientsList();
+                console.log('User data loaded successfully');
+            } catch (mappingError) {
+                console.error('Error mapping user data:', mappingError);
+                showErrorMessage('データの処理中にエラーが発生しました。');
+            } finally {
+                hideLoadingOverlay();
+            }
         }).catch(function(error) {
+            clearTimeout(loadingTimeout);
             console.error('Failed to load user data:', error);
+            
+            // エラー時でも基本画面は表示
+            appState.setScreen('patient-selection');
+            hideLoadingOverlay();
+            
+            // エラーの種類に応じて適切なメッセージを表示
+            let errorMessage = 'データの読み込みに失敗しました。';
+            
+            if (error.name === 'TimeoutError') {
+                errorMessage = 'サーバーへの接続がタイムアウトしました。ページを再読み込みしてください。';
+            } else if (error.message && error.message.includes('network')) {
+                errorMessage = 'ネットワークエラーが発生しました。インターネット接続を確認してください。';
+            } else if (error.message && error.message.includes('認証')) {
+                errorMessage = '認証エラーが発生しました。再度ログインしてください。';
+                // 3秒後に認証ページへリダイレクト
+                setTimeout(() => {
+                    window.location.href = '/reserve/line-auth/';
+                }, 3000);
+            }
+            
+            showErrorMessage(errorMessage);
         });
     } else {
         console.error('No session user data found');
+        console.log('Current location:', window.location.href);
+        console.log('Session storage:', {
+            sessionId: sessionStorage.getItem('sessionId'),
+            lineUserId: sessionStorage.getItem('lineUserId')
+        });
+        
         // Redirect to login
-        window.location.href = '/cultirefine.com/reserve/line-auth/';
+        window.location.href = '/reserve/line-auth/';
     }
-    
-    // Force set initial screen to patient-selection
-    appState.setScreen('patient-selection');
     
     console.log('App initialization complete');
     
@@ -360,6 +437,62 @@ function parseFailureReason(errorMessage) {
     
     // その他のエラーはそのまま返す
     return errorMessage;
+}
+
+/**
+ * ローディングオーバーレイを非表示にする
+ */
+function hideLoadingOverlay() {
+    const loadingOverlay = document.querySelector('.loading-overlay');
+    if (loadingOverlay) {
+        loadingOverlay.style.display = 'none';
+    }
+    
+    // 画面の表示を有効化
+    const mainContent = document.querySelector('.main-content');
+    if (mainContent) {
+        mainContent.style.display = 'block';
+    }
+}
+
+/**
+ * エラーメッセージを表示する
+ */
+function showErrorMessage(message) {
+    // 既存のエラーメッセージを削除
+    const existingError = document.querySelector('.error-message');
+    if (existingError) {
+        existingError.remove();
+    }
+    
+    // エラーメッセージ要素を作成
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message';
+    errorDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: #ff4444;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 5px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        z-index: 10000;
+        max-width: 90%;
+        text-align: center;
+    `;
+    errorDiv.textContent = message;
+    
+    // ページに追加
+    document.body.appendChild(errorDiv);
+    
+    // 5秒後に自動で削除
+    setTimeout(() => {
+        if (errorDiv.parentNode) {
+            errorDiv.parentNode.removeChild(errorDiv);
+        }
+    }, 5000);
 }
 
 // Backup initialization for older browsers

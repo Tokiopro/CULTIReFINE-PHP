@@ -1,9 +1,64 @@
 <?php
 session_start();
 
-// LINE認証チェック
+// セッションデバッグ情報
+$sessionDebug = [
+    'session_id' => session_id(),
+    'session_status' => session_status(),
+    'line_user_id' => $_SESSION['line_user_id'] ?? 'not_set',
+    'line_display_name' => $_SESSION['line_display_name'] ?? 'not_set',
+    'session_data_count' => count($_SESSION)
+];
+
+// LINE認証チェック（セッションエラー時は直接エラー表示）
 if (!isset($_SESSION['line_user_id'])) {
-    header('Location: /reserve/line-auth/');
+    error_log('[Session Error] No LINE user ID in session at not-registered.php: ' . json_encode($sessionDebug));
+    
+    // 直接エラーページを表示（リダイレクトしない）
+    ?>
+    <!DOCTYPE html>
+    <html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>セッションエラー - 天満病院 予約システム</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    <body class="bg-gray-50">
+        <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+            <div class="max-w-lg w-full space-y-8">
+                <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+                    <div class="bg-red-500 text-white p-6 text-center">
+                        <h1 class="text-2xl font-bold">セッションエラー</h1>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-700">セッション情報が取得できませんでした。</p>
+                        <div class="bg-gray-100 p-4 rounded text-sm">
+                            <p class="font-semibold mb-2">対処方法：</p>
+                            <ul class="list-disc list-inside space-y-1">
+                                <li>ブラウザのキャッシュとCookieをクリアしてください</li>
+                                <li>プライベートブラウジングモードで再度お試しください</li>
+                                <li>別のブラウザでお試しください</li>
+                            </ul>
+                        </div>
+                        <?php if (defined('DEBUG_MODE') && DEBUG_MODE): ?>
+                        <div class="bg-red-50 p-4 rounded text-xs">
+                            <p class="font-semibold mb-2">デバッグ情報：</p>
+                            <pre><?php echo htmlspecialchars(json_encode($sessionDebug, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></pre>
+                        </div>
+                        <?php endif; ?>
+                        <div class="text-center">
+                            <a href="/reserve/line-auth/" class="inline-block bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600">
+                                もう一度ログインする
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    <?php
     exit;
 }
 

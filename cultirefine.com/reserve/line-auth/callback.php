@@ -46,33 +46,127 @@ $_SESSION['line_user_id'] = $lineUserId;
 $_SESSION['line_display_name'] = $displayName;
 $_SESSION['line_picture_url'] = $pictureUrl;
 
+// セッションデバッグ情報をログに記録
+$logger->info('LINE認証コールバック開始', [
+    'line_user_id' => $lineUserId,
+    'display_name' => $displayName,
+    'session_id' => session_id(),
+    'session_status' => session_status()
+]);
+
 // GAS APIからユーザー情報を取得
 $externalApi = new ExternalApi();
+$userData = null;
+$gasApiError = false;
 
 try {
-    $logger->info('GAS APIへのユーザー情報問い合わせ', ['line_user_id' => $lineUserId]);
+    $logger->info('GAS APIへのユーザー情報問い合わせ', [
+        'line_user_id' => $lineUserId
+    ]);
+    
     $userData = $externalApi->getUserData($lineUserId);
+    
+    if ($userData !== null) {
+        $logger->info('GAS APIからユーザーデータ取得成功', [
+            'user_id' => $userData['id'],
+            'line_user_id' => $lineUserId
+        ]);
+    } else {
+        $logger->info('GAS APIでユーザー未発見（正常ケース）', [
+            'line_user_id' => $lineUserId
+        ]);
+    }
+    
 } catch (Exception $e) {
+    $gasApiError = true;
     $logger->error('GAS APIエラー', [
         'error' => $e->getMessage(),
         'line_user_id' => $lineUserId
     ]);
     
-    // エラーページへリダイレクト
-    $_SESSION['error_message'] = 'システムエラーが発生しました。しばらくしてからもう一度お試しください。';
-    header('Location: ' . getRedirectUrl('/reserve/error.php'));
+    // GAS APIエラーの場合は直接エラーページを表示（リダイレクトしない）
+    ?>
+    <!DOCTYPE html>
+    <html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>システムエラー - 天満病院 予約システム</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    <body class="bg-gray-50">
+        <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+            <div class="max-w-lg w-full space-y-8">
+                <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+                    <div class="bg-red-500 text-white p-6 text-center">
+                        <h1 class="text-2xl font-bold">システムエラー</h1>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-700">データの取得中にエラーが発生しました。</p>
+                        <div class="bg-red-50 p-4 rounded">
+                            <p class="text-sm text-red-700">
+                                <?php echo htmlspecialchars($e->getMessage()); ?>
+                            </p>
+                        </div>
+                        <div class="bg-gray-100 p-4 rounded text-sm">
+                            <p class="font-semibold mb-2">対処方法：</p>
+                            <ul class="list-disc list-inside space-y-1">
+                                <li>しばらく時間をおいてから再度お試しください</li>
+                                <li>問題が続く場合は、管理者にお問い合わせください</li>
+                            </ul>
+                        </div>
+                        <?php if (defined('DEBUG_MODE') && DEBUG_MODE): ?>
+                        <div class="bg-red-50 p-4 rounded text-xs">
+                            <p class="font-semibold mb-2">デバッグ情報：</p>
+                            <pre><?php echo htmlspecialchars(json_encode([
+                                'error_type' => 'GAS_API_ERROR',
+                                'message' => $e->getMessage(),
+                                'line_user_id' => $lineUserId,
+                                'display_name' => $displayName,
+                                'session_id' => session_id(),
+                                'timestamp' => date('Y-m-d H:i:s')
+                            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></pre>
+                        </div>
+                        <?php endif; ?>
+                        <div class="text-center space-x-4">
+                            <a href="/reserve/" class="inline-block bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600">
+                                もう一度試す
+                            </a>
+                            <a href="/reserve/line-auth/" class="inline-block bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600">
+                                再ログイン
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    <?php
     exit;
 }
 
+// 正常処理
 if ($userData) {
+    // 既存ユーザーの場合
     $_SESSION['user_data'] = $userData;
-    $logger->info('既存ユーザーとして認識', ['user_id' => $userData['id']]);
+    $logger->info('既存ユーザーとして予約ページへリダイレクト', ['user_id' => $userData['id']]);
     
     // 予約ページへリダイレクト
     header('Location: ' . getRedirectUrl('/reserve/'));
 } else {
-    // 新規ユーザーの場合の処理
-    $logger->info('未登録ユーザーとして案内ページへ', ['line_user_id' => $lineUserId]);
+    // 新規ユーザーの場合（GAS APIエラーではない）
+    $logger->info('未登録ユーザーとして登録案内ページへ', [
+        'line_user_id' => $lineUserId,
+        'session_id' => session_id()
+    ]);
+    
+    // セッション情報が正しく設定されていることを確認
+    $logger->info('セッション状態確認', [
+        'session_data' => array_keys($_SESSION),
+        'line_user_id_set' => isset($_SESSION['line_user_id'])
+    ]);
+    
     header('Location: ' . getRedirectUrl('/reserve/not-registered.php'));
 }
 exit;

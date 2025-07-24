@@ -17,34 +17,98 @@ class ExternalApi
     
     /**
      * LINE IDから外部APIでユーザー情報を取得
+     * 
+     * @param string $lineUserId LINE User ID
+     * @return array|null ユーザーデータ（見つからない場合null、エラー時は例外を投げる）
+     * @throws Exception GAS APIエラー、ネットワークエラー等
      */
     public function getUserData(string $lineUserId): ?array
     {
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[ExternalApi] getUserData called with LINE User ID: ' . $lineUserId);
+        }
+        
         // モックモードの場合
         if (MOCK_MODE) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[ExternalApi] Using mock mode');
+            }
             return $this->getMockUserData($lineUserId);
         }
         
-        // GAS APIを使用してユーザー情報を取得
-        $result = $this->gasApi->getUserFullInfo($lineUserId);
-        
-        if ($result['status'] === 'error') {
-            if ($result['error']['code'] === 'USER_NOT_FOUND') {
+        try {
+            // GAS APIを使用してユーザー情報を取得
+            $result = $this->gasApi->getUserFullInfo($lineUserId);
+            
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[ExternalApi] GAS API response: ' . json_encode([
+                    'status' => $result['status'] ?? 'no_status',
+                    'has_data' => isset($result['data']),
+                    'error_code' => $result['error']['code'] ?? null,
+                    'error_message' => $result['error']['message'] ?? null
+                ]));
+            }
+            
+            // エラー処理
+            if ($result['status'] === 'error') {
+                $errorCode = $result['error']['code'] ?? '';
+                $errorMessage = $result['error']['message'] ?? 'Unknown error';
+                
+                // ユーザー未発見の場合はnullを返す（正常なケース）
+                if ($errorCode === 'USER_NOT_FOUND' || $errorCode === 'NOT_FOUND') {
+                    if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                        error_log('[ExternalApi] User not found in GAS API (normal case): ' . $lineUserId);
+                    }
+                    return null;
+                }
+                
+                // その他のエラーは例外として投げる
+                $detailMessage = "GAS API Error [{$errorCode}]: {$errorMessage}";
+                error_log('[ExternalApi] ' . $detailMessage);
+                throw new Exception($detailMessage);
+            }
+            
+            // 成功時のデータ変換
+            if (!isset($result['data']) || !is_array($result['data'])) {
+                throw new Exception('GAS API returned invalid data structure');
+            }
+            
+            $gasData = $result['data'];
+            
+            // データ構造の検証
+            if (!isset($gasData['user']) || !is_array($gasData['user'])) {
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    error_log('[ExternalApi] Invalid user data structure from GAS API: ' . json_encode($gasData));
+                }
+                // データ構造が期待通りでない場合もユーザー未発見として扱う
                 return null;
             }
-            throw new Exception($result['error']['message']);
+            
+            // GAS APIのデータ構造を旧ExternalApi互換形式に変換
+            $userData = [
+                'id' => $gasData['user']['id'] ?? null,
+                'line_user_id' => $lineUserId,
+                'name' => $gasData['user']['name'] ?? null,
+                'email' => $gasData['user']['email'] ?? null,
+                'phone' => $gasData['user']['phone'] ?? null,
+                'created_at' => $gasData['user']['created_at'] ?? date('Y-m-d H:i:s')
+            ];
+            
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[ExternalApi] Successfully converted user data: ' . json_encode($userData));
+            }
+            
+            return $userData;
+            
+        } catch (Exception $e) {
+            // 既にログ出力済みでない場合のみログ出力
+            if (strpos($e->getMessage(), 'GAS API Error') !== 0) {
+                error_log('[ExternalApi] Exception in getUserData: ' . $e->getMessage());
+            }
+            
+            // すべての例外を再投げ
+            throw $e;
         }
-        
-        // GAS APIのデータ構造を旧ExternalApi互換形式に変換
-        $gasData = $result['data'];
-        return [
-            'id' => $gasData['user']['id'] ?? null,
-            'line_user_id' => $lineUserId,
-            'name' => $gasData['user']['name'] ?? null,
-            'email' => $gasData['user']['email'] ?? null,
-            'phone' => $gasData['user']['phone'] ?? null,
-            'created_at' => $gasData['user']['created_at'] ?? date('Y-m-d H:i:s')
-        ];
     }
     
     /**

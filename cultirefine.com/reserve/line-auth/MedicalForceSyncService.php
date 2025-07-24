@@ -7,9 +7,10 @@
 class MedicalForceSyncService
 {
     private MedicalForceApiClient $apiClient;
-    private int $batchSize = 500;
+    private int $batchSize = 100; // チャンクサイズを100に削減
     private int $maxRetries = 3;
     private float $retryDelay = 1.0; // 秒
+    private bool $chunkMode = false; // チャンクモードフラグ
     
     public function __construct(MedicalForceApiClient $apiClient)
     {
@@ -37,6 +38,7 @@ class MedicalForceSyncService
             $dateTo = $params['date_to'] ?? date('Y-m-d', strtotime('+14 days'));
             $offset = intval($params['offset'] ?? 0);
             $limit = intval($params['limit'] ?? $this->batchSize);
+            $this->chunkMode = $params['chunk_mode'] ?? false;
             
             error_log("[MF Sync] 予約同期開始 - 期間: {$dateFrom} ~ {$dateTo}");
             
@@ -123,6 +125,22 @@ class MedicalForceSyncService
                 
                 // API制限を考慮して少し待機
                 usleep(100000); // 0.1秒
+                
+                // メモリ使用量をチェックして必要に応じてクリア
+                $memoryUsage = memory_get_usage(true) / 1024 / 1024; // MB
+                if ($memoryUsage > 256) {
+                    error_log("[MF Sync] メモリ使用量: {$memoryUsage}MB - データをクリア");
+                    // チャンクモードの場合は処理済みデータをクリア
+                    if ($this->chunkMode) {
+                        $allReservations = array_slice($allReservations, -10); // 最新10件のみ保持
+                    }
+                }
+                
+                // チャンクモードで一定件数処理したら終了
+                if ($this->chunkMode && $processedCount >= $limit) {
+                    error_log("[MF Sync] チャンクモード: {$processedCount}件処理完了");
+                    break;
+                }
             }
             
             $endTime = microtime(true);
@@ -142,7 +160,9 @@ class MedicalForceSyncService
                         'date_range' => [
                             'from' => $dateFrom,
                             'to' => $dateTo
-                        ]
+                        ],
+                        'memory_usage_mb' => round(memory_get_usage(true) / 1024 / 1024, 2),
+                        'chunk_mode' => $this->chunkMode
                     ],
                     'errors' => $errors
                 ]

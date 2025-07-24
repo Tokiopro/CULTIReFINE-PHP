@@ -39,7 +39,8 @@ async function apiCall(action, params = {}, method = 'GET', data = null) {
         headers: {
             'Content-Type': 'application/json',
         },
-        credentials: 'same-origin' // セッションCookieを含める
+        credentials: 'same-origin', // セッションCookieを含める
+        signal: AbortSignal.timeout(30000) // 30秒タイムアウト
     };
     
     // POSTデータを追加
@@ -68,6 +69,17 @@ async function apiCall(action, params = {}, method = 'GET', data = null) {
         return result.data;
     } catch (error) {
         console.error('API Call Error:', error);
+        
+        // タイムアウトエラーの場合
+        if (error.name === 'TimeoutError') {
+            throw new Error('API呼び出しがタイムアウトしました。ページを再読み込みしてください。');
+        }
+        
+        // ネットワークエラーの場合
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+            throw new Error('ネットワーク接続に問題があります。インターネット接続を確認してください。');
+        }
+        
         throw error;
     }
 }

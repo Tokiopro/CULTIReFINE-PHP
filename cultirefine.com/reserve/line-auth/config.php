@@ -16,6 +16,23 @@ define('LINE_CALLBACK_URL', getLineCallbackUrl());
 // セッション設定
 define('SESSION_LIFETIME', 3600); // 1時間
 
+// セッションの初期設定
+if (session_status() === PHP_SESSION_NONE) {
+    // セッションクッキーの設定
+    ini_set('session.cookie_lifetime', SESSION_LIFETIME);
+    ini_set('session.gc_maxlifetime', SESSION_LIFETIME);
+    ini_set('session.cookie_httponly', true);
+    ini_set('session.cookie_samesite', 'Lax');
+    
+    // HTTPSの場合はセキュアクッキーを使用
+    if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
+        ini_set('session.cookie_secure', true);
+    }
+    
+    // セッションを開始
+    session_start();
+}
+
 // GAS API設定
 define('GAS_DEPLOYMENT_ID', getenv('GAS_DEPLOYMENT_ID'));
 define('GAS_API_KEY', getenv('GAS_API_KEY'));

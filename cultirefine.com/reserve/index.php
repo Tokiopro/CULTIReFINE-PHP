@@ -2,9 +2,18 @@
 session_start();
 require_once __DIR__ . '/line-auth/url-helper.php';
 
+// セッションデバッグ情報
+$sessionDebug = [
+    'session_id' => session_id(),
+    'session_status' => session_status(),
+    'has_line_user_id' => isset($_SESSION['line_user_id'])
+];
+
 // LINE認証チェック
 if (!isset($_SESSION['line_user_id'])) {
-    // 未認証の場合はLINE認証へリダイレクト
+    error_log('[Auth Check] No LINE user ID in session at index.php: ' . json_encode($sessionDebug));
+    
+    // LINE認証へリダイレクト
     header('Location: ' . getRedirectUrl('/reserve/line-auth/'));
     exit;
 }
