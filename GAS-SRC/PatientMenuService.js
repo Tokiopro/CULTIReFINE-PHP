@@ -104,7 +104,7 @@ class PatientMenuService {
    */
   getPatientReservationHistory(visitorId, fromDate) {
     try {
-      const reservationSheet = this.spreadsheetManager.getSheetData(Config.SHEET_NAMES.RESERVATIONS);
+      const reservationSheet = SpreadsheetManager.getSheetData(Config.SHEET_NAMES.RESERVATIONS);
       
       // 患者IDとステータスでフィルタリング
       return reservationSheet.filter(reservation => {
@@ -154,7 +154,7 @@ class PatientMenuService {
    * @returns {Object} 会社情報
    */
   getCompanyInfo(companyId) {
-    const companies = this.spreadsheetManager.getSheetData(Config.SHEET_NAMES.COMPANIES);
+    const companies = SpreadsheetManager.getSheetData(Config.SHEET_NAMES.COMPANIES);
     const company = companies.find(c => c['会社ID'] === companyId);
     
     if (!company) {
@@ -208,7 +208,7 @@ class PatientMenuService {
    */
   getAllMenus() {
     // メニューマスターからデータを取得
-    const menus = this.spreadsheetManager.getSheetData(Config.SHEET_NAMES.MENUS);
+    const menus = SpreadsheetManager.getSheetData(Config.SHEET_NAMES.MENUS);
     
     console.log('取得したメニューデータ数:', menus.length);
     if (menus.length > 0) {

@@ -16,7 +16,7 @@ class CategoryService {
     try {
       // シートが存在するかチェック
       const sheet = Utils.getOrCreateSheet(this.sheetName);
-      const data = this.spreadsheetManager.getSheetData(this.sheetName);
+      const data = SpreadsheetManager.getSheetData(this.sheetName);
       
       // データが空の場合は初期化
       if (!data || data.length === 0) {
@@ -92,7 +92,7 @@ class CategoryService {
    */
   getAllCategories() {
     return Utils.executeWithErrorHandling(() => {
-      const categories = this.spreadsheetManager.getSheetData(this.sheetName);
+      const categories = SpreadsheetManager.getSheetData(this.sheetName);
       return categories || [];
     });
   }

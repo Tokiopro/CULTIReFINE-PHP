@@ -788,7 +788,7 @@ class ReservationService {
     return Utils.executeWithErrorHandling(() => {
       Logger.log(`患者ID ${patientId} の予約情報を取得します`);
       
-      const sheet = this.spreadsheetManager.getSheetData(this.sheetName);
+      const sheet = SpreadsheetManager.getSheetData(this.sheetName);
       
       // visitor_idまたはpatient_idで検索
       const patientReservations = sheet.filter(row => 

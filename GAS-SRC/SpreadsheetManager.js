@@ -1327,4 +1327,78 @@ class SpreadsheetManager {
       Logger.log('ログ記録エラー: ' + error.toString());
     }
   }
+  
+  /**
+   * シートからデータを取得してオブジェクト配列として返す
+   * @param {string} sheetName - シート名
+   * @returns {Array} データのオブジェクト配列
+   */
+  static getSheetData(sheetName) {
+    try {
+      const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+      const sheet = spreadsheet.getSheetByName(sheetName);
+      
+      if (!sheet) {
+        Logger.log(`SpreadsheetManager.getSheetData: シート "${sheetName}" が見つかりません`);
+        return [];
+      }
+      
+      const lastRow = sheet.getLastRow();
+      const lastCol = sheet.getLastColumn();
+      
+      if (lastRow <= 1 || lastCol <= 0) {
+        Logger.log(`SpreadsheetManager.getSheetData: シート "${sheetName}" にデータがありません`);
+        return [];
+      }
+      
+      // ヘッダー行を取得
+      const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      
+      // データ行を取得
+      const dataRange = sheet.getRange(2, 1, lastRow - 1, lastCol);
+      const data = dataRange.getValues();
+      
+      // オブジェクト配列に変換
+      const result = this.convertToObjectArray(headers, data);
+      
+      Logger.log(`SpreadsheetManager.getSheetData: シート "${sheetName}" から ${result.length} 件のデータを取得`);
+      return result;
+      
+    } catch (error) {
+      Logger.log(`SpreadsheetManager.getSheetData エラー: ${error.toString()}`);
+      return [];
+    }
+  }
+  
+  /**
+   * ヘッダーとデータをオブジェクト配列に変換
+   * @param {Array} headers - ヘッダー配列
+   * @param {Array} data - データの2次元配列
+   * @returns {Array} オブジェクト配列
+   */
+  static convertToObjectArray(headers, data) {
+    const result = [];
+    
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const obj = {};
+      
+      // 空の行をスキップ
+      if (row.every(cell => cell === '' || cell === null || cell === undefined)) {
+        continue;
+      }
+      
+      // ヘッダーとデータを対応させてオブジェクトを作成
+      for (let j = 0; j < headers.length && j < row.length; j++) {
+        const header = headers[j];
+        if (header && header !== '') {
+          obj[header] = row[j];
+        }
+      }
+      
+      result.push(obj);
+    }
+    
+    return result;
+  }
 }

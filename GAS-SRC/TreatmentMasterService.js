@@ -15,7 +15,7 @@ class TreatmentMasterService {
    */
   getAllTreatments() {
     return Utils.executeWithErrorHandling(() => {
-      const treatments = this.spreadsheetManager.getSheetData(this.sheetName);
+      const treatments = SpreadsheetManager.getSheetData(this.sheetName);
       return treatments || [];
     });
   }

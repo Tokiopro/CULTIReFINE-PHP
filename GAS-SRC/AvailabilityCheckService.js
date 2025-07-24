@@ -100,7 +100,7 @@ class AvailabilityCheckService {
    * @returns {Object} メニュー情報
    */
   getMenuInfo(menuId) {
-    const menus = this.spreadsheetManager.getSheetData(Config.getSheetNames().menus);
+    const menus = SpreadsheetManager.getSheetData(Config.getSheetNames().menus);
     return menus.find(menu => menu['メニューID'] === menuId);
   }
 
@@ -154,7 +154,7 @@ class AvailabilityCheckService {
    * @returns {Array} 予約履歴
    */
   getPatientReservationHistory(visitorId) {
-    const reservations = this.spreadsheetManager.getSheetData(Config.getSheetNames().reservations);
+    const reservations = SpreadsheetManager.getSheetData(Config.getSheetNames().reservations);
     
     // 過去6ヶ月の日付を計算
     const sixMonthsAgo = new Date();
@@ -483,8 +483,8 @@ class AvailabilityCheckService {
    */
   getAvailableStaff(datetime, duration) {
     // スタッフ管理シートから情報を取得
-    const staffData = this.spreadsheetManager.getSheetData(Config.getSheetNames().staff);
-    const reservations = this.spreadsheetManager.getSheetData(Config.getSheetNames().reservations);
+    const staffData = SpreadsheetManager.getSheetData(Config.getSheetNames().staff);
+    const reservations = SpreadsheetManager.getSheetData(Config.getSheetNames().reservations);
     
     const startTime = new Date(datetime);
     const endTime = new Date(startTime.getTime() + duration * 60000);
