@@ -16,6 +16,38 @@ define('LINE_CALLBACK_URL', getLineCallbackUrl());
 // セッション設定
 define('SESSION_LIFETIME', 3600); // 1時間
 
+// セッションの初期設定（一度だけ実行）
+if (session_status() === PHP_SESSION_NONE) {
+    // HTTPS環境の確認
+    $isSecure = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ||
+                (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+    
+    // セッションパラメータを設定
+    $sessionParams = [
+        'lifetime' => SESSION_LIFETIME,
+        'path' => '/',
+        'domain' => '',
+        'secure' => $isSecure,
+        'httponly' => true,
+        'samesite' => 'Lax'
+    ];
+    
+    // セッションクッキーパラメータを設定
+    session_set_cookie_params($sessionParams);
+    
+    // セッションのガベージコレクション設定
+    ini_set('session.gc_maxlifetime', SESSION_LIFETIME);
+    
+    // セッションを開始
+    session_start();
+    
+    // デバッグ情報
+    if (defined('DEBUG_MODE') && DEBUG_MODE) {
+        error_log('[Config] Session started with ID: ' . session_id());
+        error_log('[Config] Session cookie params: ' . json_encode($sessionParams));
+    }
+}
+
 // GAS API設定
 define('GAS_DEPLOYMENT_ID', getenv('GAS_DEPLOYMENT_ID'));
 define('GAS_API_KEY', getenv('GAS_API_KEY'));
@@ -25,6 +57,10 @@ define('MEDICAL_FORCE_API_URL', getenv('MEDICAL_FORCE_API_URL') ?: 'https://api.
 define('MEDICAL_FORCE_API_KEY', getenv('MEDICAL_FORCE_API_KEY'));
 define('MEDICAL_FORCE_CLIENT_ID', getenv('MEDICAL_FORCE_CLIENT_ID'));
 define('MEDICAL_FORCE_CLIENT_SECRET', getenv('MEDICAL_FORCE_CLIENT_SECRET'));
+
+// クリニック営業時間設定
+define('CLINIC_OPEN_TIME', getenv('CLINIC_OPEN_TIME') ?: '09:00');
+define('CLINIC_CLOSE_TIME', getenv('CLINIC_CLOSE_TIME') ?: '19:00');
 
 // 開発環境設定
 define('DEBUG_MODE', getenv('DEBUG_MODE') === 'true');
@@ -44,12 +80,9 @@ foreach ($requiredConfigs as $name => $value) {
     }
 }
 
-// セッション開始
+// セッション開始の重複チェック（既に上で開始済みなのでここでは何もしない）
 if (session_status() == PHP_SESSION_NONE) {
-    session_start([
-        'cookie_lifetime' => SESSION_LIFETIME,
-        'cookie_httponly' => true,
-        'cookie_secure' => true,
-        'cookie_samesite' => 'Lax'
-    ]);
+    // このブロックは通常実行されない（既にセッション開始済みのため）
+    error_log('[Config] WARNING: Session was not started, starting now');
+    session_start();
 }

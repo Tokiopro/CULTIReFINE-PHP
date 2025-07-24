@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      max-width: 100%;
+    }
+    
+    .container {
+      max-width: 100%;
+    }
+    
+    h2 {
+      color: #333;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #555;
+    }
+    
+    input[type="text"],
+    input[type="number"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+    
+    input[type="number"] {
+      width: 150px;
+    }
+    
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+    
+    .button-group {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.3s;
+    }
+    
+    .btn-primary {
+      background-color: #4CAF50;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background-color: #45a049;
+    }
+    
+    .btn-secondary {
+      background-color: #757575;
+      color: white;
+    }
+    
+    .btn-secondary:hover {
+      background-color: #616161;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #666;
+    }
+    
+    .error {
+      color: #f44336;
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #ffebee;
+      border-radius: 4px;
+    }
+    
+    .success {
+      color: #4CAF50;
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #e8f5e9;
+      border-radius: 4px;
+    }
+    
+    .ticket-info {
+      background-color: #f9f9f9;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    
+    .ticket-info h3 {
+      margin-top: 0;
+      color: #333;
+    }
+    
+    .ticket-balance {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin-top: 10px;
+    }
+    
+    .balance-item {
+      background-color: #fff;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      text-align: center;
+    }
+    
+    .balance-item .label {
+      font-size: 12px;
+      color: #666;
+    }
+    
+    .balance-item .value {
+      font-size: 20px;
+      font-weight: bold;
+      color: #333;
+      margin: 5px 0;
+    }
+    
+    .balance-item .remaining {
+      font-size: 14px;
+      color: #4CAF50;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>チケット使用</h2>
+    
+    <div id="message"></div>
+    
+    <form id="ticketUsageForm">
+      <div class="form-group">
+        <label for="companyId">会社 <span style="color: red;">*</span></label>
+        <select id="companyId" name="companyId" required onchange="loadTicketBalance()">
+          <option value="">会社を選択してください</option>
+        </select>
+      </div>
+      
+      <div id="ticketInfoContainer" style="display: none;">
+        <div class="ticket-info">
+          <h3>現在のチケット残高</h3>
+          <div class="ticket-balance" id="ticketBalance">
+            <div class="balance-item">
+              <div class="label">幹細胞</div>
+              <div class="value" id="stemCellBalance">-</div>
+              <div class="remaining" id="stemCellRemaining">残り -</div>
+              <div class="last-used" id="stemCellLastUsed" style="font-size: 11px; color: #999; margin-top: 5px;">-</div>
+            </div>
+            <div class="balance-item">
+              <div class="label">施術</div>
+              <div class="value" id="treatmentBalance">-</div>
+              <div class="remaining" id="treatmentRemaining">残り -</div>
+              <div class="last-used" id="treatmentLastUsed" style="font-size: 11px; color: #999; margin-top: 5px;">-</div>
+            </div>
+            <div class="balance-item">
+              <div class="label">点滴</div>
+              <div class="value" id="infusionBalance">-</div>
+              <div class="remaining" id="infusionRemaining">残り -</div>
+              <div class="last-used" id="infusionLastUsed" style="font-size: 11px; color: #999; margin-top: 5px;">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label for="menuType">メニュータイプ <span style="color: red;">*</span></label>
+        <select id="menuType" name="menuType" required>
+          <option value="">選択してください</option>
+          <option value="幹細胞">幹細胞</option>
+          <option value="施術">施術</option>
+          <option value="点滴">点滴</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="useCount">使用枚数 <span style="color: red;">*</span></label>
+        <input type="number" id="useCount" name="useCount" min="1" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="userName">利用者名</label>
+        <input type="text" id="userName" name="userName" placeholder="利用した会員の名前">
+      </div>
+      
+      <div class="form-group">
+        <label for="memo">メモ</label>
+        <textarea id="memo" name="memo" placeholder="使用内容などのメモ"></textarea>
+      </div>
+      
+      <div class="button-group">
+        <button type="submit" class="btn-primary">使用する</button>
+        <button type="button" class="btn-secondary" onclick="resetForm()">クリア</button>
+      </div>
+    </form>
+  </div>
+  
+  <script>
+    // 初期化
+    window.onload = function() {
+      loadCompanies();
+    };
+    
+    // 会社リストを読み込む
+    function loadCompanies() {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            const select = document.getElementById('companyId');
+            result.data.forEach(function(company) {
+              const option = document.createElement('option');
+              option.value = company.id;
+              option.textContent = company.name;
+              select.appendChild(option);
+            });
+          } else {
+            showMessage('会社リストの読み込みに失敗しました: ' + result.error, 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showMessage('会社リストの読み込みに失敗しました: ' + error, 'error');
+        })
+        .getCompaniesForDialog();
+    }
+    
+    // チケット残高を読み込む
+    function loadTicketBalance() {
+      const companyId = document.getElementById('companyId').value;
+      if (!companyId) {
+        document.getElementById('ticketInfoContainer').style.display = 'none';
+        return;
+      }
+      
+      // 現在の年月を取得
+      const now = new Date();
+      const yearMonth = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
+      
+      google.script.run
+        .withSuccessHandler(function(balance) {
+          if (balance) {
+            // 残高情報を表示
+            document.getElementById('stemCellBalance').textContent = balance.幹細胞.付与;
+            document.getElementById('stemCellRemaining').textContent = '残り ' + balance.幹細胞.残;
+            document.getElementById('stemCellLastUsed').textContent = formatLastUsedDate(balance.幹細胞.最終利用日);
+            
+            document.getElementById('treatmentBalance').textContent = balance.施術.付与;
+            document.getElementById('treatmentRemaining').textContent = '残り ' + balance.施術.残;
+            document.getElementById('treatmentLastUsed').textContent = formatLastUsedDate(balance.施術.最終利用日);
+            
+            document.getElementById('infusionBalance').textContent = balance.点滴.付与;
+            document.getElementById('infusionRemaining').textContent = '残り ' + balance.点滴.残;
+            document.getElementById('infusionLastUsed').textContent = formatLastUsedDate(balance.点滴.最終利用日);
+            
+            document.getElementById('ticketInfoContainer').style.display = 'block';
+          } else {
+            showMessage('チケット残高が見つかりません', 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showMessage('チケット残高の取得に失敗しました: ' + error, 'error');
+        })
+        .getTicketBalanceForCompany(companyId, yearMonth);
+    }
+    
+    // フォーム送信
+    document.getElementById('ticketUsageForm').onsubmit = function(e) {
+      e.preventDefault();
+      
+      const companyId = document.getElementById('companyId').value;
+      const menuType = document.getElementById('menuType').value;
+      const useCount = parseInt(document.getElementById('useCount').value);
+      const userName = document.getElementById('userName').value;
+      const memo = document.getElementById('memo').value;
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result && !result.error) {
+            showMessage('チケットを使用しました', 'success');
+            resetForm();
+            loadTicketBalance();
+          } else {
+            showMessage('チケット使用に失敗しました: ' + (result ? result.error : '不明なエラー'), 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showMessage('チケット使用に失敗しました: ' + error, 'error');
+        })
+        .useTicketFromDialog(companyId, menuType, useCount, userName, memo);
+    };
+    
+    // フォームをリセット
+    function resetForm() {
+      document.getElementById('menuType').value = '';
+      document.getElementById('useCount').value = '';
+      document.getElementById('userName').value = '';
+      document.getElementById('memo').value = '';
+    }
+    
+    // メッセージを表示
+    function showMessage(message, type) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.className = type;
+      messageDiv.textContent = message;
+      
+      // 3秒後に消す
+      setTimeout(function() {
+        messageDiv.textContent = '';
+        messageDiv.className = '';
+      }, 3000);
+    }
+    
+    // 最終利用日をフォーマット
+    function formatLastUsedDate(date) {
+      if (!date) {
+        return '利用履歴なし';
+      }
+      
+      const lastUsed = new Date(date);
+      const now = new Date();
+      const diffTime = Math.abs(now - lastUsed);
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      
+      const year = lastUsed.getFullYear();
+      const month = ('0' + (lastUsed.getMonth() + 1)).slice(-2);
+      const day = ('0' + lastUsed.getDate()).slice(-2);
+      
+      if (diffDays === 0) {
+        return `前回利用: 本日`;
+      } else if (diffDays === 1) {
+        return `前回利用: 昨日`;
+      } else if (diffDays < 7) {
+        return `前回利用: ${diffDays}日前`;
+      } else {
+        return `前回利用: ${year}/${month}/${day}`;
+      }
+    }
+  </script>
+</body>
+</html>

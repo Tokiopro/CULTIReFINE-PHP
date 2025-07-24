@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
+  <style>
+    body {
+      padding: 20px;
+      font-family: Arial, sans-serif;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .section {
+      margin-bottom: 30px;
+      padding: 15px;
+      background: #f5f5f5;
+      border-radius: 5px;
+    }
+    .section-title {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 15px;
+      color: #333;
+    }
+    .btn-group {
+      margin-bottom: 15px;
+    }
+    .action-btn {
+      margin-right: 10px;
+      padding: 8px 16px;
+      background: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .action-btn:hover {
+      background: #357ae8;
+    }
+    .action-btn.secondary {
+      background: #757575;
+    }
+    .action-btn.secondary:hover {
+      background: #616161;
+    }
+    .action-btn.danger {
+      background: #db4437;
+    }
+    .action-btn.danger:hover {
+      background: #c23321;
+    }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border: 1px solid #ddd;
+    }
+    .data-table th,
+    .data-table td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    .data-table th {
+      background: #f0f0f0;
+      font-weight: bold;
+    }
+    .data-table tr:hover {
+      background: #f9f9f9;
+    }
+    .search-box {
+      margin-bottom: 15px;
+    }
+    .search-input {
+      padding: 8px 12px;
+      width: 300px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .tab-container {
+      margin-bottom: 20px;
+    }
+    .tab-buttons {
+      display: flex;
+      border-bottom: 2px solid #ddd;
+    }
+    .tab-button {
+      padding: 10px 20px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      color: #666;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+    }
+    .tab-button.active {
+      color: #4285f4;
+      border-bottom-color: #4285f4;
+    }
+    .tab-content {
+      display: none;
+      padding: 20px 0;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .import-area {
+      border: 2px dashed #ddd;
+      padding: 30px;
+      text-align: center;
+      background: #fafafa;
+      border-radius: 4px;
+      margin-bottom: 15px;
+    }
+    .file-input {
+      display: none;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    .form-label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #555;
+    }
+    .form-control {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .form-row {
+      display: flex;
+      gap: 15px;
+    }
+    .form-col {
+      flex: 1;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+    }
+    .modal-content {
+      position: relative;
+      background: white;
+      margin: 50px auto;
+      padding: 20px;
+      width: 80%;
+      max-width: 600px;
+      border-radius: 5px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .modal-title {
+      font-size: 20px;
+      font-weight: bold;
+    }
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: #999;
+    }
+    .close-btn:hover {
+      color: #666;
+    }
+    .message {
+      padding: 10px 15px;
+      margin-bottom: 15px;
+      border-radius: 4px;
+    }
+    .message.success {
+      background: #e8f5e9;
+      color: #2e7d32;
+      border: 1px solid #4caf50;
+    }
+    .message.error {
+      background: #ffebee;
+      color: #c62828;
+      border: 1px solid #f44336;
+    }
+    .message.warning {
+      background: #fff8e1;
+      color: #f57c00;
+      border: 1px solid #ff9800;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+    .spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #4285f4;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>施術・メニュー管理</h1>
+    
+    <div class="tab-container">
+      <div class="tab-buttons">
+        <button class="tab-button active" onclick="switchTab('treatment-creation')">施術作成</button>
+        <button class="tab-button" onclick="switchTab('menu-creation')">メニュー作成</button>
+        <button class="tab-button" onclick="switchTab('generated-menus')">生成済みメニュー</button>
+        <button class="tab-button" onclick="switchTab('categories')">カテゴリ管理</button>
+      </div>
+    </div>
+
+    <!-- 施術作成タブ -->
+    <div id="treatment-creation-tab" class="tab-content active">
+      <div class="section">
+        <div class="section-title">新規施術作成</div>
+        <form id="treatment-creation-form" onsubmit="createTreatmentPreview(event)">
+          <div class="form-group">
+            <label class="form-label">施術名 *</label>
+            <textarea id="treatment-name" class="form-control" required rows="3"
+                      placeholder="複数の施術を追加する場合は改行で区切ってください&#10;例:&#10;ハイドラフェイシャル&#10;ビタミン点滴&#10;美白点滴"></textarea>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-col">
+              <div class="form-group">
+                <label class="form-label">施術時間（分） *</label>
+                <input type="number" id="treatment-duration" class="form-control" required 
+                       min="1" value="60" placeholder="60">
+              </div>
+            </div>
+            <div class="form-col">
+              <div class="form-group">
+                <label class="form-label">カテゴリ *</label>
+                <input type="text" id="treatment-category" class="form-control" required 
+                       list="treatment-category-list" placeholder="カテゴリを検索・選択">
+                <datalist id="treatment-category-list"></datalist>
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">説明文</label>
+            <textarea id="treatment-description" class="form-control" rows="3" 
+                      placeholder="施術の説明を入力"></textarea>
+          </div>
+          
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="create-cleanup-shortened" name="create-cleanup-shortened">
+              点滴・注射の片付け時間分短縮施術複製を作成する
+            </label>
+            <small style="display: block; margin-left: 20px; color: #666;">
+              ※ チェックを入れると、20分短縮したバージョンの施術も作成されます
+            </small>
+          </div>
+          
+          <div class="btn-group">
+            <button type="submit" class="action-btn">施術をプレビュー</button>
+            <button type="button" class="action-btn secondary" onclick="resetTreatmentForm()">リセット</button>
+          </div>
+        </form>
+      </div>
+      
+      <div class="section" id="treatment-preview-section" style="display: none;">
+        <div class="section-title">作成される施術（プレビュー）</div>
+        <div id="treatment-preview"></div>
+        <div class="btn-group">
+          <button class="action-btn" onclick="addTreatmentToList()">リストに追加</button>
+          <button class="action-btn secondary" onclick="clearTreatmentPreview()">クリア</button>
+        </div>
+      </div>
+      
+      <div class="section" id="treatment-list-section" style="display: none;">
+        <div class="section-title">施術リスト</div>
+        <div id="treatment-list"></div>
+        <div class="btn-group">
+          <button class="action-btn" onclick="generateTreatmentsCsv()">CSV生成</button>
+          <button class="action-btn secondary" onclick="clearTreatmentList()">リストをクリア</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- メニュー作成タブ -->
+    <div id="menu-creation-tab" class="tab-content">
+      <div class="section">
+        <div class="section-title">新規メニュー作成</div>
+        <form id="menu-creation-form" onsubmit="createMenuVariations(event)">
+          <div class="form-group">
+            <label class="form-label">メニュー名 *</label>
+            <textarea id="menu-name" class="form-control" required rows="3"
+                      placeholder="複数のメニューを追加する場合は改行で区切ってください&#10;例:&#10;ビタミン点滴&#10;美白点滴&#10;ニンニク注射"></textarea>
+            <small>※ 各メニューに自動で（初回）（２回目）などのバリエーションが作成されます</small>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-col">
+              <div class="form-group">
+                <label class="form-label">施術時間（分） *</label>
+                <input type="number" id="treatment-time" class="form-control" required 
+                       min="1" value="60" placeholder="60">
+              </div>
+            </div>
+            <div class="form-col">
+              <div class="form-group">
+                <label class="form-label">短縮時間（分）</label>
+                <input type="number" id="short-duration" class="form-control" 
+                       min="1" value="10" placeholder="10">
+                <small>※ 動的短縮メニューで使用</small>
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-col">
+              <div class="form-group">
+                <label class="form-label">カテゴリ</label>
+                <select id="menu-category" class="form-control">
+                  <option value="">カテゴリを選択</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-col">
+              <div class="form-group">
+                <label class="form-label">金額（税込）</label>
+                <input type="number" id="menu-price" class="form-control" 
+                       min="0" placeholder="10000">
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">説明文</label>
+            <textarea id="menu-description" class="form-control" rows="3" 
+                      placeholder="メニューの説明を入力"></textarea>
+          </div>
+          
+          <div class="btn-group">
+            <button type="submit" class="action-btn">メニューを作成</button>
+            <button type="button" class="action-btn secondary" onclick="resetForm()">リセット</button>
+          </div>
+        </form>
+      </div>
+      
+      <div class="section" id="preview-section" style="display: none;">
+        <div class="section-title">作成されるメニュー（プレビュー）</div>
+        <div id="menu-preview"></div>
+        <div class="btn-group">
+          <button class="action-btn" onclick="saveMenus()">保存してCSV生成</button>
+          <button class="action-btn secondary" onclick="clearPreview()">クリア</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 生成済みメニュータブ -->
+    <div id="generated-menus-tab" class="tab-content">
+      <div class="section">
+        <div class="section-title">生成済みメニュー一覧</div>
+        <div class="search-box">
+          <input type="text" class="search-input" placeholder="メニュー名で検索..." onkeyup="searchGeneratedMenus(this.value)">
+        </div>
+        <div class="btn-group">
+          <button class="action-btn" onclick="generateCsvFromSelected()">選択したメニューをCSV出力</button>
+          <button class="action-btn" onclick="generateAllMenusCsv()">全メニューをCSV出力</button>
+          <button class="action-btn secondary" onclick="refreshGeneratedMenus()">更新</button>
+          <button class="action-btn danger" onclick="clearGeneratedMenus()">すべてクリア</button>
+        </div>
+        <div id="generated-menu-list" class="loading">
+          <div class="spinner"></div>
+          <p>読み込み中...</p>
+        </div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">CSV生成オプション</div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="include-header" checked> ヘッダー行を含める
+          </label>
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="include-empty-rows"> 空行を100行まで含める
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- カテゴリ管理タブ -->
+    <div id="categories-tab" class="tab-content">
+      <div class="section">
+        <div class="section-title">カテゴリ一覧</div>
+        <div class="btn-group">
+          <button class="action-btn" onclick="showAddCategoryModal()">新規カテゴリ追加</button>
+          <button class="action-btn secondary" onclick="refreshCategories()">更新</button>
+        </div>
+        <div id="category-list" class="loading">
+          <div class="spinner"></div>
+          <p>読み込み中...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- メッセージ表示エリア -->
+  <div id="message-container"></div>
+
+  <!-- モーダル（汎用） -->
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-title">タイトル</h2>
+        <button class="close-btn" onclick="closeModal()">&times;</button>
+      </div>
+      <div id="modal-body">
+        <!-- 動的にコンテンツが挿入される -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // グローバル変数
+    let generatedMenus = [];
+    let categories = [];
+    let treatmentPreviewList = [];
+    let treatmentsList = [];
+
+    // 初期化
+    document.addEventListener('DOMContentLoaded', function() {
+      loadCategories();
+      loadGeneratedMenus();
+    });
+
+    // タブ切り替え
+    function switchTab(tabName) {
+      // すべてのタブボタンとコンテンツを非アクティブに
+      document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+      
+      // 選択されたタブをアクティブに
+      event.target.classList.add('active');
+      document.getElementById(tabName + '-tab').classList.add('active');
+      
+      // タブに応じてデータを読み込み
+      if (tabName === 'treatment-creation') {
+        // 何もしない（すでに読み込み済み）
+      } else if (tabName === 'menu-creation') {
+        // 何もしない（すでに読み込み済み）
+      } else if (tabName === 'generated-menus') {
+        loadGeneratedMenus();
+      } else if (tabName === 'categories') {
+        loadCategories();
+      }
+    }
+
+    // メニューバリエーション作成
+    function createMenuVariations(event) {
+      event.preventDefault();
+      
+      const menuNames = document.getElementById('menu-name').value.trim().split('\n').filter(name => name.trim());
+      const baseTime = parseInt(document.getElementById('treatment-time').value);
+      const shortDuration = parseInt(document.getElementById('short-duration').value) || 10;
+      const category = document.getElementById('menu-category').value;
+      const price = document.getElementById('menu-price').value;
+      const description = document.getElementById('menu-description').value;
+      
+      // 各メニュー名に対してバリエーションを作成
+      const allVariations = [];
+      
+      menuNames.forEach(baseName => {
+        const trimmedName = baseName.trim();
+        const variations = [
+          {
+            'メニュー名': `${trimmedName}（初回）`,
+            '施術時間': baseTime,
+            'カテゴリ': category,
+            '金額': price,
+            '説明文': description,
+            'バリエーションタイプ': '初回'
+          },
+          {
+            'メニュー名': `${trimmedName}（２回目）`,
+            '施術時間': baseTime,
+            'カテゴリ': category,
+            '金額': price,
+            '説明文': description,
+            'バリエーションタイプ': '2回目'
+          },
+          {
+            'メニュー名': `${trimmedName}（１分短縮）`,
+            '施術時間': 1,
+            'カテゴリ': category,
+            '金額': price,
+            '説明文': description,
+            'バリエーションタイプ': '1分短縮'
+          },
+          {
+            'メニュー名': `${trimmedName}（${shortDuration}分短縮）`,
+            '施術時間': Math.max(baseTime - shortDuration, 1),
+            'カテゴリ': category,
+            '金額': price,
+            '説明文': description,
+            'バリエーションタイプ': `${shortDuration}分短縮`
+          }
+        ];
+        allVariations.push(...variations);
+      });
+      
+      // プレビュー表示
+      displayMenuPreview(allVariations);
+      
+      // 生成済みメニューに追加
+      generatedMenus.push(...allVariations);
+    }
+
+    // メニュープレビュー表示
+    function displayMenuPreview(variations) {
+      const previewSection = document.getElementById('preview-section');
+      const previewContainer = document.getElementById('menu-preview');
+      
+      let html = '<table class="data-table">';
+      html += '<thead><tr>';
+      html += '<th>メニュー名</th>';
+      html += '<th>施術時間</th>';
+      html += '<th>カテゴリ</th>';
+      html += '<th>金額</th>';
+      html += '</tr></thead>';
+      html += '<tbody>';
+      
+      variations.forEach(menu => {
+        html += '<tr>';
+        html += `<td>${menu['メニュー名']}</td>`;
+        html += `<td>${menu['施術時間']}分</td>`;
+        html += `<td>${menu['カテゴリ'] || '未分類'}</td>`;
+        html += `<td>¥${(menu['金額'] || 0).toLocaleString()}</td>`;
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table>';
+      
+      previewContainer.innerHTML = html;
+      previewSection.style.display = 'block';
+      
+      const menuCount = variations.length / 4;  // 4つのバリエーションがあるため
+      showMessage(`${menuCount}個のメニューから${variations.length}個のバリエーションを作成しました`, 'success');
+    }
+
+    // 生成済みメニュー読み込み
+    function loadGeneratedMenus() {
+      google.script.run
+        .withSuccessHandler(function(menus) {
+          if (menus) {
+            generatedMenus = menus;
+            displayGeneratedMenus();
+          }
+        })
+        .withFailureHandler(handleError)
+        .getGeneratedMenus();
+    }
+
+    // 生成済みメニュー表示
+    function displayGeneratedMenus() {
+      const container = document.getElementById('generated-menu-list');
+      
+      if (!generatedMenus || generatedMenus.length === 0) {
+        container.innerHTML = '<p>生成済みメニューがありません</p>';
+        return;
+      }
+      
+      let html = '<table class="data-table">';
+      html += '<thead><tr>';
+      html += '<th><input type="checkbox" onchange="toggleAllSelection(this)"></th>';
+      html += '<th>メニュー名</th>';
+      html += '<th>施術時間</th>';
+      html += '<th>カテゴリ</th>';
+      html += '<th>金額</th>';
+      html += '<th>タイプ</th>';
+      html += '</tr></thead>';
+      html += '<tbody>';
+      
+      generatedMenus.forEach((menu, index) => {
+        html += '<tr>';
+        html += `<td><input type="checkbox" class="menu-checkbox" value="${index}"></td>`;
+        html += `<td>${menu['メニュー名']}</td>`;
+        html += `<td>${menu['施術時間']}分</td>`;
+        html += `<td>${menu['カテゴリ'] || '未分類'}</td>`;
+        html += `<td>¥${(menu['金額'] || 0).toLocaleString()}</td>`;
+        html += `<td>${menu['バリエーションタイプ'] || ''}</td>`;
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    // 全選択/解除
+    function toggleAllSelection(checkbox) {
+      document.querySelectorAll('.menu-checkbox').forEach(cb => {
+        cb.checked = checkbox.checked;
+      });
+    }
+
+    // 選択されたメニューをCSV出力
+    function generateCsvFromSelected() {
+      const selectedIndexes = [];
+      document.querySelectorAll('.menu-checkbox:checked').forEach(cb => {
+        selectedIndexes.push(parseInt(cb.value));
+      });
+      
+      if (selectedIndexes.length === 0) {
+        showMessage('メニューを選択してください', 'warning');
+        return;
+      }
+      
+      const selectedMenus = selectedIndexes.map(index => generatedMenus[index]);
+      generateCsv(selectedMenus);
+    }
+
+    // 全メニューをCSV出力
+    function generateAllMenusCsv() {
+      if (generatedMenus.length === 0) {
+        showMessage('生成済みメニューがありません', 'warning');
+        return;
+      }
+      
+      generateCsv(generatedMenus);
+    }
+
+    // CSV生成
+    function generateCsv(menus) {
+      const includeHeader = document.getElementById('include-header').checked;
+      const includeEmptyRows = document.getElementById('include-empty-rows').checked;
+      
+      google.script.run
+        .withSuccessHandler(function(csvContent) {
+          // 空行を追加
+          if (includeEmptyRows) {
+            const lines = csvContent.split('\n');
+            const headerLine = includeHeader ? lines[0] : '';
+            const dataLines = includeHeader ? lines.slice(1) : lines;
+            
+            // 空行を追加（100行まで）
+            const emptyRows = Math.max(100 - dataLines.length, 0);
+            for (let i = 0; i < emptyRows; i++) {
+              const emptyRow = Array(13).fill('').join(',');
+              dataLines.push(emptyRow);
+            }
+            
+            csvContent = includeHeader ? 
+              [headerLine, ...dataLines].join('\n') : 
+              dataLines.join('\n');
+          }
+          
+          downloadCsv(csvContent, 'menu_import.csv');
+          showMessage('CSVファイルを生成しました', 'success');
+        })
+        .withFailureHandler(handleError)
+        .generateMedicalForceCsv(menus);
+
+    }
+
+    // カテゴリデータ読み込み
+    function loadCategories() {
+      console.log('カテゴリ読み込み開始...');
+      
+      // ローディング表示
+      const categoryList = document.getElementById('category-list');
+      if (categoryList) {
+        categoryList.innerHTML = '<div class="loading"><div class="spinner"></div><p>カテゴリを読み込み中...</p></div>';
+      }
+      
+      google.script.run
+        .withSuccessHandler(function(response) {
+          console.log('カテゴリ読み込み成功:', response);
+          console.log('レスポンスタイプ:', typeof response);
+          console.log('レスポンス詳細:', JSON.stringify(response, null, 2));
+          
+          // responseがオブジェクトでtreatmentCategoriesプロパティを持つ場合
+          if (response && response.treatmentCategories) {
+            categories = response.treatmentCategories;
+            console.log('treatmentCategoriesプロパティからカテゴリを取得:', categories.length, '件');
+          } else if (Array.isArray(response)) {
+            // responseが直接配列の場合
+            categories = response;
+            console.log('直接配列としてカテゴリを取得:', categories.length, '件');
+          } else {
+            categories = [];
+            console.error('予期しないレスポンス形式:', response);
+            showMessage('カテゴリデータの形式が正しくありません', 'error');
+          }
+          
+          displayCategories(categories);
+          updateCategoryDropdown();
+        })
+        .withFailureHandler(function(error) {
+          console.error('カテゴリ読み込み失敗:', error);
+          
+          // ローディング表示をクリア
+          if (categoryList) {
+            categoryList.innerHTML = '<p>カテゴリの読み込みに失敗しました</p>';
+          }
+          
+          handleError(error);
+        })
+        .getCategories();
+    }
+
+    // カテゴリドロップダウン更新
+    function updateCategoryDropdown() {
+      // メニューカテゴリドロップダウンを更新
+      const menuSelect = document.getElementById('menu-category');
+      if (menuSelect) {
+        menuSelect.innerHTML = '<option value="">カテゴリを選択</option>';
+        
+        categories.forEach(category => {
+          if (category['有効フラグ']) {
+            const option = document.createElement('option');
+            option.value = category['カテゴリ名'];
+            option.textContent = category['カテゴリ名'];
+            menuSelect.appendChild(option);
+          }
+        });
+      }
+      
+      // 施術カテゴリdatalistを更新
+      const treatmentDatalist = document.getElementById('treatment-category-list');
+      if (treatmentDatalist) {
+        treatmentDatalist.innerHTML = '';
+        
+        categories.forEach(category => {
+          if (category['有効フラグ'] && (category['カテゴリタイプ'] === 'treatment' || !category['カテゴリタイプ'])) {
+            const option = document.createElement('option');
+            option.value = category['カテゴリ名'];
+            treatmentDatalist.appendChild(option);
+          }
+        });
+      }
+    }
+
+    // カテゴリデータ表示
+    function displayCategories(categories) {
+      console.log('カテゴリ表示開始:', categories);
+      console.log('カテゴリ数:', categories ? categories.length : 0);
+      
+      const container = document.getElementById('category-list');
+      
+      if (!categories || categories.length === 0) {
+        console.log('カテゴリデータが空です');
+        container.innerHTML = '<p>カテゴリデータがありません。新規カテゴリを追加してください。</p>';
+        return;
+      }
+      
+      let html = '<table class="data-table">';
+      html += '<thead><tr>';
+      html += '<th>カテゴリID</th>';
+      html += '<th>カテゴリ名</th>';
+      html += '<th>タイプ</th>';
+      html += '<th>表示順</th>';
+      html += '<th>状態</th>';
+      html += '<th>操作</th>';
+      html += '</tr></thead>';
+      html += '<tbody>';
+      
+      categories.forEach(category => {
+        html += '<tr>';
+        html += `<td>${category['カテゴリID'] || ''}</td>`;
+        html += `<td>${category['カテゴリ名'] || ''}</td>`;
+        html += `<td>${category['カテゴリタイプ'] || ''}</td>`;
+        html += `<td>${category['表示順'] || ''}</td>`;
+        html += `<td>${category['有効フラグ'] ? '有効' : '無効'}</td>`;
+        html += '<td>';
+        html += `<button class="action-btn" onclick="editCategory('${category['カテゴリID']}')">編集</button> `;
+        html += `<button class="action-btn danger" onclick="deleteCategory('${category['カテゴリID']}')">削除</button>`;
+        html += '</td>';
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    // ファイル選択処理（施術）
+    function handleTreatmentFileSelect(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          importTreatments(e.target.result);
+        };
+        reader.readAsText(file, 'UTF-8');
+      }
+    }
+
+    // ファイル選択処理（メニュー）
+    function handleMenuFileSelect(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          importMenus(e.target.result);
+        };
+        reader.readAsText(file, 'UTF-8');
+      }
+    }
+
+    // 未使用の関数を削除（インポート機能は不要）
+
+    // モーダル表示
+    function showModal(title, content) {
+      document.getElementById('modal-title').textContent = title;
+      document.getElementById('modal-body').innerHTML = content;
+      document.getElementById('modal').style.display = 'block';
+    }
+
+    // モーダル非表示
+    function closeModal() {
+      document.getElementById('modal').style.display = 'none';
+    }
+
+    // ローディング表示
+    function showLoading(elementId) {
+      const element = document.getElementById(elementId);
+      element.innerHTML = '<div class="spinner"></div><p>読み込み中...</p>';
+      element.classList.add('loading');
+    }
+
+    // メッセージ表示
+    function showMessage(message, type = 'info') {
+      const container = document.getElementById('message-container');
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${type}`;
+      messageDiv.innerHTML = message;
+      container.appendChild(messageDiv);
+      
+      // 5秒後に自動的に削除
+      setTimeout(() => {
+        messageDiv.remove();
+      }, 5000);
+    }
+
+    // エラーハンドリング
+    function handleError(error) {
+      console.error('詳細エラー情報:', error);
+      console.error('エラータイプ:', typeof error);
+      console.error('エラーメッセージ:', error.message || error.toString());
+      console.error('スタックトレース:', error.stack);
+      
+      let errorMessage = 'エラーが発生しました';
+      if (error && error.message) {
+        errorMessage += ': ' + error.message;
+      } else if (error && typeof error === 'string') {
+        errorMessage += ': ' + error;
+      } else if (error) {
+        errorMessage += ': ' + error.toString();
+      }
+      
+      showMessage(errorMessage, 'error');
+    }
+
+    // 保存とクリア機能
+    function saveMenus() {
+      if (generatedMenus.length === 0) {
+        showMessage('保存するメニューがありません', 'warning');
+        return;
+      }
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showMessage(`${result.count}件のメニューを保存しました`, 'success');
+          // 生成済みメニューリストを更新
+          loadGeneratedMenus();
+        })
+        .withFailureHandler(handleError)
+        .saveGeneratedMenus(generatedMenus);
+    }
+
+    function clearPreview() {
+      const previewSection = document.getElementById('preview-section');
+      previewSection.style.display = 'none';
+      document.getElementById('menu-preview').innerHTML = '';
+    }
+
+    function clearGeneratedMenus() {
+      if (confirm('生成済みメニューをすべて削除してもよろしいですか？')) {
+        google.script.run
+          .withSuccessHandler(function() {
+            generatedMenus = [];
+            displayGeneratedMenus();
+            showMessage('生成済みメニューをクリアしました', 'success');
+          })
+          .withFailureHandler(handleError)
+          .clearGeneratedMenus();
+      }
+    }
+
+    // 検索機能
+    function searchGeneratedMenus(keyword) {
+      if (!keyword) {
+        displayGeneratedMenus();
+        return;
+      }
+      
+      const filteredMenus = generatedMenus.filter(menu => {
+        return menu['メニュー名'].toLowerCase().includes(keyword.toLowerCase()) ||
+               (menu['カテゴリ'] && menu['カテゴリ'].toLowerCase().includes(keyword.toLowerCase()));
+      });
+      
+      displayFilteredMenus(filteredMenus);
+    }
+
+    function displayFilteredMenus(filteredMenus) {
+      const container = document.getElementById('generated-menu-list');
+      
+      if (filteredMenus.length === 0) {
+        container.innerHTML = '<p>検索結果がありません</p>';
+        return;
+      }
+      
+      let html = '<table class="data-table">';
+      html += '<thead><tr>';
+      html += '<th><input type="checkbox" onchange="toggleAllSelection(this)"></th>';
+      html += '<th>メニュー名</th>';
+      html += '<th>施術時間</th>';
+      html += '<th>カテゴリ</th>';
+      html += '<th>金額</th>';
+      html += '<th>タイプ</th>';
+      html += '</tr></thead>';
+      html += '<tbody>';
+      
+      filteredMenus.forEach((menu, index) => {
+        const originalIndex = generatedMenus.indexOf(menu);
+        html += '<tr>';
+        html += `<td><input type="checkbox" class="menu-checkbox" value="${originalIndex}"></td>`;
+        html += `<td>${menu['メニュー名']}</td>`;
+        html += `<td>${menu['施術時間']}分</td>`;
+        html += `<td>${menu['カテゴリ'] || '未分類'}</td>`;
+        html += `<td>¥${(menu['金額'] || 0).toLocaleString()}</td>`;
+        html += `<td>${menu['バリエーションタイプ'] || ''}</td>`;
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    // フォームリセット
+    function resetForm() {
+      document.getElementById('menu-creation-form').reset();
+      clearPreview();
+      document.getElementById('treatment-time').value = 60;
+      document.getElementById('short-duration').value = 10;
+    }
+
+    // リフレッシュ機能
+    function refreshGeneratedMenus() {
+      loadGeneratedMenus();
+    }
+
+    function refreshCategories() {
+      loadCategories();
+    }
+
+    // カテゴリ追加モーダル
+    function showAddCategoryModal() {
+      const modalContent = `
+        <form id="category-form" onsubmit="addCategory(event)">
+          <div class="form-group">
+            <label class="form-label">カテゴリ名</label>
+            <input type="text" id="category-name" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">カテゴリタイプ</label>
+            <select id="category-type" class="form-control">
+              <option value="treatment">施術</option>
+              <option value="menu">メニュー</option>
+              <option value="other">その他</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">表示順</label>
+            <input type="number" id="category-order" class="form-control" min="1" value="1">
+          </div>
+          <div class="btn-group">
+            <button type="submit" class="action-btn">追加</button>
+            <button type="button" class="action-btn secondary" onclick="closeModal()">キャンセル</button>
+          </div>
+        </form>
+      `;
+      
+      showModal('新規カテゴリ追加', modalContent);
+    }
+
+    function addCategory(event) {
+      event.preventDefault();
+      
+      const categoryData = {
+        name: document.getElementById('category-name').value,
+        type: document.getElementById('category-type').value,
+        order: parseInt(document.getElementById('category-order').value)
+      };
+      
+      // ローディング表示を開始
+      const submitBtn = event.target.querySelector('button[type="submit"]');
+      const originalText = submitBtn.textContent;
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner" style="width: 16px; height: 16px; margin-right: 8px;"></span>カテゴリを追加中...';
+      
+      // フォーム内の他のボタンも無効化
+      const cancelBtn = event.target.querySelector('button[type="button"]');
+      if (cancelBtn) cancelBtn.disabled = true;
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showMessage('カテゴリを追加しました', 'success');
+          closeModal();
+          loadCategories();
+          // ボタンを元に戻す（クローズ前に念のため）
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalText;
+          if (cancelBtn) cancelBtn.disabled = false;
+        })
+        .withFailureHandler(function(error) {
+          // ローディング表示を終了
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalText;
+          if (cancelBtn) cancelBtn.disabled = false;
+          handleError(error);
+        })
+        .addCategory(categoryData.name, categoryData.type, { order: categoryData.order });
+    }
+
+    function editCategory(categoryId) {
+      const category = categories.find(c => c['カテゴリID'] === categoryId);
+      if (!category) {
+        showMessage('カテゴリが見つかりません', 'error');
+        return;
+      }
+      
+      const modalContent = `
+        <form id="edit-category-form" onsubmit="updateCategory(event, '${categoryId}')">
+          <div class="form-group">
+            <label class="form-label">カテゴリ名</label>
+            <input type="text" id="edit-category-name" class="form-control" value="${category['カテゴリ名']}" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">カテゴリタイプ</label>
+            <select id="edit-category-type" class="form-control">
+              <option value="treatment" ${category['カテゴリタイプ'] === 'treatment' ? 'selected' : ''}>施術</option>
+              <option value="menu" ${category['カテゴリタイプ'] === 'menu' ? 'selected' : ''}>メニュー</option>
+              <option value="other" ${category['カテゴリタイプ'] === 'other' ? 'selected' : ''}>その他</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">表示順</label>
+            <input type="number" id="edit-category-order" class="form-control" min="1" value="${category['表示順'] || 1}">
+          </div>
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="edit-category-active" ${category['有効フラグ'] ? 'checked' : ''}> 有効
+            </label>
+          </div>
+          <div class="btn-group">
+            <button type="submit" class="action-btn">更新</button>
+            <button type="button" class="action-btn secondary" onclick="closeModal()">キャンセル</button>
+          </div>
+        </form>
+      `;
+      
+      showModal('カテゴリ編集', modalContent);
+    }
+
+    function updateCategory(event, categoryId) {
+      event.preventDefault();
+      
+      const categoryData = {
+        id: categoryId,
+        name: document.getElementById('edit-category-name').value,
+        type: document.getElementById('edit-category-type').value,
+        order: parseInt(document.getElementById('edit-category-order').value),
+        active: document.getElementById('edit-category-active').checked
+      };
+      
+      // ローディング表示を開始
+      const submitBtn = event.target.querySelector('button[type="submit"]');
+      const originalText = submitBtn.textContent;
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner" style="width: 16px; height: 16px; margin-right: 8px;"></span>更新中...';
+      
+      // フォーム内の他のボタンも無効化
+      const cancelBtn = event.target.querySelector('button[type="button"]');
+      if (cancelBtn) cancelBtn.disabled = true;
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showMessage('カテゴリを更新しました', 'success');
+          closeModal();
+          loadCategories();
+          // ボタンを元に戻す（クローズ前に念のため）
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalText;
+          if (cancelBtn) cancelBtn.disabled = false;
+        })
+        .withFailureHandler(function(error) {
+          // ローディング表示を終了
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalText;
+          if (cancelBtn) cancelBtn.disabled = false;
+          handleError(error);
+        })
+        .updateCategory(categoryData);
+    }
+
+    function deleteCategory(categoryId) {
+      if (confirm('このカテゴリを削除してもよろしいですか？')) {
+        google.script.run
+          .withSuccessHandler(function() {
+            showMessage('カテゴリを削除しました', 'success');
+            loadCategories();
+          })
+          .withFailureHandler(handleError)
+          .deleteCategory(categoryId);
+      }
+    }
+
+    function downloadCsv(content, filename) {
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+    }
+
+    function downloadMenuTemplate() {
+      const template = 'No,メニュー名※必須,説明文,金額,メニューの実施優先度,受付開始日時,受付終了日時,受付開始時間,受付終了時間,時間目安,対応可能な開始時間,メニューに含める施術,デポジットを受け取る\n1,,,,,,,,,,,,,';
+      downloadCsv(template, 'menu_template.csv');
+    }
+    
+    // 施術作成プレビュー
+    function createTreatmentPreview(event) {
+      event.preventDefault();
+      
+      const treatmentNames = document.getElementById('treatment-name').value.trim().split('\n').filter(name => name.trim());
+      const baseDuration = parseInt(document.getElementById('treatment-duration').value);
+      const category = document.getElementById('treatment-category').value;
+      const description = document.getElementById('treatment-description').value;
+      const createCleanupShortened = document.getElementById('create-cleanup-shortened').checked;
+      
+      // 各施術に対してバリエーションを作成
+      treatmentPreviewList = [];
+      
+      treatmentNames.forEach(name => {
+        const trimmedName = name.trim();
+        
+        // 基本の施術
+        treatmentPreviewList.push({
+          '施術名': trimmedName,
+          '施術時間': baseDuration,
+          'カテゴリ': category,
+          '説明文': description,
+          'バリエーション': '基本'
+        });
+        
+        // 1分バージョン（動的短縮用）
+        treatmentPreviewList.push({
+          '施術名': `${trimmedName}（1分）`,
+          '施術時間': 1,
+          'カテゴリ': category,
+          '説明文': description,
+          'バリエーション': '1分固定'
+        });
+        
+        // 片付け時間短縮バージョン（20分短縮）
+        if (createCleanupShortened && category && (category.includes('点滴') || category.includes('注射'))) {
+          if (baseDuration > 20) {
+            treatmentPreviewList.push({
+              '施術名': `${trimmedName}（片付け時間短縮）`,
+              '施術時間': baseDuration - 20,
+              'カテゴリ': category,
+              '説明文': description,
+              'バリエーション': '片付け時間短縮'
+            });
+          }
+        }
+      });
+      
+      displayTreatmentPreview();
+    }
+    
+    // 施術プレビュー表示
+    function displayTreatmentPreview() {
+      const previewSection = document.getElementById('treatment-preview-section');
+      const previewContainer = document.getElementById('treatment-preview');
+      
+      let html = '<table class="data-table">';
+      html += '<thead><tr>';
+      html += '<th>施術名</th>';
+      html += '<th>施術時間</th>';
+      html += '<th>カテゴリ</th>';
+      html += '<th>バリエーション</th>';
+      html += '<th>説明文</th>';
+      html += '</tr></thead>';
+      html += '<tbody>';
+      
+      treatmentPreviewList.forEach(treatment => {
+        html += '<tr>';
+        html += `<td>${treatment['施術名']}</td>`;
+        html += `<td>${treatment['施術時間']}分</td>`;
+        html += `<td>${treatment['カテゴリ'] || '未分類'}</td>`;
+        html += `<td>${treatment['バリエーション'] || ''}</td>`;
+        html += `<td>${treatment['説明文'] || ''}</td>`;
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table>';
+      
+      previewContainer.innerHTML = html;
+      previewSection.style.display = 'block';
+      
+      const baseCount = treatmentPreviewList.filter(t => t['バリエーション'] === '基本').length;
+      const totalCount = treatmentPreviewList.length;
+      showMessage(`${baseCount}個の施術から${totalCount}個のバリエーションを作成しました`, 'success');
+    }
+    
+    // 施術をリストに追加
+    function addTreatmentToList() {
+      treatmentsList.push(...treatmentPreviewList);
+      displayTreatmentList();
+      clearTreatmentPreview();
+      resetTreatmentForm();
+      showMessage('施術をリストに追加しました', 'success');
+    }
+    
+    // 施術リスト表示
+    function displayTreatmentList() {
+      const listSection = document.getElementById('treatment-list-section');
+      const listContainer = document.getElementById('treatment-list');
+      
+      if (treatmentsList.length === 0) {
+        listSection.style.display = 'none';
+        return;
+      }
+      
+      let html = '<table class="data-table">';
+      html += '<thead><tr>';
+      html += '<th>施術名</th>';
+      html += '<th>施術時間</th>';
+      html += '<th>カテゴリ</th>';
+      html += '<th>バリエーション</th>';
+      html += '<th>操作</th>';
+      html += '</tr></thead>';
+      html += '<tbody>';
+      
+      treatmentsList.forEach((treatment, index) => {
+        html += '<tr>';
+        html += `<td>${treatment['施術名']}</td>`;
+        html += `<td>${treatment['施術時間']}分</td>`;
+        html += `<td>${treatment['カテゴリ'] || '未分類'}</td>`;
+        html += `<td>${treatment['バリエーション'] || ''}</td>`;
+        html += `<td><button class="action-btn danger" onclick="removeTreatment(${index})">削除</button></td>`;
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table>';
+      
+      listContainer.innerHTML = html;
+      listSection.style.display = 'block';
+    }
+    
+    // 施術をリストから削除
+    function removeTreatment(index) {
+      treatmentsList.splice(index, 1);
+      displayTreatmentList();
+      showMessage('施術をリストから削除しました', 'success');
+    }
+    
+    // 施術CSV生成
+    function generateTreatmentsCsv() {
+      if (treatmentsList.length === 0) {
+        showMessage('CSVに出力する施術がありません', 'warning');
+        return;
+      }
+      
+      google.script.run
+        .withSuccessHandler(function(csvContent) {
+          downloadCsv(csvContent, 'treatments_import.csv');
+          showMessage('施術CSVファイルを生成しました', 'success');
+        })
+        .withFailureHandler(handleError)
+        .generateTreatmentsCsv(treatmentsList);
+    }
+    
+    // 施術フォームリセット
+    function resetTreatmentForm() {
+      document.getElementById('treatment-creation-form').reset();
+      document.getElementById('treatment-duration').value = 60;
+    }
+    
+    // 施術プレビュークリア
+    function clearTreatmentPreview() {
+      document.getElementById('treatment-preview-section').style.display = 'none';
+      document.getElementById('treatment-preview').innerHTML = '';
+      treatmentPreviewList = [];
+    }
+    
+    // 施術リストクリア
+    function clearTreatmentList() {
+      if (confirm('施術リストをクリアしてもよろしいですか？')) {
+        treatmentsList = [];
+        displayTreatmentList();
+        showMessage('施術リストをクリアしました', 'success');
+      }
+    }
+  </script>
+</body>
+</html>

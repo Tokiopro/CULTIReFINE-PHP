@@ -377,6 +377,21 @@ input[type="checkbox"]:checked + .switch .switch-thumb {
     background-color: #f8fafc; /* slate-50 */
 }
 
+/* Loading Spinner */
+.loading-spinner {
+    display: inline-block;
+    width: 2rem;
+    height: 2rem;
+    border: 3px solid #e5e7eb;
+    border-radius: 50%;
+    border-top-color: #14b8a6;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
 .completed-booking .patient-name {
     font-weight: 500;
     color: #0f766e; /* teal-700 */
@@ -456,4 +471,14 @@ input[type="checkbox"]:checked + .switch .switch-thumb {
         margin-left: 1rem;
         font-size: 0.675rem;
     }
+}
+
+/* アニメーション */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
 }

@@ -63,37 +63,61 @@ try {
         } else {
             // データ構造の詳細確認
             error_log('Data Keys: ' . json_encode(array_keys($userInfo['data'])));
-            error_log('Has user.id: ' . (isset($userInfo['data']['user']['id']) ? 'YES' : 'NO'));
+            error_log('Has visitor.visitor_id: ' . (isset($userInfo['data']['visitor']['visitor_id']) ? 'YES' : 'NO'));
             
-            if (isset($userInfo['data']['user']['id'])) {
-                $visitorId = $userInfo['data']['user']['id'];
+            if (isset($userInfo['data']['visitor']['visitor_id'])) {
+                $visitorId = $userInfo['data']['visitor']['visitor_id'];
                 error_log('Visitor ID found: ' . $visitorId);
                 
-                // 2. visitor_idで書類一覧取得
-                error_log('Calling getDocuments for visitor ID: ' . $visitorId);
-                $documentsResponse = $gasApi->getDocuments($visitorId);
-                
-                error_log('Documents API Response: ' . json_encode($documentsResponse, JSON_PRETTY_PRINT));
-                
-                if ($documentsResponse['status'] === 'success') {
-                    $folders = $documentsResponse['data']['folders'] ?? [];
-                    $rootDocuments = $documentsResponse['data']['root_documents'] ?? [];
-                    $totalDocuments = $documentsResponse['data']['total_count'] ?? 0;
+                // docsinfo がレスポンスに含まれている場合は直接使用
+                if (isset($userInfo['data']['docsinfo'])) {
+                    $docsInfo = $userInfo['data']['docsinfo'];
+                    $totalDocuments = count($docsInfo);
                     
-                    error_log('Folders count: ' . count($folders));
+                    // docsinfo をフォルダ構造に変換（すべてルートドキュメントとして扱う）
+                    $rootDocuments = [];
+                    foreach ($docsInfo as $doc) {
+                        $rootDocuments[] = [
+                            'id' => $doc['docs_id'] ?? '',
+                            'name' => $doc['docs_name'] ?? '無題の書類',
+                            'url' => $doc['docs_url'] ?? '#',
+                            'created_at' => $doc['created_at'] ?? '',
+                            'treatment_name' => $doc['treatment_name'] ?? '',
+                            'notes' => $doc['notes'] ?? ''
+                        ];
+                    }
+                    
+                    $folders = []; // フォルダ機能は今後の実装のため空配列
+                    
+                    error_log('Documents from getUserFullInfo: ' . $totalDocuments);
                     error_log('Root documents count: ' . count($rootDocuments));
-                    error_log('Total documents: ' . $totalDocuments);
                 } else {
-                    $errorMessage = '書類の取得に失敗しました。(' . ($documentsResponse['message'] ?? 'Unknown error') . ')';
-                    error_log('ERROR: Documents API failed with status: ' . $documentsResponse['status']);
+                    // 書類情報を別途取得（必要な場合）
+                    error_log('Calling getDocuments for visitor ID: ' . $visitorId);
+                    $documentsResponse = $gasApi->getDocuments($visitorId);
+                    
+                    error_log('Documents API Response: ' . json_encode($documentsResponse, JSON_PRETTY_PRINT));
+                    
+                    if ($documentsResponse['status'] === 'success') {
+                        $folders = $documentsResponse['data']['folders'] ?? [];
+                        $rootDocuments = $documentsResponse['data']['root_documents'] ?? [];
+                        $totalDocuments = $documentsResponse['data']['total_count'] ?? 0;
+                        
+                        error_log('Folders count: ' . count($folders));
+                        error_log('Root documents count: ' . count($rootDocuments));
+                        error_log('Total documents: ' . $totalDocuments);
+                    } else {
+                        $errorMessage = '書類の取得に失敗しました。(' . ($documentsResponse['message'] ?? 'Unknown error') . ')';
+                        error_log('ERROR: Documents API failed with status: ' . $documentsResponse['status']);
+                    }
                 }
             } else {
-                $errorMessage = 'ユーザーIDが見つかりません。userフィールドが存在しないか、IDが含まれていません。';
-                error_log('ERROR: user.id not found in data');
-                if (isset($userInfo['data']['user'])) {
-                    error_log('User field exists but no ID: ' . json_encode($userInfo['data']['user']));
+                $errorMessage = '来院者IDが見つかりません。visitorフィールドが存在しないか、visitor_idが含まれていません。';
+                error_log('ERROR: visitor.visitor_id not found in data');
+                if (isset($userInfo['data']['visitor'])) {
+                    error_log('Visitor field exists but no visitor_id: ' . json_encode($userInfo['data']['visitor']));
                 } else {
-                    error_log('User field does not exist');
+                    error_log('Visitor field does not exist');
                 }
             }
         }

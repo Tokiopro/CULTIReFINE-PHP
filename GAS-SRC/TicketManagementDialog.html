@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    h2 {
+      color: #333;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #4285f4;
+      padding-bottom: 10px;
+    }
+    
+    h3 {
+      color: #666;
+      margin-top: 30px;
+      margin-bottom: 15px;
+    }
+    
+    .controls {
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    
+    .search-box {
+      display: flex;
+      gap: 10px;
+      flex: 1;
+      max-width: 400px;
+    }
+    
+    .search-box input {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 10px;
+    }
+    
+    button {
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.3s;
+    }
+    
+    button:hover {
+      background-color: #357ae8;
+    }
+    
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    
+    .secondary-button {
+      background-color: #6c757d;
+    }
+    
+    .secondary-button:hover {
+      background-color: #5a6268;
+    }
+    
+    .success-button {
+      background-color: #28a745;
+    }
+    
+    .success-button:hover {
+      background-color: #218838;
+    }
+    
+    .danger-button {
+      background-color: #dc3545;
+    }
+    
+    .danger-button:hover {
+      background-color: #c82333;
+    }
+    
+    .warning-button {
+      background-color: #ffc107;
+      color: #212529;
+    }
+    
+    .warning-button:hover {
+      background-color: #e0a800;
+    }
+    
+    .table-container {
+      overflow-x: auto;
+      margin-bottom: 30px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    th {
+      background-color: #f8f9fa;
+      font-weight: bold;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    
+    tr:hover {
+      background-color: #f5f5f5;
+    }
+    
+    .ticket-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 30px;
+    }
+    
+    .summary-card {
+      background-color: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 4px;
+      padding: 20px;
+      text-align: center;
+    }
+    
+    .summary-card h4 {
+      margin: 0 0 10px 0;
+      color: #495057;
+      font-size: 16px;
+    }
+    
+    .summary-card .number {
+      font-size: 32px;
+      font-weight: bold;
+      color: #4285f4;
+      margin: 10px 0;
+    }
+    
+    .summary-card .label {
+      font-size: 14px;
+      color: #6c757d;
+    }
+    
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+    }
+    
+    .modal-content {
+      background-color: white;
+      margin: 5% auto;
+      padding: 20px;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 600px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    
+    .modal-header h3 {
+      margin: 0;
+    }
+    
+    .close {
+      color: #aaa;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    
+    .close:hover {
+      color: #000;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #495057;
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    
+    .form-group textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+    
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+    }
+    
+    .message {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      display: none;
+    }
+    
+    .message.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .message.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .message.warning {
+      background-color: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeeba;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 50px;
+      color: #666;
+    }
+    
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #4285f4;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+    
+    .small-button {
+      padding: 5px 10px;
+      font-size: 12px;
+    }
+    
+    .highlight {
+      background-color: #fff3cd;
+    }
+    
+    .tab-container {
+      margin-bottom: 20px;
+    }
+    
+    .tabs {
+      display: flex;
+      border-bottom: 2px solid #dee2e6;
+      margin-bottom: 20px;
+    }
+    
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      background-color: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-bottom: none;
+      margin-right: 5px;
+      border-radius: 4px 4px 0 0;
+      transition: background-color 0.3s;
+    }
+    
+    .tab:hover {
+      background-color: #e9ecef;
+    }
+    
+    .tab.active {
+      background-color: white;
+      border-bottom: 2px solid white;
+      margin-bottom: -2px;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>チケット管理</h2>
+    
+    <div id="message" class="message"></div>
+    
+    <div class="tab-container">
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('company')">会社別チケット管理</div>
+        <div class="tab" onclick="switchTab('history')">チケット履歴</div>
+        <div class="tab" onclick="switchTab('menu')">メニュー設定</div>
+      </div>
+      
+      <div id="company-tab" class="tab-content active">
+        <div class="controls">
+          <div class="search-box">
+            <input type="text" id="searchInput" placeholder="会社名で検索..." onkeyup="filterCompanies()">
+          </div>
+          <div class="button-group">
+            <button onclick="refreshData()">更新</button>
+            <button onclick="showAddTicketModal()" class="success-button">チケット追加</button>
+            <button onclick="syncTickets()" class="secondary-button">同期</button>
+          </div>
+        </div>
+        
+        <div id="companyTickets" class="loading">
+          <div class="spinner"></div>
+          <p>データを読み込み中...</p>
+        </div>
+      </div>
+      
+      <div id="history-tab" class="tab-content">
+        <div class="controls">
+          <div class="button-group">
+            <button onclick="loadTicketHistory()">履歴を更新</button>
+            <button onclick="exportHistory()" class="secondary-button">エクスポート</button>
+          </div>
+        </div>
+        
+        <div id="ticketHistory" class="loading">
+          <div class="spinner"></div>
+          <p>履歴を読み込み中...</p>
+        </div>
+      </div>
+      
+      <div id="menu-tab" class="tab-content">
+        <div class="controls">
+          <p>各メニューがどのチケットタイプを消費するか設定します</p>
+          <div class="button-group">
+            <button onclick="loadMenuSettings()">更新</button>
+            <button onclick="saveMenuSettings()" class="success-button">設定を保存</button>
+          </div>
+        </div>
+        
+        <div id="menuSettings" class="loading">
+          <div class="spinner"></div>
+          <p>メニュー設定を読み込み中...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- チケット追加モーダル -->
+  <div id="addTicketModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>チケット追加</h3>
+        <span class="close" onclick="closeModal('addTicketModal')">&times;</span>
+      </div>
+      
+      <div class="form-group">
+        <label>会社</label>
+        <select id="modalCompanyId" onchange="updateModalPlan()">
+          <option value="">会社を選択してください</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label>追加タイプ</label>
+        <select id="addType" onchange="toggleManualInput()">
+          <option value="plan">プラン追加</option>
+          <option value="manual">手動追加</option>
+        </select>
+      </div>
+      
+      <div id="planSection">
+        <div class="form-group">
+          <label>プラン</label>
+          <select id="modalPlanId">
+            <option value="">プランを選択してください</option>
+          </select>
+        </div>
+      </div>
+      
+      <div id="manualSection" style="display: none;">
+        <div class="form-row">
+          <div class="form-group">
+            <label>幹細胞チケット</label>
+            <input type="number" id="manualStemCell" min="0" value="0">
+          </div>
+          <div class="form-group">
+            <label>施術チケット</label>
+            <input type="number" id="manualTreatment" min="0" value="0">
+          </div>
+          <div class="form-group">
+            <label>点滴チケット</label>
+            <input type="number" id="manualInfusion" min="0" value="0">
+          </div>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label>理由・備考</label>
+        <textarea id="modalReason" placeholder="チケット追加の理由を入力してください"></textarea>
+      </div>
+      
+      <div class="form-group">
+        <button onclick="addTickets()" class="success-button">追加</button>
+        <button onclick="closeModal('addTicketModal')" class="secondary-button">キャンセル</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- チケット使用モーダル -->
+  <div id="useTicketModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>チケット使用</h3>
+        <span class="close" onclick="closeModal('useTicketModal')">&times;</span>
+      </div>
+      
+      <div class="form-group">
+        <label>会社: <span id="useCompanyName"></span></label>
+        <input type="hidden" id="useCompanyId">
+        <input type="hidden" id="useVisitorId">
+      </div>
+      
+      <div class="form-group">
+        <label>使用者</label>
+        <select id="useVisitorSelect">
+          <option value="">使用者を選択してください</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label>メニュー</label>
+        <select id="useMenuSelect" onchange="updateRequiredTickets()">
+          <option value="">メニューを選択してください</option>
+        </select>
+      </div>
+      
+      <div id="requiredTicketsInfo" style="display: none;">
+        <p><strong>必要なチケット:</strong> <span id="requiredTicketsText"></span></p>
+        <p><strong>現在の残高:</strong> <span id="currentBalanceText"></span></p>
+      </div>
+      
+      <div class="form-group">
+        <label>使用理由・備考</label>
+        <textarea id="useReason" placeholder="チケット使用の理由を入力してください"></textarea>
+      </div>
+      
+      <div class="form-group">
+        <button onclick="useTickets()" class="warning-button">使用</button>
+        <button onclick="closeModal('useTicketModal')" class="secondary-button">キャンセル</button>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    let companiesData = [];
+    let menuData = [];
+    let plansData = [];
+    let currentTab = 'company';
+    
+    // 初期化
+    window.onload = function() {
+      loadCompanyTickets();
+      loadPlans();
+    };
+    
+    // タブ切り替え
+    function switchTab(tab) {
+      currentTab = tab;
+      
+      // タブのアクティブ状態を更新
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      
+      event.target.classList.add('active');
+      document.getElementById(tab + '-tab').classList.add('active');
+      
+      // タブに応じてデータを読み込み
+      if (tab === 'company') {
+        loadCompanyTickets();
+      } else if (tab === 'history') {
+        loadTicketHistory();
+      } else if (tab === 'menu') {
+        loadMenuSettings();
+      }
+    }
+    
+    // 会社別チケット一覧を読み込み
+    function loadCompanyTickets() {
+      showMessage('');
+      document.getElementById('companyTickets').innerHTML = '<div class="loading"><div class="spinner"></div><p>データを読み込み中...</p></div>';
+      
+      google.script.run
+        .withSuccessHandler(onCompanyTicketsLoaded)
+        .withFailureHandler(onError)
+        .getCompanyTickets();
+    }
+    
+    // 会社別チケット読み込み成功
+    function onCompanyTicketsLoaded(data) {
+      if (!data.success) {
+        onError(new Error(data.error || 'データの読み込みに失敗しました'));
+        return;
+      }
+      
+      companiesData = data.companies || [];
+      renderCompanyTickets();
+      updateCompanySelect();
+    }
+    
+    // 会社別チケット一覧を描画
+    function renderCompanyTickets() {
+      if (companiesData.length === 0) {
+        document.getElementById('companyTickets').innerHTML = '<p style="text-align: center; color: #666;">会社データがありません</p>';
+        return;
+      }
+      
+      let html = '<div class="table-container"><table>';
+      html += '<thead><tr>';
+      html += '<th>会社名</th>';
+      html += '<th>プラン</th>';
+      html += '<th>幹細胞チケット</th>';
+      html += '<th>施術チケット</th>';
+      html += '<th>点滴チケット</th>';
+      html += '<th>メンバー数</th>';
+      html += '<th>操作</th>';
+      html += '</tr></thead><tbody>';
+      
+      companiesData.forEach(company => {
+        html += '<tr>';
+        html += `<td>${escapeHtml(company.name)}</td>`;
+        html += `<td>${escapeHtml(company.plan || '-')}</td>`;
+        html += `<td style="text-align: center;">${company.stemCellTickets || 0}</td>`;
+        html += `<td style="text-align: center;">${company.treatmentTickets || 0}</td>`;
+        html += `<td style="text-align: center;">${company.infusionTickets || 0}</td>`;
+        html += `<td style="text-align: center;">${company.memberCount || 0}</td>`;
+        html += '<td class="action-buttons">';
+        html += `<button onclick="showAddTicketModal('${company.id}')" class="small-button success-button">追加</button>`;
+        html += `<button onclick="showUseTicketModal('${company.id}', '${escapeHtml(company.name)}')" class="small-button warning-button">使用</button>`;
+        html += `<button onclick="viewCompanyHistory('${company.id}')" class="small-button secondary-button">履歴</button>`;
+        html += '</td>';
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table></div>';
+      document.getElementById('companyTickets').innerHTML = html;
+    }
+    
+    // 会社検索フィルター
+    function filterCompanies() {
+      const searchValue = document.getElementById('searchInput').value.toLowerCase();
+      const rows = document.querySelectorAll('#companyTickets tbody tr');
+      
+      rows.forEach(row => {
+        const companyName = row.cells[0].textContent.toLowerCase();
+        row.style.display = companyName.includes(searchValue) ? '' : 'none';
+      });
+    }
+    
+    // チケット追加モーダルを表示
+    function showAddTicketModal(companyId = '') {
+      document.getElementById('addTicketModal').style.display = 'block';
+      document.getElementById('modalCompanyId').value = companyId;
+      document.getElementById('addType').value = 'plan';
+      toggleManualInput();
+      updateModalPlan();
+    }
+    
+    // チケット使用モーダルを表示
+    function showUseTicketModal(companyId, companyName) {
+      document.getElementById('useTicketModal').style.display = 'block';
+      document.getElementById('useCompanyId').value = companyId;
+      document.getElementById('useCompanyName').textContent = companyName;
+      
+      // 使用者リストを読み込み
+      loadCompanyMembers(companyId);
+      // メニューリストを読み込み
+      loadMenus();
+    }
+    
+    // モーダルを閉じる
+    function closeModal(modalId) {
+      document.getElementById(modalId).style.display = 'none';
+      clearModalInputs(modalId);
+    }
+    
+    // モーダルの入力をクリア
+    function clearModalInputs(modalId) {
+      const modal = document.getElementById(modalId);
+      modal.querySelectorAll('input[type="text"], input[type="number"], textarea, select').forEach(input => {
+        input.value = '';
+      });
+    }
+    
+    // 手動入力の表示切り替え
+    function toggleManualInput() {
+      const addType = document.getElementById('addType').value;
+      document.getElementById('planSection').style.display = addType === 'plan' ? 'block' : 'none';
+      document.getElementById('manualSection').style.display = addType === 'manual' ? 'block' : 'none';
+    }
+    
+    // プラン選択を更新
+    function updateModalPlan() {
+      const companyId = document.getElementById('modalCompanyId').value;
+      const company = companiesData.find(c => c.id === companyId);
+      const planSelect = document.getElementById('modalPlanId');
+      
+      planSelect.innerHTML = '<option value="">プランを選択してください</option>';
+      
+      if (plansData.length > 0) {
+        plansData.forEach(plan => {
+          const option = document.createElement('option');
+          option.value = plan.name;
+          option.textContent = `${plan.name} (幹細胞:${plan.stemCell}, 施術:${plan.treatment}, 点滴:${plan.infusion})`;
+          if (company && company.plan === plan.name) {
+            option.selected = true;
+          }
+          planSelect.appendChild(option);
+        });
+      }
+    }
+    
+    // 会社選択を更新
+    function updateCompanySelect() {
+      const select = document.getElementById('modalCompanyId');
+      const currentValue = select.value;
+      
+      select.innerHTML = '<option value="">会社を選択してください</option>';
+      companiesData.forEach(company => {
+        const option = document.createElement('option');
+        option.value = company.id;
+        option.textContent = company.name;
+        select.appendChild(option);
+      });
+      
+      if (currentValue) {
+        select.value = currentValue;
+      }
+    }
+    
+    // プラン一覧を読み込み
+    function loadPlans() {
+      google.script.run
+        .withSuccessHandler(data => {
+          if (data.success) {
+            plansData = data.data || [];
+          }
+        })
+        .withFailureHandler(onError)
+        .getAvailablePlansForDialog();
+    }
+    
+    // 会社メンバーを読み込み
+    function loadCompanyMembers(companyId) {
+      google.script.run
+        .withSuccessHandler(data => {
+          if (data.success) {
+            const select = document.getElementById('useVisitorSelect');
+            select.innerHTML = '<option value="">使用者を選択してください</option>';
+            
+            if (data.members && data.members.length > 0) {
+              data.members.forEach(member => {
+                const option = document.createElement('option');
+                option.value = member.visitorId;
+                option.textContent = `${member.name} (${member.memberType})`;
+                select.appendChild(option);
+              });
+            }
+          }
+        })
+        .withFailureHandler(onError)
+        .getCompanyMembers(companyId);
+    }
+    
+    // メニューを読み込み
+    function loadMenus() {
+      google.script.run
+        .withSuccessHandler(data => {
+          if (data.success) {
+            menuData = data.menus || [];
+            const select = document.getElementById('useMenuSelect');
+            select.innerHTML = '<option value="">メニューを選択してください</option>';
+            
+            menuData.forEach(menu => {
+              const option = document.createElement('option');
+              option.value = menu.id;
+              option.textContent = menu.name;
+              option.dataset.ticketType = menu.ticketType || '';
+              select.appendChild(option);
+            });
+          }
+        })
+        .withFailureHandler(onError)
+        .getMenusWithTicketType();
+    }
+    
+    // 必要なチケット数を更新
+    function updateRequiredTickets() {
+      const menuSelect = document.getElementById('useMenuSelect');
+      const selectedOption = menuSelect.options[menuSelect.selectedIndex];
+      const companyId = document.getElementById('useCompanyId').value;
+      
+      if (!selectedOption || menuSelect.value === '') {
+        document.getElementById('requiredTicketsInfo').style.display = 'none';
+        return;
+      }
+      
+      const ticketType = selectedOption.dataset.ticketType;
+      const company = companiesData.find(c => c.id === companyId);
+      
+      if (!company) return;
+      
+      let requiredText = '';
+      let balanceText = '';
+      
+      switch(ticketType) {
+        case '幹細胞':
+          requiredText = '幹細胞チケット 1枚';
+          balanceText = `幹細胞: ${company.stemCellTickets || 0}枚`;
+          break;
+        case '施術':
+          requiredText = '施術チケット 1枚';
+          balanceText = `施術: ${company.treatmentTickets || 0}枚`;
+          break;
+        case '点滴':
+          requiredText = '点滴チケット 1枚';
+          balanceText = `点滴: ${company.infusionTickets || 0}枚`;
+          break;
+        default:
+          requiredText = 'チケット不要';
+          balanceText = `幹細胞: ${company.stemCellTickets || 0}枚, 施術: ${company.treatmentTickets || 0}枚, 点滴: ${company.infusionTickets || 0}枚`;
+      }
+      
+      document.getElementById('requiredTicketsText').textContent = requiredText;
+      document.getElementById('currentBalanceText').textContent = balanceText;
+      document.getElementById('requiredTicketsInfo').style.display = 'block';
+    }
+    
+    // チケット追加
+    function addTickets() {
+      const companyId = document.getElementById('modalCompanyId').value;
+      const addType = document.getElementById('addType').value;
+      const reason = document.getElementById('modalReason').value;
+      
+      if (!companyId) {
+        showMessage('会社を選択してください', 'error');
+        return;
+      }
+      
+      let ticketData = {
+        companyId: companyId,
+        reason: reason,
+        type: addType
+      };
+      
+      if (addType === 'plan') {
+        const planName = document.getElementById('modalPlanId').value;
+        if (!planName) {
+          showMessage('プランを選択してください', 'error');
+          return;
+        }
+        ticketData.planName = planName;
+      } else {
+        ticketData.stemCell = parseInt(document.getElementById('manualStemCell').value) || 0;
+        ticketData.treatment = parseInt(document.getElementById('manualTreatment').value) || 0;
+        ticketData.infusion = parseInt(document.getElementById('manualInfusion').value) || 0;
+        
+        if (ticketData.stemCell === 0 && ticketData.treatment === 0 && ticketData.infusion === 0) {
+          showMessage('少なくとも1枚以上のチケットを追加してください', 'error');
+          return;
+        }
+      }
+      
+      if (!reason) {
+        if (!confirm('理由が入力されていません。続行しますか？')) {
+          return;
+        }
+      }
+      
+      google.script.run
+        .withSuccessHandler(() => {
+          showMessage('チケットを追加しました', 'success');
+          closeModal('addTicketModal');
+          loadCompanyTickets();
+        })
+        .withFailureHandler(onError)
+        .addCompanyTickets(ticketData);
+    }
+    
+    // チケット使用
+    function useTickets() {
+      const companyId = document.getElementById('useCompanyId').value;
+      const visitorId = document.getElementById('useVisitorSelect').value;
+      const menuSelect = document.getElementById('useMenuSelect');
+      const menuId = menuSelect.value;
+      const reason = document.getElementById('useReason').value;
+      
+      if (!visitorId) {
+        showMessage('使用者を選択してください', 'error');
+        return;
+      }
+      
+      if (!menuId) {
+        showMessage('メニューを選択してください', 'error');
+        return;
+      }
+      
+      const selectedOption = menuSelect.options[menuSelect.selectedIndex];
+      const ticketType = selectedOption.dataset.ticketType;
+      const menuName = selectedOption.textContent;
+      
+      let confirmMessage = `${menuName}を使用します。\n`;
+      if (ticketType) {
+        confirmMessage += `${ticketType}チケットを1枚消費します。\n`;
+      }
+      confirmMessage += '続行しますか？';
+      
+      if (!confirm(confirmMessage)) {
+        return;
+      }
+      
+      const ticketData = {
+        companyId: companyId,
+        visitorId: visitorId,
+        menuId: menuId,
+        menuName: menuName,
+        ticketType: ticketType,
+        reason: reason
+      };
+      
+      google.script.run
+        .withSuccessHandler((result) => {
+          if (result.success) {
+            showMessage(result.message || 'チケットを使用しました', 'success');
+            if (result.alert) {
+              alert(result.alert);
+            }
+          } else {
+            showMessage(result.error || 'チケットの使用に失敗しました', 'error');
+          }
+          closeModal('useTicketModal');
+          loadCompanyTickets();
+        })
+        .withFailureHandler(onError)
+        .useCompanyTickets(ticketData);
+    }
+    
+    // チケット履歴を読み込み
+    function loadTicketHistory() {
+      showMessage('');
+      document.getElementById('ticketHistory').innerHTML = '<div class="loading"><div class="spinner"></div><p>履歴を読み込み中...</p></div>';
+      
+      google.script.run
+        .withSuccessHandler(onTicketHistoryLoaded)
+        .withFailureHandler(onError)
+        .getTicketHistory();
+    }
+    
+    // チケット履歴読み込み成功
+    function onTicketHistoryLoaded(data) {
+      if (!data.success) {
+        onError(new Error(data.error || '履歴の読み込みに失敗しました'));
+        return;
+      }
+      
+      const history = data.history || [];
+      
+      if (history.length === 0) {
+        document.getElementById('ticketHistory').innerHTML = '<p style="text-align: center; color: #666;">履歴データがありません</p>';
+        return;
+      }
+      
+      let html = '<div class="table-container"><table>';
+      html += '<thead><tr>';
+      html += '<th>日時</th>';
+      html += '<th>会社名</th>';
+      html += '<th>タイプ</th>';
+      html += '<th>幹細胞</th>';
+      html += '<th>施術</th>';
+      html += '<th>点滴</th>';
+      html += '<th>使用者</th>';
+      html += '<th>理由・備考</th>';
+      html += '</tr></thead><tbody>';
+      
+      history.forEach(record => {
+        html += '<tr>';
+        html += `<td>${escapeHtml(record.date)}</td>`;
+        html += `<td>${escapeHtml(record.companyName)}</td>`;
+        html += `<td>${escapeHtml(record.type)}</td>`;
+        html += `<td style="text-align: center;">${record.stemCell || '-'}</td>`;
+        html += `<td style="text-align: center;">${record.treatment || '-'}</td>`;
+        html += `<td style="text-align: center;">${record.infusion || '-'}</td>`;
+        html += `<td>${escapeHtml(record.userName || '-')}</td>`;
+        html += `<td>${escapeHtml(record.reason || '-')}</td>`;
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table></div>';
+      document.getElementById('ticketHistory').innerHTML = html;
+    }
+    
+    // メニュー設定を読み込み
+    function loadMenuSettings() {
+      showMessage('');
+      document.getElementById('menuSettings').innerHTML = '<div class="loading"><div class="spinner"></div><p>メニュー設定を読み込み中...</p></div>';
+      
+      google.script.run
+        .withSuccessHandler(onMenuSettingsLoaded)
+        .withFailureHandler(onError)
+        .getMenusWithTicketType();
+    }
+    
+    // メニュー設定読み込み成功
+    function onMenuSettingsLoaded(data) {
+      if (!data.success) {
+        onError(new Error(data.error || 'メニュー設定の読み込みに失敗しました'));
+        return;
+      }
+      
+      menuData = data.menus || [];
+      
+      if (menuData.length === 0) {
+        document.getElementById('menuSettings').innerHTML = '<p style="text-align: center; color: #666;">メニューデータがありません</p>';
+        return;
+      }
+      
+      let html = '<div class="table-container"><table>';
+      html += '<thead><tr>';
+      html += '<th>メニュー名</th>';
+      html += '<th>カテゴリ</th>';
+      html += '<th>チケットタイプ</th>';
+      html += '</tr></thead><tbody>';
+      
+      menuData.forEach(menu => {
+        html += '<tr>';
+        html += `<td>${escapeHtml(menu.name)}</td>`;
+        html += `<td>${escapeHtml(menu.category || '-')}</td>`;
+        html += '<td>';
+        html += `<select class="ticket-type-select" data-menu-id="${menu.id}">`;
+        html += '<option value="">なし</option>';
+        html += `<option value="幹細胞" ${menu.ticketType === '幹細胞' ? 'selected' : ''}>幹細胞</option>`;
+        html += `<option value="施術" ${menu.ticketType === '施術' ? 'selected' : ''}>施術</option>`;
+        html += `<option value="点滴" ${menu.ticketType === '点滴' ? 'selected' : ''}>点滴</option>`;
+        html += '</select>';
+        html += '</td>';
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table></div>';
+      document.getElementById('menuSettings').innerHTML = html;
+    }
+    
+    // メニュー設定を保存
+    function saveMenuSettings() {
+      const settings = [];
+      document.querySelectorAll('.ticket-type-select').forEach(select => {
+        settings.push({
+          menuId: select.dataset.menuId,
+          ticketType: select.value
+        });
+      });
+      
+      google.script.run
+        .withSuccessHandler(() => {
+          showMessage('メニュー設定を保存しました', 'success');
+        })
+        .withFailureHandler(onError)
+        .updateMenuTicketTypes(settings);
+    }
+    
+    // 会社履歴を表示
+    function viewCompanyHistory(companyId) {
+      switchTab('history');
+      // TODO: 会社でフィルタリング
+    }
+    
+    // データを更新
+    function refreshData() {
+      loadCompanyTickets();
+    }
+    
+    // 同期処理
+    function syncTickets() {
+      if (!confirm('チケット情報を同期します。この処理には時間がかかる場合があります。続行しますか？')) {
+        return;
+      }
+      
+      showMessage('同期処理を実行中...', 'warning');
+      
+      google.script.run
+        .withSuccessHandler((result) => {
+          if (result.success) {
+            showMessage('同期が完了しました', 'success');
+            loadCompanyTickets();
+          } else {
+            showMessage(result.error || '同期に失敗しました', 'error');
+          }
+        })
+        .withFailureHandler(onError)
+        .syncCompanyTickets();
+    }
+    
+    // 履歴をエクスポート
+    function exportHistory() {
+      google.script.run
+        .withSuccessHandler((result) => {
+          if (result.success) {
+            // CSVデータをダウンロード
+            const blob = new Blob(['\ufeff' + result.csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `チケット履歴_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+            showMessage('エクスポートしました', 'success');
+          } else {
+            showMessage(result.error || 'エクスポートに失敗しました', 'error');
+          }
+        })
+        .withFailureHandler(onError)
+        .exportTicketHistory();
+    }
+    
+    // メッセージ表示
+    function showMessage(text, type = '') {
+      const messageEl = document.getElementById('message');
+      messageEl.textContent = text;
+      messageEl.className = 'message ' + type;
+      messageEl.style.display = text ? 'block' : 'none';
+      
+      if (text && type === 'success') {
+        setTimeout(() => {
+          messageEl.style.display = 'none';
+        }, 3000);
+      }
+    }
+    
+    // エラー処理
+    function onError(error) {
+      console.error('エラー:', error);
+      showMessage('エラーが発生しました: ' + error.message, 'error');
+    }
+    
+    // HTMLエスケープ
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      const div = document.createElement('div');
+      div.textContent = String(str);
+      return div.innerHTML;
+    }
+    
+    // モーダル外クリックで閉じる
+    window.onclick = function(event) {
+      if (event.target.className === 'modal') {
+        event.target.style.display = 'none';
+      }
+    };
+  </script>
+</body>
+</html>

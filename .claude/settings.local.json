@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(diff:*)",
+      "Bash(cp:*)",
+      "Bash(ls:*)",
+      "Bash(mv:*)",
+      "Bash(grep:*)",
+      "Bash(rm:*)",
+      "Bash(mkdir:*)",
+      "Bash(chmod:*)",
+      "Bash(php:*)"
+    ],
+    "deny": []
+  }
+}

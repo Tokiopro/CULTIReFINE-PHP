@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        margin: 0;
+        line-height: 1.6;
+      }
+      
+      .container {
+        max-width: 100%;
+        margin: 0 auto;
+      }
+      
+      h2 {
+        color: #333;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #4285f4;
+        padding-bottom: 10px;
+      }
+      
+      h3 {
+        color: #555;
+        margin-top: 25px;
+        margin-bottom: 15px;
+      }
+      
+      .section {
+        margin-bottom: 30px;
+      }
+      
+      .subsection {
+        margin-left: 20px;
+        margin-bottom: 15px;
+      }
+      
+      .menu-item {
+        background: #f5f5f5;
+        padding: 10px;
+        margin: 5px 0;
+        border-radius: 4px;
+        font-family: monospace;
+      }
+      
+      .shortcut {
+        color: #666;
+        font-size: 12px;
+      }
+      
+      code {
+        background: #f0f0f0;
+        padding: 2px 5px;
+        border-radius: 3px;
+        font-family: monospace;
+      }
+      
+      .warning {
+        background: #fff3cd;
+        border: 1px solid #ffeeba;
+        color: #856404;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 10px 0;
+      }
+      
+      .info {
+        background: #d1ecf1;
+        border: 1px solid #bee5eb;
+        color: #0c5460;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 10px 0;
+      }
+      
+      .close-btn {
+        background-color: #666;
+        color: white;
+        padding: 10px 20px;
+        font-size: 14px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-top: 20px;
+      }
+      
+      .close-btn:hover {
+        background-color: #555;
+      }
+      
+      ul {
+        margin-left: 20px;
+      }
+      
+      li {
+        margin-bottom: 5px;
+      }
+      
+      a {
+        color: #4285f4;
+        text-decoration: none;
+      }
+      
+      a:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Medical Force連携 - ヘルプ</h2>
+      
+      <div class="section">
+        <h3>はじめに</h3>
+        <p>Medical Force連携システムは、Medical Force APIとGoogle スプレッドシートを連携させて、患者マスタ、予約、会計データを管理するシステムです。</p>
+      </div>
+      
+      <div class="section">
+        <h3>初期設定</h3>
+        <ol>
+          <li><strong>認証情報の設定</strong>
+            <ul>
+              <li>「Medical Force連携」→「設定」を開く</li>
+              <li>Client IDとClient Secretを入力（初回のみ）</li>
+              <li>クリニックIDを入力</li>
+            </ul>
+          </li>
+          <li><strong>シートの初期化</strong>
+            <ul>
+              <li>「Medical Force連携」→「初期設定」を実行</li>
+              <li>必要なシートが自動作成されます</li>
+            </ul>
+          </li>
+        </ol>
+        
+        <div class="warning">
+          <strong>重要:</strong> Client IDとClient Secretは、Medical Forceから提供される認証情報です。これらは機密情報のため、安全に管理してください。
+        </div>
+      </div>
+      
+      <div class="section">
+        <h3>データ同期について</h3>
+        
+        <h4>同期の仕組み</h4>
+        <div class="subsection">
+          <p><strong>データの流れ：</strong>Medical Force API（クラウド上のデータ） → Google スプレッドシート（ローカルコピー）</p>
+          <p><strong>同期方向：</strong>一方向同期（APIからスプレッドシートへの読み取り専用）</p>
+          <div class="info">
+            <strong>注意：</strong>スプレッドシート上で手動編集したデータは、次回同期時に上書きされます。
+          </div>
+        </div>
+        
+        <h4>同期されるデータの詳細</h4>
+        <div class="subsection">
+          <p><strong>患者マスタ（患者マスタシート）</strong></p>
+          <ul>
+            <li>基本情報：氏名、カナ、生年月日、年齢、性別</li>
+            <li>連絡先：電話番号、メールアドレス、住所</li>
+            <li>診療情報：初診日、最終来院日、カルテ番号</li>
+          </ul>
+          
+          <p><strong>予約情報（予約管理シート）</strong></p>
+          <ul>
+            <li>予約詳細：予約日、予約時間、終了時間</li>
+            <li>内容：メニュー、担当スタッフ、ステータス</li>
+            <li>患者情報：患者名、患者ID</li>
+            <li>取得期間：本日から3か月後までの予約</li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="section">
+        <h3>メニュー機能</h3>
+        
+        <h4>データ同期</h4>
+        <div class="subsection">
+          <div class="menu-item">患者マスタを同期</div>
+          <p>Medical Forceに登録されている患者マスタを取得し、「患者マスタ」シートに反映します。</p>
+          
+          <div class="menu-item">予約情報を同期</div>
+          <p>予約データを取得し、「予約管理」シートに反映します。</p>
+          
+          <div class="menu-item">すべてのデータを同期</div>
+          <p>上記すべてのデータを一括で同期します。データ量が多い場合は自動的に分割取得されます。</p>
+          <div class="warning">
+            <strong>処理時間について：</strong>大量のデータを同期する場合、処理に時間がかかることがあります。同期中はブラウザを閉じないでください。
+          </div>
+        </div>
+        
+        <h4>個別操作</h4>
+        <div class="subsection">
+          <div class="menu-item">患者を検索</div>
+          <p>名前、カナ、電話番号、メールアドレス、カルテ番号で患者を検索できます。</p>
+          
+          <div class="menu-item">予約を作成</div>
+          <p>新規予約を作成します。患者選択、日時指定、メニュー選択が可能です。</p>
+          
+          <div class="menu-item">空き時間を確認</div>
+          <p>指定期間の予約可能時間を確認できます。スタッフ別の表示も可能です。</p>
+        </div>
+        
+        <h4>レポート</h4>
+        <div class="subsection">
+          <div class="menu-item">日次売上レポート</div>
+          <p>当日の売上高、消費税、取引件数、平均単価を表示します。</p>
+          
+          <div class="menu-item">月次集計レポート</div>
+          <p>月間の売上集計を表示します。</p>
+        </div>
+      </div>
+      
+      <div class="section">
+        <h3>シート構成</h3>
+        <ul>
+          <li><strong>設定</strong> - システム設定情報</li>
+          <li><strong>患者マスタ</strong> - 患者基本情報</li>
+          <li><strong>予約管理</strong> - 予約データ</li>
+          <li><strong>役務管理</strong> - コース・役務情報</li>
+          <li><strong>在庫管理</strong> - 薬剤・商品在庫</li>
+          <li><strong>メニュー管理</strong> - 施術メニュー</li>
+          <li><strong>実行ログ</strong> - システムログ</li>
+        </ul>
+      </div>
+      
+      <div class="section">
+        <h3>定期実行について</h3>
+        
+        <h4>自動同期スケジュール</h4>
+        <div class="subsection">
+          <p>システムは以下のスケジュールで自動的にデータを同期します：</p>
+          
+          <div class="info">
+            <strong>注意：</strong>定期実行を有効にするには、GASエディタで <code>setupTriggers()</code> 関数を一度実行する必要があります。
+          </div>
+          
+          <h5>日次自動同期（毎日午前2時）</h5>
+          <ul>
+            <li><strong>患者マスタ</strong>：すべての患者データを取得して更新</li>
+            <li><strong>予約情報</strong>：本日から3か月後までのすべての予約を取得</li>
+            <li><strong>メニュー情報</strong>：施術メニューの最新情報を取得</li>
+          </ul>
+          <p>深夜に実行されるため、業務に影響を与えることなく最新データを取得できます。</p>
+          
+          <h5>時間ごとの更新同期（毎時0分）</h5>
+          <ul>
+            <li><strong>患者マスタ</strong>：過去1時間に更新された患者のみ</li>
+            <li><strong>予約情報</strong>：過去1時間に更新された予約のみ</li>
+          </ul>
+          <p>最新の変更を素早く反映するため、更新されたデータのみを効率的に同期します。</p>
+        </div>
+        
+        <h4>トリガーの設定方法</h4>
+        <div class="subsection">
+          <ol>
+            <li>Google Apps Scriptエディタを開く（拡張機能 → Apps Script）</li>
+            <li>エディタで <code>setupTriggers</code> 関数を選択</li>
+            <li>「実行」ボタンをクリック</li>
+            <li>初回実行時は権限の承認が必要です</li>
+          </ol>
+          <div class="warning">
+            <strong>重要：</strong>トリガーを設定すると、既存のトリガーはすべて削除されて新しく作成されます。
+          </div>
+        </div>
+        
+        <h4>同期時刻の変更方法</h4>
+        <div class="subsection">
+          <p>デフォルトの同期時刻（午前2時）を変更したい場合は、以下の手順で行います：</p>
+          <ol>
+            <li>Google Apps Scriptエディタを開く</li>
+            <li><code>Main.js</code> ファイルを開く</li>
+            <li><code>setupTriggers()</code> 関数内の <code>.atHour(2)</code> の数字を希望の時間（0-23）に変更</li>
+            <li>変更を保存して、<code>setupTriggers()</code> を再実行</li>
+          </ol>
+          <div class="info">
+            <strong>ヒント：</strong>営業時間外の時間帯を選ぶことで、システムパフォーマンスへの影響を最小限に抑えられます。
+          </div>
+        </div>
+      </div>
+      
+      <div class="section">
+        <h3>よくある操作ガイド（○○なとき）</h3>
+        
+        <h4>予約管理</h4>
+        <div class="subsection">
+          <h5>ペア部屋を希望されたとき</h5>
+          <ul>
+            <li>予約作成時にメモ欄に「ペア部屋希望」と入力</li>
+            <li>予約管理シートで手動調整（隣接する部屋を確保）</li>
+            <li>同伴者の予約を個別に作成し、同じ時間帯に設定</li>
+          </ul>
+          <div class="info">
+            <strong>注意：</strong>ペア部屋の完全自動割り当ては対応していません。手動での調整が必要です。
+          </div>
+          
+          <h5>同伴者を含む予約を取りたいとき</h5>
+          <ol>
+            <li>代表者の予約を作成</li>
+            <li>同伴者を個別に患者登録</li>
+            <li>同じ時間帯で同伴者の予約を作成</li>
+            <li>予約メモに相互の関連を記載</li>
+          </ol>
+          
+          <h5>予約を変更・キャンセルしたいとき</h5>
+          <ul>
+            <li>予約管理シートから該当予約を検索</li>
+            <li>Medical Force側で変更処理を実行</li>
+            <li>「予約情報を同期」で最新データを反映</li>
+          </ul>
+        </div>
+        
+        <h4>患者管理</h4>
+        <div class="subsection">
+          <h5>新規患者を登録したいとき</h5>
+          <ol>
+            <li>「MFデータ管理機能」→「患者を登録」をクリック</li>
+            <li>必須項目（氏名、カナ、生年月日、性別）を入力</li>
+            <li>登録後、自動的に患者マスタシートに反映</li>
+          </ol>
+          
+          <h5>患者情報が見つからないとき</h5>
+          <ul>
+            <li>「患者を検索」で名前、カナ、電話番号で検索</li>
+            <li>それでも見つからない場合は「患者情報を同期」を実行</li>
+            <li>Medical Force側で直接確認</li>
+          </ul>
+          
+          <h5>LINE連携を希望されたとき</h5>
+          <ul>
+            <li>患者マスタシートでLINE ID欄を確認</li>
+            <li>連携手順を患者に案内</li>
+            <li>連携完了後、自動でリマインダー送信対象に</li>
+          </ul>
+        </div>
+        
+        <h4>チケット管理</h4>
+        <div class="subsection">
+          <h5>特別にチケットを付与したいとき</h5>
+          <ol>
+            <li>「会社管理」から該当企業を選択</li>
+            <li>チケット残数を手動で編集</li>
+            <li>変更履歴にコメントを記入</li>
+          </ol>
+          
+          <h5>チケット残数を確認したいとき</h5>
+          <ul>
+            <li>チケット残高シートで企業名検索</li>
+            <li>または「会社管理」ダイアログで一覧表示</li>
+          </ul>
+          
+          <h5>新しい会社を追加したいとき</h5>
+          <ol>
+            <li>「GAS管理機能」→「会社管理」を開く</li>
+            <li>「新規会社追加」ボタンをクリック</li>
+            <li>会社情報とプランを選択して登録</li>
+          </ol>
+        </div>
+        
+        <h4>メニュー・施術管理</h4>
+        <div class="subsection">
+          <h5>新しい施術メニューを追加したいとき</h5>
+          <ol>
+            <li>Medical Force側でメニューを追加</li>
+            <li>「メニュー情報を同期」を実行</li>
+            <li>「メニュー管理」でカテゴリ分けと表示順を設定</li>
+          </ol>
+          
+          <h5>メニューの表示順を変更したいとき</h5>
+          <ul>
+            <li>「GAS管理機能」→「メニュー管理」を開く</li>
+            <li>ドラッグ＆ドロップで順序変更</li>
+            <li>「保存」ボタンで確定</li>
+          </ul>
+          
+          <h5>施術間隔の制限を設けたいとき</h5>
+          <ul>
+            <li>メニュー管理シートで制限事項を記載</li>
+            <li>予約作成時に手動でチェック</li>
+            <li>必要に応じてメモ欄に記載</li>
+          </ul>
+        </div>
+        
+        <h4>LINE連携</h4>
+        <div class="subsection">
+          <h5>リマインダーが送信されないとき</h5>
+          <ol>
+            <li>LINE Bot APIのトークンを確認</li>
+            <li>患者のLINE ID連携状態を確認</li>
+            <li>通知設定シートで送信条件を確認</li>
+            <li>実行ログでエラーメッセージを確認</li>
+          </ol>
+          
+          <h5>LINE通知の文面を変更したいとき</h5>
+          <ul>
+            <li>NotificationService.jsを編集</li>
+            <li>メッセージテンプレートを修正</li>
+            <li>テスト送信で確認後、本番適用</li>
+          </ul>
+        </div>
+        
+        <h4>データ同期</h4>
+        <div class="subsection">
+          <h5>最新のデータが反映されないとき</h5>
+          <ol>
+            <li>「すべてのデータを同期」を手動実行</li>
+            <li>実行ログでエラーを確認</li>
+            <li>必要に応じて個別同期を実行</li>
+          </ol>
+          
+          <h5>同期エラーが発生したとき</h5>
+          <ul>
+            <li>実行ログシートでエラー詳細を確認</li>
+            <li>認証エラーの場合：トークンキャッシュをクリア</li>
+            <li>ネットワークエラーの場合：時間を置いて再実行</li>
+            <li>データ量が多い場合：個別同期に切り替え</li>
+          </ul>
+        </div>
+        
+        <h4>エラー対応</h4>
+        <div class="subsection">
+          <h5>認証に失敗したとき</h5>
+          <ol>
+            <li>「設定」→「トークンキャッシュをクリア」を実行</li>
+            <li>Client ID/Secretの有効性を確認</li>
+            <li>必要に応じて新しい認証情報を取得</li>
+          </ol>
+          
+          <h5>実行時間を超過したとき</h5>
+          <ul>
+            <li>処理を分割して実行（患者、予約、メニューを個別に）</li>
+            <li>同期する期間を短く設定</li>
+            <li>深夜の自動同期を活用</li>
+          </ul>
+          <div class="warning">
+            <strong>制限：</strong>Google Apps Scriptは6分で強制終了します。大量データの処理は分割実行してください。
+          </div>
+          
+          <h5>データが重複したとき</h5>
+          <ul>
+            <li>患者マスタ・予約管理シートで重複を確認</li>
+            <li>IDが同じデータは最新のもののみ保持</li>
+            <li>手動で古いデータを削除</li>
+          </ul>
+        </div>
+        
+        <h4>その他の操作</h4>
+        <div class="subsection">
+          <h5>同意書URLを管理したいとき</h5>
+          <ul>
+            <li>設定シートに同意書URLを記載</li>
+            <li>予約確認メールに自動挿入される設定</li>
+            <li>URLの変更は設定シートで直接編集</li>
+          </ul>
+          
+          <h5>部屋情報を追加・変更したいとき</h5>
+          <ul>
+            <li>Medical Force側で部屋マスタを更新</li>
+            <li>スプレッドシート側には自動反映されない</li>
+            <li>必要に応じて手動で管理シートを作成</li>
+          </ul>
+          
+          <h5>スタッフ情報を更新したいとき</h5>
+          <ul>
+            <li>Medical Force側でスタッフ情報を更新</li>
+            <li>予約作成時に最新のスタッフ一覧が表示</li>
+          </ul>
+          
+          <h5>バックアップを取りたいとき</h5>
+          <ol>
+            <li>スプレッドシート全体をコピー（ファイル→コピーを作成）</li>
+            <li>コピーに日付を含む名前を付ける</li>
+            <li>定期的（週1回程度）の実施を推奨</li>
+          </ol>
+        </div>
+      </div>
+      
+      <div class="section">
+        <h3>運用上の重要な注意事項</h3>
+        <ul>
+          <li><strong>データ同期前の確認：</strong>重要な変更を行う前は必ず最新データに同期してください</li>
+          <li><strong>手動調整の保持：</strong>月次リセット時も、スプレッドシート上の手動調整は保持されます</li>
+          <li><strong>ペア部屋の調整：</strong>完全自動化は不可能なため、手動での調整が必要です</li>
+          <li><strong>認証エラー対処：</strong>まずトークンキャッシュをクリアしてください</li>
+          <li><strong>実行時間制限：</strong>Google Apps Scriptは6分で強制終了するため、大量処理は分割実行してください</li>
+          <li><strong>個人情報保護：</strong>患者情報へのアクセス権限は適切に管理してください</li>
+          <li><strong>定期バックアップ：</strong>週1回以上のスプレッドシートバックアップを推奨します</li>
+        </ul>
+      </div>
+      
+      <div class="section">
+        <h3>トラブルシューティング</h3>
+        
+        <h4>認証エラーが発生する場合</h4>
+        <ol>
+          <li>「設定」画面で認証情報が正しく設定されているか確認</li>
+          <li>「トークンキャッシュをクリア」を実行</li>
+          <li>それでも解決しない場合は、Client ID/Secretの再確認</li>
+        </ol>
+        
+        <h4>データが同期されない場合</h4>
+        <ul>
+          <li>クリニックIDが正しく設定されているか確認</li>
+          <li>「実行ログ」シートでエラーメッセージを確認</li>
+          <li>ネットワーク接続を確認</li>
+        </ul>
+        
+        <h4>実行時間制限エラー</h4>
+        <div class="info">
+          Google Apps Scriptには6分の実行時間制限があります。大量のデータを同期する場合は、分割して実行してください。
+        </div>
+      </div>
+      
+      <div class="section">
+        <h3>注意事項</h3>
+        <ul>
+          <li>医療情報を扱うため、適切なアクセス権限管理を行ってください</li>
+          <li>定期的なバックアップを推奨します</li>
+          <li>APIのレート制限に注意してください</li>
+          <li>個人情報の取り扱いには十分注意してください</li>
+        </ul>
+      </div>
+      
+      <div class="section">
+        <h3>お問い合わせ</h3>
+        <p>技術的な問題や不具合が発生した場合は、以下の情報と共にシステム管理者にお問い合わせください：</p>
+        <ul>
+          <li>エラーメッセージ（実行ログから）</li>
+          <li>実行した操作</li>
+          <li>発生日時</li>
+        </ul>
+      </div>
+      
+      <button class="close-btn" onclick="google.script.host.close()">閉じる</button>
+    </div>
+  </body>
+</html>

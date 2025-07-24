@@ -10,16 +10,18 @@ class MedicalForceApiClient
     private string $apiKey;
     private string $clientId;
     private string $clientSecret;
+    private string $clinicId;
     private int $timeout;
     private ?string $accessToken = null;
     private ?int $tokenExpiry = null;
     
-    public function __construct(string $baseUrl, string $apiKey, string $clientId = '', string $clientSecret = '', int $timeout = 30)
+    public function __construct(string $baseUrl, string $apiKey, string $clientId = '', string $clientSecret = '', string $clinicId = '', int $timeout = 30)
     {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->apiKey = $apiKey;
         $this->clientId = $clientId;
         $this->clientSecret = $clientSecret;
+        $this->clinicId = $clinicId ?: getenv('CLINIC_ID') ?: '';
         $this->timeout = $timeout;
     }
     
@@ -335,6 +337,11 @@ class MedicalForceApiClient
             'Accept: application/json'
         ];
         
+        // clinic_idヘッダーを追加（Medical Force API仕様）
+        if (!empty($this->clinicId)) {
+            $headers[] = 'clinic_id: ' . $this->clinicId;
+        }
+        
         $options = [
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
@@ -506,5 +513,221 @@ class MedicalForceApiClient
                 'authentication' => $this->testOAuthAuthentication()
             ];
         }
+    }
+    
+    /**
+     * 空き時間一覧を取得（Medical Force API）
+     * 
+     * @param array $requestBody リクエストボディ
+     * @return array 空き時間情報
+     * @throws Exception
+     */
+    public function getVacancies(array $requestBody): array
+    {
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[Medical Force API] Getting vacancies with body: ' . json_encode($requestBody));
+        }
+        
+        try {
+            $response = $this->makeApiRequest('POST', '/developer/vacancies', $requestBody);
+            
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[Medical Force API] Vacancies response: ' . json_encode($response));
+            }
+            
+            // レスポンスがそのまま空き時間情報の場合
+            if (is_array($response) && !isset($response['error'])) {
+                return $response;
+            }
+            
+            // エラーレスポンスの場合
+            if (isset($response['message'])) {
+                throw new Exception('Medical Force API Error: ' . $response['message'], 400);
+            }
+            
+            throw new Exception('Unexpected response format from Medical Force API', 500);
+            
+        } catch (Exception $e) {
+            error_log('[Medical Force API] Vacancies error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+    
+    /**
+     * 予約を作成（Medical Force API）
+     * 
+     * @param array $reservationData 予約データ
+     * @return array 予約作成結果
+     * @throws Exception
+     */
+    public function createReservation(array $reservationData): array
+    {
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[Medical Force API] Creating reservation with data: ' . json_encode($reservationData));
+        }
+        
+        try {
+            // 必須フィールドの検証
+            $requiredFields = ['visitor_id', 'start_at', 'menus'];
+            foreach ($requiredFields as $field) {
+                if (!isset($reservationData[$field])) {
+                    throw new Exception("必須フィールド '{$field}' が不足しています", 400);
+                }
+            }
+            
+            // menusが配列で、各要素にmenu_idが含まれているかチェック
+            if (!is_array($reservationData['menus']) || empty($reservationData['menus'])) {
+                throw new Exception('menus は空でない配列である必要があります', 400);
+            }
+            
+            foreach ($reservationData['menus'] as $menu) {
+                if (!isset($menu['menu_id'])) {
+                    throw new Exception('各メニューには menu_id が必要です', 400);
+                }
+            }
+            
+            // デフォルト値を設定
+            $requestData = array_merge([
+                'note' => '天満病院予約システムからの予約',
+                'is_online' => false
+            ], $reservationData);
+            
+            $response = $this->makeApiRequest('POST', '/developer/reservations', $requestData);
+            
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[Medical Force API] Reservation created successfully: ' . json_encode($response));
+            }
+            
+            // 成功レスポンスの場合
+            if (isset($response['reservation_id'])) {
+                return [
+                    'success' => true,
+                    'reservation_id' => $response['reservation_id'],
+                    'message' => '予約が正常に作成されました'
+                ];
+            }
+            
+            // エラーレスポンスの場合
+            if (isset($response['message'])) {
+                $detailedError = $this->parseApiError($response);
+                throw new Exception($detailedError, 400);
+            }
+            
+            throw new Exception('Unexpected response format from Medical Force API', 500);
+            
+        } catch (Exception $e) {
+            error_log('[Medical Force API] Reservation creation error: ' . $e->getMessage());
+            
+            // エラーレスポンスを統一フォーマットで返す
+            $errorDetails = $this->categorizeError($e->getMessage());
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'category' => $errorDetails['category'],
+                'user_message' => $errorDetails['user_message']
+            ];
+        }
+    }
+    
+    /**
+     * APIエラーレスポンスを解析してより詳細なエラーメッセージを生成
+     */
+    private function parseApiError(array $response): string
+    {
+        $message = $response['message'] ?? 'Unknown API error';
+        $errors = $response['errors'] ?? [];
+        
+        // 具体的なエラー情報があれば追加
+        if (!empty($errors)) {
+            if (is_array($errors)) {
+                $errorDetails = [];
+                foreach ($errors as $field => $fieldErrors) {
+                    if (is_array($fieldErrors)) {
+                        $errorDetails[] = "{$field}: " . implode(', ', $fieldErrors);
+                    } else {
+                        $errorDetails[] = "{$field}: {$fieldErrors}";
+                    }
+                }
+                if (!empty($errorDetails)) {
+                    $message .= ' (' . implode('; ', $errorDetails) . ')';
+                }
+            }
+        }
+        
+        return $message;
+    }
+    
+    /**
+     * エラーメッセージをカテゴリ別に分類
+     */
+    private function categorizeError(string $errorMessage): array
+    {
+        $msg = strtolower($errorMessage);
+        
+        if (strpos($msg, 'time slot not available') !== false || 
+            strpos($msg, 'already booked') !== false ||
+            strpos($msg, '時間が重複') !== false) {
+            return [
+                'category' => 'time_conflict',
+                'user_message' => '選択した時間は既に予約済みです。他の時間をお選びください。'
+            ];
+        }
+        
+        if (strpos($msg, 'visitor not found') !== false ||
+            strpos($msg, 'patient not found') !== false ||
+            strpos($msg, '患者が見つかりません') !== false) {
+            return [
+                'category' => 'patient_not_found',
+                'user_message' => '患者情報が見つかりません。患者登録を確認してください。'
+            ];
+        }
+        
+        if (strpos($msg, 'invalid menu') !== false ||
+            strpos($msg, 'menu not found') !== false ||
+            strpos($msg, 'メニューが無効') !== false) {
+            return [
+                'category' => 'invalid_menu',
+                'user_message' => '選択されたメニューが無効です。メニューを再選択してください。'
+            ];
+        }
+        
+        if (strpos($msg, 'insufficient tickets') !== false ||
+            strpos($msg, 'チケット不足') !== false) {
+            return [
+                'category' => 'insufficient_tickets',
+                'user_message' => 'チケットが不足しています。チケットをご購入ください。'
+            ];
+        }
+        
+        if (strpos($msg, 'business hours') !== false ||
+            strpos($msg, '営業時間外') !== false) {
+            return [
+                'category' => 'outside_business_hours',
+                'user_message' => '営業時間外の予約です。営業時間内の時間をお選びください。'
+            ];
+        }
+        
+        if (strpos($msg, 'past date') !== false ||
+            strpos($msg, '過去の日付') !== false) {
+            return [
+                'category' => 'past_date',
+                'user_message' => '過去の日付には予約できません。未来の日付をお選びください。'
+            ];
+        }
+        
+        if (strpos($msg, 'interval') !== false ||
+            strpos($msg, '間隔') !== false) {
+            return [
+                'category' => 'treatment_interval',
+                'user_message' => '施術間隔の規則に違反しています。前回の施術から十分な期間をおいてください。'
+            ];
+        }
+        
+        // その他のエラー
+        return [
+            'category' => 'other',
+            'user_message' => $errorMessage
+        ];
     }
 }

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+      input[type="month"] {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      button {
+        background-color: #4CAF50;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      #result {
+        margin-top: 20px;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background-color: #f9f9f9;
+        white-space: pre-wrap;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>月次レポート生成</h2>
+    <div class="form-group">
+      <label for="yearMonth">対象年月を選択:</label>
+      <input type="month" id="yearMonth" value="">
+    </div>
+    <button onclick="generateReport()">レポート生成</button>
+    <div id="result"></div>
+    
+    <script>
+      // 現在の年月を初期値として設定
+      document.getElementById('yearMonth').value = new Date().toISOString().slice(0, 7);
+      
+      function generateReport() {
+        const yearMonth = document.getElementById('yearMonth').value;
+        const resultDiv = document.getElementById('result');
+        
+        if (!yearMonth) {
+          resultDiv.textContent = 'エラー: 年月を選択してください。';
+          return;
+        }
+        
+        resultDiv.textContent = 'レポートを生成中...';
+        
+        google.script.run
+          .withSuccessHandler(function(report) {
+            displayReport(report);
+          })
+          .withFailureHandler(function(error) {
+            resultDiv.textContent = 'エラー: ' + error.message;
+          })
+          .generateMonthlyReport(yearMonth);
+      }
+      
+      function displayReport(report) {
+        const resultDiv = document.getElementById('result');
+        let html = `<h3>${report.yearMonth} 月次レポート</h3>`;
+        html += `<p>対象企業数: ${report.summary.totalCompanies}</p>`;
+        
+        html += '<h4>企業別使用状況</h4>';
+        for (const companyId in report.companies) {
+          const company = report.companies[companyId];
+          html += `<div style="margin-bottom: 15px; padding: 10px; border: 1px solid #eee;">`;
+          html += `<strong>${company.name} (${companyId})</strong><br>`;
+          
+          ['幹細胞', '施術', '点滴'].forEach(menu => {
+            const ticket = company.tickets[menu];
+            html += `${menu}: 付与${ticket.付与} / 使用${ticket.使用} / 残${ticket.残} (使用率: ${company.usageRate[menu]})<br>`;
+          });
+          html += '</div>';
+        }
+        
+        resultDiv.innerHTML = html;
+      }
+    </script>
+  </body>
+</html>

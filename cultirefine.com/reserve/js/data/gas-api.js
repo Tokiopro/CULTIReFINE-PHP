@@ -39,7 +39,8 @@ async function apiCall(action, params = {}, method = 'GET', data = null) {
         headers: {
             'Content-Type': 'application/json',
         },
-        credentials: 'same-origin' // セッションCookieを含める
+        credentials: 'same-origin', // セッションCookieを含める
+        signal: AbortSignal.timeout(30000) // 30秒タイムアウト
     };
     
     // POSTデータを追加
@@ -68,6 +69,17 @@ async function apiCall(action, params = {}, method = 'GET', data = null) {
         return result.data;
     } catch (error) {
         console.error('API Call Error:', error);
+        
+        // タイムアウトエラーの場合
+        if (error.name === 'TimeoutError') {
+            throw new Error('API呼び出しがタイムアウトしました。ページを再読み込みしてください。');
+        }
+        
+        // ネットワークエラーの場合
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+            throw new Error('ネットワーク接続に問題があります。インターネット接続を確認してください。');
+        }
+        
         throw error;
     }
 }
@@ -218,36 +230,42 @@ export async function mockCheckTreatmentInterval(patientId, treatmentId, desired
  * カレンダー空き情報取得（新API）
  * 複数日の空き状況を一括取得
  */
-export async function getAvailableSlots(visitorId, menuId, startDate, dateRange = 7, options = {}) {
+export async function getAvailableSlots(visitorId, menuIds, startDate, dateRange = 7, options = {}) {
     console.log('[GAS API] Getting available slots:', {
         visitorId,
-        menuId,
+        menuIds,
         startDate,
         dateRange,
         options
     });
     
+    // menuIds が配列でない場合は配列に変換（後方互換性）
+    const menuIdArray = Array.isArray(menuIds) ? menuIds : [menuIds];
+    
     try {
         const params = {
             path: `api/patients/${visitorId}/available-slots`,
-            api_key: 'your_api_key_here', // 実際の環境では適切なAPIキーを設定
-            menu_id: menuId,
+            menu_ids: menuIdArray, // 複数メニューID対応
+            menu_id: menuIdArray[0], // 後方互換性のため最初のIDも送信
             date: startDate,
             date_range: dateRange,
             include_room_info: options.includeRoomInfo || false,
             pair_booking: options.pairBooking || false,
-            allow_multiple_same_day: options.allowMultipleSameDay || false
+            allow_multiple_same_day: options.allowMultipleSameDay || false,
+            total_duration: options.totalDuration || 0 // 合計施術時間
         };
         
         // api-bridge.php経由でGAS APIを呼び出す
-        const response = await fetch(API_BASE_URL, {
+        const url = new URL(API_BASE_URL);
+        url.searchParams.set('action', 'getAvailableSlots');
+        
+        const response = await fetch(url.toString(), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             credentials: 'same-origin',
             body: JSON.stringify({
-                action: 'getAvailableSlots',
                 params: params
             })
         });
@@ -385,33 +403,45 @@ export async function getPatientMenus(visitorId, companyId = null) {
     try {
         // 新しいAPI仕様に合わせてパラメータを設定
         const params = {
-            path: `api/patients/${visitorId}/menus`,
-            api_key: 'your_api_key_here' // 実際の環境では適切なAPIキーを設定
+            path: `api/patients/${visitorId}/menus`
         };
         
         if (companyId) {
             params.company_id = companyId;
         }
         
+        console.log('[GAS API] Request params:', params);
+        
         // api-bridge.php経由でGAS APIを呼び出す
-        const response = await fetch(API_BASE_URL, {
+        const url = new URL(API_BASE_URL);
+        url.searchParams.set('action', 'getPatientMenus');
+        
+        const response = await fetch(url.toString(), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             credentials: 'same-origin',
             body: JSON.stringify({
-                action: 'getPatientMenus',
                 params: params
             })
         });
+        
+        console.log('[GAS API] Response status:', response.status);
         
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
         const result = await response.json();
+        console.log('[GAS API] Raw API response:', result);
         
+        // エラーチェック（successフィールドがある場合）
+        if (result.success === false) {
+            throw new Error(result.message || result.error?.message || 'メニュー情報の取得に失敗しました');
+        }
+        
+        // statusフィールドでのエラーチェック
         if (result.status === 'error') {
             throw new Error(result.error?.message || 'メニュー情報の取得に失敗しました');
         }
@@ -420,6 +450,12 @@ export async function getPatientMenus(visitorId, companyId = null) {
         
         // 新形式と旧形式の両方に対応
         const data = result.data || result;
+        
+        if (window.DEBUG_MODE) {
+            console.log('[GAS API] Extracted data:', data);
+            console.log('[GAS API] Data type:', typeof data);
+            console.log('[GAS API] Data keys:', data ? Object.keys(data) : 'null');
+        }
         
         return {
             success: true,
@@ -430,7 +466,8 @@ export async function getPatientMenus(visitorId, companyId = null) {
         console.error('[GAS API] Error getting patient menus:', error);
         return {
             success: false,
-            message: error.message || 'メニュー情報の取得に失敗しました'
+            message: error.message || 'メニュー情報の取得に失敗しました',
+            error: error
         };
     }
 }
@@ -455,6 +492,59 @@ export async function createMedicalForceReservation(reservationData) {
         return {
             success: false,
             message: error.message || '予約の作成に失敗しました'
+        };
+    }
+}
+
+/**
+ * 予約作成（単一・複数対応）
+ */
+export async function createReservations(reservationData) {
+    console.log('[GAS API] Creating reservations:', reservationData);
+    
+    try {
+        const response = await fetch('/reserve/api-bridge.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Action': 'createReservations'
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify(reservationData)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.error?.message || '予約の作成に失敗しました');
+        }
+        
+        console.log('[GAS API] Reservations created successfully:', result);
+        
+        return {
+            success: result.data.success,
+            message: result.data.message,
+            totalAttempted: result.data.total_attempted,
+            successful: result.data.successful,
+            failed: result.data.failed,
+            results: result.data.results,
+            errors: result.data.errors
+        };
+        
+    } catch (error) {
+        console.error('[GAS API] Error creating reservations:', error);
+        return {
+            success: false,
+            message: error.message || '予約の作成に失敗しました',
+            totalAttempted: 0,
+            successful: 0,
+            failed: 1,
+            results: [],
+            errors: [{ error: error.message }]
         };
     }
 }

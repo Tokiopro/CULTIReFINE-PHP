@@ -233,15 +233,25 @@ export function updatePatientsList() {
         var toggleButton = '';
         if (window.APP_CONFIG && window.APP_CONFIG.userRole === 'main') {
             var toggleId = 'toggle-' + patient.id;
+            var loadingId = 'loading-' + patient.id;
             toggleButton = 
                 '<div class="ml-2 flex items-center">' +
                     '<span class="text-xs text-gray-500 mr-1">公開:</span>' +
-                    '<label class="toggle-switch" for="' + toggleId + '">' +
-                        '<input type="checkbox" id="' + toggleId + '" class="toggle-checkbox" ' +
-                        (patient.isPublic ? 'checked' : '') + ' ' +
-                        'data-visitor-id="' + patient.id + '">' +
-                        '<span class="toggle-slider"></span>' +
-                    '</label>' +
+                    '<div class="relative">' +
+                        '<label class="toggle-switch" for="' + toggleId + '">' +
+                            '<input type="checkbox" id="' + toggleId + '" class="toggle-checkbox" ' +
+                            (patient.isPublic ? 'checked' : '') + ' ' +
+                            'data-visitor-id="' + patient.id + '">' +
+                            '<span class="toggle-slider"></span>' +
+                        '</label>' +
+                        '<span id="' + loadingId + '" class="hidden text-xs text-blue-600 ml-2 flex items-center">' +
+                            '<svg class="animate-spin h-3 w-3 mr-1 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">' +
+                                '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
+                                '<path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>' +
+                            '</svg>' +
+                            '処理中...' +
+                        '</span>' +
+                    '</div>' +
                 '</div>';
         }
         
@@ -360,8 +370,14 @@ async function updateVisitorPublicStatus(visitorId, isPublic) {
     try {
         // UI上でローディング状態を示す
         var toggleElement = document.querySelector('[data-visitor-id="' + visitorId + '"]');
+        var loadingElement = document.getElementById('loading-' + visitorId);
+        
         if (toggleElement) {
             toggleElement.disabled = true;
+        }
+        
+        if (loadingElement) {
+            loadingElement.classList.remove('hidden');
         }
         
         // APIを呼び出し
@@ -426,8 +442,14 @@ async function updateVisitorPublicStatus(visitorId, isPublic) {
     } finally {
         // ローディング状態を解除
         var toggleElement = document.querySelector('[data-visitor-id="' + visitorId + '"]');
+        var loadingElement = document.getElementById('loading-' + visitorId);
+        
         if (toggleElement) {
             toggleElement.disabled = false;
+        }
+        
+        if (loadingElement) {
+            loadingElement.classList.add('hidden');
         }
     }
 }

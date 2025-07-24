@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        margin: 0;
+      }
+      
+      .container {
+        max-width: 100%;
+        margin: 0 auto;
+      }
+      
+      h2 {
+        color: #333;
+        margin-bottom: 20px;
+      }
+      
+      .search-form {
+        background: #f5f5f5;
+        padding: 20px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+      }
+      
+      .form-group {
+        margin-bottom: 15px;
+        display: inline-block;
+        margin-right: 20px;
+      }
+      
+      label {
+        display: inline-block;
+        margin-right: 10px;
+        font-weight: bold;
+        color: #555;
+      }
+      
+      input[type="date"], select {
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+      
+      button {
+        padding: 10px 20px;
+        font-size: 14px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-right: 10px;
+      }
+      
+      .search-btn {
+        background-color: #2196F3;
+        color: white;
+      }
+      
+      .search-btn:hover {
+        background-color: #0b7dda;
+      }
+      
+      .close-btn {
+        background-color: #666;
+        color: white;
+      }
+      
+      .close-btn:hover {
+        background-color: #555;
+      }
+      
+      #loading {
+        display: none;
+        text-align: center;
+        padding: 20px;
+      }
+      
+      #error {
+        display: none;
+        color: red;
+        padding: 10px;
+        background: #ffe0e0;
+        border-radius: 4px;
+        margin: 10px 0;
+      }
+      
+      .results-section {
+        margin-top: 20px;
+      }
+      
+      .date-header {
+        background: #e3f2fd;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 4px;
+        font-weight: bold;
+        color: #1976d2;
+      }
+      
+      .vacancy-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      
+      .time-slot {
+        padding: 10px;
+        text-align: center;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+      
+      .available {
+        background: #e8f5e9;
+        color: #2e7d32;
+        border: 1px solid #81c784;
+      }
+      
+      .available:hover {
+        background: #c8e6c9;
+      }
+      
+      .unavailable {
+        background: #ffebee;
+        color: #c62828;
+        border: 1px solid #ef5350;
+        cursor: not-allowed;
+      }
+      
+      .selected {
+        background: #1976d2;
+        color: white;
+        border: 1px solid #1565c0;
+      }
+      
+      .no-results {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+      }
+      
+      .legend {
+        margin-bottom: 20px;
+        font-size: 14px;
+      }
+      
+      .legend-item {
+        display: inline-block;
+        margin-right: 20px;
+      }
+      
+      .legend-box {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        margin-right: 5px;
+        vertical-align: middle;
+        border-radius: 3px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>空き時間確認</h2>
+      
+      <div class="search-form">
+        <div class="form-group">
+          <label for="dateFrom">開始日:</label>
+          <input type="date" id="dateFrom">
+        </div>
+        
+        <div class="form-group">
+          <label for="dateTo">終了日:</label>
+          <input type="date" id="dateTo">
+        </div>
+        
+        <div class="form-group">
+          <label for="staffId">スタッフ:</label>
+          <select id="staffId">
+            <option value="">全スタッフ</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <button class="search-btn" onclick="searchVacancies()">検索</button>
+          <button class="close-btn" onclick="google.script.host.close()">閉じる</button>
+        </div>
+      </div>
+      
+      <div class="legend">
+        <span class="legend-item">
+          <span class="legend-box available"></span>空き
+        </span>
+        <span class="legend-item">
+          <span class="legend-box unavailable"></span>予約済み
+        </span>
+      </div>
+      
+      <div id="loading">空き時間を確認中...</div>
+      <div id="error"></div>
+      
+      <div class="results-section">
+        <div id="results"></div>
+      </div>
+    </div>
+    
+    <script>
+      // ページ読み込み時の初期化
+      window.onload = function() {
+        // 今日から7日間をデフォルト設定
+        const today = new Date();
+        const nextWeek = new Date(today);
+        nextWeek.setDate(today.getDate() + 7);
+        
+        document.getElementById('dateFrom').value = today.toISOString().split('T')[0];
+        document.getElementById('dateTo').value = nextWeek.toISOString().split('T')[0];
+        
+        // スタッフ一覧を読み込み
+        loadStaffs();
+        
+        // 初期検索
+        searchVacancies();
+      };
+      
+      function loadStaffs() {
+        google.script.run
+          .withSuccessHandler(function(staffs) {
+            const select = document.getElementById('staffId');
+            select.innerHTML = '<option value="">全スタッフ</option>';
+            if (staffs && staffs.length > 0) {
+              staffs.forEach(staff => {
+                const option = document.createElement('option');
+                option.value = staff.staff_id;
+                option.textContent = staff.name;
+                select.appendChild(option);
+              });
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error('スタッフ取得エラー:', error);
+          })
+          .getStaffsFromDialog();
+      }
+      
+      function searchVacancies() {
+        const dateFrom = document.getElementById('dateFrom').value;
+        const dateTo = document.getElementById('dateTo').value;
+        const staffId = document.getElementById('staffId').value;
+        
+        if (!dateFrom || !dateTo) {
+          showError('開始日と終了日を入力してください。');
+          return;
+        }
+        
+        if (new Date(dateFrom) > new Date(dateTo)) {
+          showError('開始日は終了日より前の日付を指定してください。');
+          return;
+        }
+        
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('error').style.display = 'none';
+        document.getElementById('results').innerHTML = '';
+        
+        const params = {
+          date_from: dateFrom,
+          date_to: dateTo
+        };
+        
+        if (staffId) {
+          params.staff_id = staffId;
+        }
+        
+        google.script.run
+          .withSuccessHandler(showResults)
+          .withFailureHandler(showError)
+          .getVacanciesFromDialog(params);
+      }
+      
+      function showResults(data) {
+        document.getElementById('loading').style.display = 'none';
+        const resultsDiv = document.getElementById('results');
+        
+        if (!data || !data.vacancies || Object.keys(data.vacancies).length === 0) {
+          resultsDiv.innerHTML = '<div class="no-results">指定期間に空き時間情報がありません。</div>';
+          return;
+        }
+        
+        // 結果を表示
+        let html = '';
+        const vacancies = data.vacancies;
+        
+        // 日付ごとに処理
+        Object.keys(vacancies).sort().forEach(date => {
+          const dateObj = new Date(date);
+          const dateStr = `${dateObj.getFullYear()}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日 (${['日', '月', '火', '水', '木', '金', '土'][dateObj.getDay()]})`;
+          
+          html += `<div class="date-header">${dateStr}</div>`;
+          html += '<div class="vacancy-grid">';
+          
+          // 時間ごとの空き状況
+          const timeSlots = vacancies[date];
+          Object.keys(timeSlots).sort().forEach(time => {
+            const status = timeSlots[time];
+            const isAvailable = status === 'ok';
+            const timeStr = time.substr(0, 5);
+            
+            html += `
+              <div class="time-slot ${isAvailable ? 'available' : 'unavailable'}" 
+                   onclick="${isAvailable ? `selectTimeSlot('${date}', '${timeStr}')` : ''}">
+                ${timeStr}
+              </div>
+            `;
+          });
+          
+          html += '</div>';
+        });
+        
+        resultsDiv.innerHTML = html;
+      }
+      
+      function selectTimeSlot(date, time) {
+        if (confirm(`${date} ${time} で予約を作成しますか？`)) {
+          // 予約作成ダイアログを開く
+          alert('予約作成機能は「個別操作」→「予約を作成」から行ってください。');
+        }
+      }
+      
+      function showError(error) {
+        document.getElementById('loading').style.display = 'none';
+        const errorDiv = document.getElementById('error');
+        errorDiv.textContent = typeof error === 'string' ? error : 'エラー: ' + error.toString();
+        errorDiv.style.display = 'block';
+      }
+    </script>
+  </body>
+</html>

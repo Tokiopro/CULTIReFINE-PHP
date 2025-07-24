@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        margin: 0;
+        font-size: 14px;
+      }
+      
+      .container {
+        max-width: 100%;
+        margin: 0 auto;
+      }
+      
+      h2 {
+        color: #333;
+        margin-bottom: 20px;
+        font-size: 18px;
+      }
+      
+      .button-group {
+        margin-bottom: 20px;
+      }
+      
+      .btn {
+        background-color: #4285f4;
+        color: white;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        margin-right: 10px;
+      }
+      
+      .btn:hover {
+        background-color: #357ae8;
+      }
+      
+      .btn-secondary {
+        background-color: #666;
+      }
+      
+      .btn-secondary:hover {
+        background-color: #555;
+      }
+      
+      .btn-danger {
+        background-color: #dc3545;
+      }
+      
+      .btn-danger:hover {
+        background-color: #c82333;
+      }
+      
+      .btn-warning {
+        background-color: #ffc107;
+        color: #212529;
+      }
+      
+      .btn-warning:hover {
+        background-color: #e0a800;
+      }
+      
+      .btn-disabled {
+        background-color: #6c757d;
+        color: #fff;
+        cursor: not-allowed;
+        opacity: 0.65;
+      }
+      
+      .btn-disabled:hover {
+        background-color: #6c757d;
+      }
+      
+      .pending-change {
+        background-color: #fff3cd !important;
+        border-left: 4px solid #ffc107 !important;
+      }
+      
+      .pending-change-label {
+        background-color: #ffc107;
+        color: #212529;
+        padding: 2px 6px;
+        font-size: 10px;
+        border-radius: 3px;
+        margin-left: 5px;
+      }
+      
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+      }
+      
+      th, td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+      }
+      
+      th {
+        background-color: #f2f2f2;
+        font-weight: bold;
+      }
+      
+      tr:hover {
+        background-color: #f5f5f5;
+      }
+      
+      /* LINE認証ステータスラベル */
+      .line-status {
+        display: inline-block;
+        padding: 2px 8px;
+        font-size: 11px;
+        border-radius: 3px;
+        font-weight: bold;
+        margin-left: 5px;
+      }
+      
+      .line-status.linked {
+        background-color: #28a745;
+        color: white;
+      }
+      
+      .line-status.link-issued {
+        background-color: #007bff;
+        color: white;
+      }
+      
+      .line-status.not-linked {
+        background-color: #6c757d;
+        color: white;
+      }
+      
+      /* LINEリンク表示モーダル */
+      .line-link-modal {
+        display: none;
+        position: fixed;
+        z-index: 1001;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+      }
+      
+      .line-link-content {
+        background-color: #fefefe;
+        margin: 5% auto;
+        padding: 20px;
+        border: 1px solid #888;
+        width: 80%;
+        max-width: 600px;
+        border-radius: 8px;
+      }
+      
+      .link-item {
+        margin: 15px 0;
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+        border: 1px solid #dee2e6;
+      }
+      
+      .link-url {
+        font-family: monospace;
+        font-size: 12px;
+        background-color: #e9ecef;
+        padding: 8px;
+        border-radius: 3px;
+        word-break: break-all;
+        margin: 10px 0;
+      }
+      
+      .copy-btn {
+        background-color: #6c757d;
+        color: white;
+        padding: 4px 12px;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      
+      .copy-btn:hover {
+        background-color: #5a6268;
+      }
+      
+      .form-group {
+        margin-bottom: 15px;
+      }
+      
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+        color: #555;
+      }
+      
+      input, select {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+      
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.4);
+      }
+      
+      .modal-content {
+        background-color: #fefefe;
+        margin: 5% auto;
+        padding: 20px;
+        border: 1px solid #888;
+        width: 80%;
+        max-width: 500px;
+        max-height: 85vh;
+        overflow-y: auto;
+        border-radius: 8px;
+      }
+      
+      .close {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+      
+      .close:hover {
+        color: black;
+      }
+      
+      .loading {
+        display: none;
+        text-align: center;
+        padding: 20px;
+      }
+      
+      .error {
+        color: #dc3545;
+        margin-top: 5px;
+        font-size: 12px;
+      }
+      
+      .info {
+        background-color: #d1ecf1;
+        border: 1px solid #bee5eb;
+        color: #0c5460;
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+      }
+      
+      .action-buttons {
+        display: inline-block;
+      }
+      
+      .action-buttons button {
+        padding: 4px 8px;
+        font-size: 12px;
+        margin-right: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>会社管理</h2>
+      
+      <div class="info">
+        会社情報を登録・管理できます。プランを選択すると、そのプランに設定されたチケット枚数が自動的に付与されます。
+      </div>
+      
+      <div class="button-group">
+        <button class="btn" onclick="showAddCompanyModal()">新規会社追加</button>
+        <button class="btn btn-secondary" onclick="refreshCompanyList()">更新</button>
+      </div>
+      
+      <div class="loading" id="loading">
+        読み込み中...
+      </div>
+      
+      <table id="companyTable" style="display: none;">
+        <thead>
+          <tr>
+            <th>会社ID</th>
+            <th>会社名</th>
+            <th>プラン</th>
+            <th>開始日</th>
+            <th>幹細胞</th>
+            <th>施術</th>
+            <th>点滴</th>
+            <th>社長/秘書</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="companyTableBody">
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- 会社追加/編集モーダル -->
+    <div id="companyModal" class="modal">
+      <div class="modal-content">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <h3 id="modalTitle">新規会社追加</h3>
+        
+        <form id="companyForm" onsubmit="saveCompany(event)">
+          <div class="form-group">
+            <label for="companyId">会社ID <span style="color: red;">*</span></label>
+            <input type="text" id="companyId" name="companyId" required>
+            <div class="error" id="companyIdError"></div>
+          </div>
+          
+          <div class="form-group">
+            <label for="companyName">会社名 <span style="color: red;">*</span></label>
+            <input type="text" id="companyName" name="companyName" required>
+          </div>
+          
+          <div class="form-group">
+            <label for="planName">プラン <span style="color: red;">*</span></label>
+            <select id="planName" name="planName" required>
+              <option value="">プランを選択してください</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="startDate">開始日 <span style="color: red;">*</span></label>
+            <input type="date" id="startDate" name="startDate" required>
+          </div>
+          
+          <!-- チケット情報表示機能を無効化
+          <div class="form-group" id="ticketInfo" style="display: none;">
+            <label>付与されるチケット枚数</label>
+            <div style="background-color: #f8f9fa; padding: 10px; border-radius: 4px;">
+              <div>幹細胞: <span id="stemCellTickets">0</span>枚</div>
+              <div>施術: <span id="treatmentTickets">0</span>枚</div>
+              <div>点滴: <span id="infusionTickets">0</span>枚</div>
+            </div>
+          </div>
+          -->
+          
+          <div class="button-group" style="margin-top: 20px;">
+            <button type="submit" class="btn">保存</button>
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <!-- 来院者管理モーダル -->
+    <div id="visitorModal" class="modal">
+      <div class="modal-content" style="max-width: 800px;">
+        <span class="close" onclick="closeVisitorModal()">&times;</span>
+        <h3 id="visitorModalTitle">来院者管理</h3>
+        
+        <div style="display: flex; gap: 20px;">
+          <!-- 現在の設定 -->
+          <div style="flex: 1;">
+            <h4>現在の設定</h4>
+            <div id="currentVisitors">
+              <div style="margin-bottom: 15px;">
+                <label style="font-weight: bold;">社長:</label>
+                <div id="currentPresident" style="padding: 10px; background-color: #f0f0f0; border-radius: 4px;">
+                  未設定
+                </div>
+              </div>
+              <div>
+                <label style="font-weight: bold;">秘書:</label>
+                <div id="currentSecretaries" style="padding: 10px; background-color: #f0f0f0; border-radius: 4px; min-height: 60px;">
+                  未設定
+                </div>
+              </div>
+              
+              <!-- 保存ボタンを秘書表示欄の下に配置 -->
+              <div style="margin-top: 15px; text-align: center;">
+                <button type="button" id="saveChangesBtn" class="btn" onclick="saveAllChanges()" disabled>変更を保存</button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 来院者を追加 -->
+          <div style="flex: 1;">
+            <h4>来院者を追加</h4>
+            <div class="form-group">
+              <input type="text" id="visitorSearch" placeholder="氏名でフィルタリング..." onkeyup="filterVisitors()">
+            </div>
+            <div id="visitorList" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px;">
+              <div style="color: #666; text-align: center;">読み込み中...</div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="button-group" style="margin-top: 20px;">
+          <button type="button" class="btn btn-secondary" onclick="closeVisitorModal()">閉じる</button>
+        </div>
+      </div>
+    </div>
+    
+    <script>
+      let companies = [];
+      let plans = [];
+      let editingCompanyId = null;
+      let currentCompanyId = null;
+      let currentCompanyName = null;
+      let companyVisitors = [];
+      let allVisitors = [];
+      
+      // 未保存変更の追跡
+      let hasUnsavedChanges = false;
+      let pendingChanges = [];
+      
+      // 変更を追加する関数
+      function addPendingChange(action, data) {
+        console.log('変更追加開始:', { action, data });
+        console.log('変更前のpendingChanges:', pendingChanges);
+        
+        // 同じ来院者の既存の変更をすべて削除
+        pendingChanges = pendingChanges.filter(change => 
+          change.data.visitorId !== data.visitorId
+        );
+        
+        console.log('重複除去後のpendingChanges:', pendingChanges);
+        
+        // 新しい変更を追加
+        pendingChanges.push({ action, data });
+        hasUnsavedChanges = true;
+        
+        console.log('変更追加後のpendingChanges:', pendingChanges);
+        
+        // 保存ボタンの状態を更新
+        updateSaveButtonState();
+      }
+      
+      // 保存ボタンの状態を更新
+      function updateSaveButtonState() {
+        const saveButton = document.getElementById('saveChangesBtn');
+        if (saveButton) {
+          saveButton.disabled = pendingChanges.length === 0;
+          saveButton.textContent = pendingChanges.length > 0 
+            ? `変更を保存 (${pendingChanges.length}件)` 
+            : '変更を保存';
+        }
+      }
+      
+      // 変更をクリア
+      function clearPendingChanges() {
+        pendingChanges = [];
+        hasUnsavedChanges = false;
+        updateSaveButtonState();
+      }
+      
+      // 来院者に未保存変更があるかチェック
+      function hasPendingChangeForVisitor(visitorId) {
+        return pendingChanges.some(change => change.data.visitorId === visitorId);
+      }
+      
+      // 現在の会社設定を取得
+      function getCurrentCompanySettings() {
+        const settings = [];
+        
+        // 現在の社長を取得
+        const president = companyVisitors.find(v => v.position === '社長');
+        if (president) {
+          settings.push({
+            visitorId: president.visitorId,
+            visitorName: president.visitorName,
+            memberType: 'main',
+            position: '社長'
+          });
+        }
+        
+        // 現在の秘書を取得
+        const secretary = companyVisitors.find(v => v.position === '秘書');
+        if (secretary) {
+          settings.push({
+            visitorId: secretary.visitorId,
+            visitorName: secretary.visitorName,
+            memberType: 'sub',
+            position: '秘書'
+          });
+        }
+        
+        console.log('現在の会社設定:', settings);
+        return settings;
+      }
+      
+      // 全ての変更を一括保存
+      function saveAllChanges() {
+        // 現在のUI設定を取得
+        const currentSettings = getCurrentCompanySettings();
+        
+        if (currentSettings.length === 0) {
+          alert('社長または秘書が設定されていません。');
+          return;
+        }
+        
+        // LINE連携リンク発行確認
+        const needsLineLink = currentSettings.some(s => !s.lineId);
+        let generateLineLinks = false;
+        
+        if (needsLineLink) {
+          generateLineLinks = confirm('社長または秘書のLINE連携リンクを発行しますか？');
+        }
+        
+        console.log('現在の設定を保存開始:', currentSettings);
+        console.log('LINEリンク発行:', generateLineLinks);
+        
+        // 保存ボタンを無効化
+        const saveButton = document.getElementById('saveChangesBtn');
+        if (saveButton) {
+          saveButton.disabled = true;
+          saveButton.textContent = '保存中...';
+        }
+        
+        try {
+          google.script.run
+            .withSuccessHandler(function(result) {
+              console.log('保存成功:', result);
+              if (result.success) {
+                // 変更をクリア
+                clearPendingChanges();
+                
+                // LINEリンクが生成された場合は表示
+                if (result.generatedLinks && result.generatedLinks.length > 0) {
+                  showGeneratedLinksModal(result.generatedLinks);
+                } else {
+                  alert('現在の設定を保存しました');
+                }
+                
+                // 来院者リストを再読み込み
+                loadCompanyVisitors(currentCompanyId);
+              } else {
+                console.error('保存失敗:', result.error);
+                alert('保存に失敗しました: ' + result.error);
+                updateSaveButtonState();
+              }
+            })
+            .withFailureHandler(function(error) {
+              console.error('保存エラー:', error);
+              alert('保存中にエラーが発生しました: ' + error);
+              updateSaveButtonState();
+            })
+            .saveCompanyCurrentSettings(currentCompanyId, currentSettings, generateLineLinks);
+            
+        } catch (error) {
+          console.error('保存例外:', error);
+          alert('保存中に例外が発生しました: ' + error);
+          updateSaveButtonState();
+        }
+      }
+      
+      // 生成されたLINEリンクを表示
+      function showGeneratedLinksModal(links) {
+        const modal = document.createElement('div');
+        modal.className = 'line-link-modal';
+        modal.innerHTML = `
+          <div class="line-link-content">
+            <span class="close" onclick="this.parentElement.parentElement.remove()">&times;</span>
+            <h3>LINE連携リンクが発行されました</h3>
+            <p style="color: #666; font-size: 14px;">以下のリンクを対象者に共有してください。有効期限は翌日午前7時までです。</p>
+            
+            ${links.map(link => `
+              <div class="link-item">
+                <h4 style="margin: 0 0 10px 0;">${link.visitorName} (${link.position})</h4>
+                <div class="link-url" id="link-${link.visitorId}">${link.linkUrl}</div>
+                <button class="copy-btn" onclick="copyToClipboard('link-${link.visitorId}', this)">コピー</button>
+              </div>
+            `).join('')}
+            
+            <div style="text-align: center; margin-top: 20px;">
+              <button class="btn" onclick="this.parentElement.parentElement.parentElement.remove()">閉じる</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+        modal.style.display = 'block';
+      }
+      
+      // クリップボードにコピー
+      function copyToClipboard(elementId, button) {
+        const element = document.getElementById(elementId);
+        const text = element.textContent;
+        
+        navigator.clipboard.writeText(text).then(() => {
+          button.textContent = 'コピーしました！';
+          setTimeout(() => {
+            button.textContent = 'コピー';
+          }, 2000);
+        }).catch(err => {
+          alert('コピーに失敗しました');
+        });
+      }
+      
+      // 初期化
+      function init() {
+        loadCompanies();
+        loadPlans();
+      }
+      
+      // 会社一覧を読み込み
+      function loadCompanies() {
+        console.log('loadCompanies開始');
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('companyTable').style.display = 'none';
+        
+        google.script.run
+          .withSuccessHandler(function(result) {
+            console.log('会社一覧取得成功:', result);
+            document.getElementById('loading').style.display = 'none';
+            if (result && result.success) {
+              companies = result.data || [];
+              console.log('取得した会社数:', companies.length);
+              displayCompanies();
+            } else {
+              console.error('会社情報取得失敗:', result);
+              alert('会社情報の読み込みに失敗しました: ' + (result ? result.error : '不明なエラー'));
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error('loadCompaniesエラー:', error);
+            document.getElementById('loading').style.display = 'none';
+            alert('エラーが発生しました: ' + error);
+          })
+          .getCompaniesForDialog();
+      }
+      
+      // 会社一覧を更新（更新ボタン用）
+      function refreshCompanyList() {
+        console.log('refreshCompanyListを実行 - 直接データ取得');
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('companyTable').style.display = 'none';
+        
+        // キャッシュを使わず直接データを取得
+        google.script.run
+          .withSuccessHandler(function(result) {
+            console.log('直接取得結果:', result);
+            document.getElementById('loading').style.display = 'none';
+            if (result && result.success) {
+              companies = result.data || [];
+              console.log('直接取得した会社数:', companies.length);
+              displayCompanies();
+            } else {
+              console.error('直接取得失敗:', result);
+              alert('会社情報の更新に失敗しました: ' + (result ? result.error : '不明なエラー'));
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error('refreshCompanyListエラー:', error);
+            document.getElementById('loading').style.display = 'none';
+            alert('エラーが発生しました: ' + error);
+          })
+          .getCompaniesForDialogDirect();
+      }
+      
+      // プラン一覧を読み込み
+      function loadPlans() {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result.success) {
+              plans = result.data;
+              updatePlanSelect();
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error('プラン読み込みエラー:', error);
+          })
+          .getAvailablePlansForDialog();
+      }
+      
+      // プラン選択肢を更新
+      function updatePlanSelect() {
+        const select = document.getElementById('planName');
+        select.innerHTML = '<option value="">プランを選択してください</option>';
+        
+        plans.forEach(plan => {
+          const option = document.createElement('option');
+          option.value = plan.name;
+          option.textContent = plan.name;
+          // チケット情報のデータ属性を削除（チケット表示機能無効化）
+          // option.dataset.stemCell = plan.stemCell;
+          // option.dataset.treatment = plan.treatment;
+          // option.dataset.infusion = plan.infusion;
+          select.appendChild(option);
+        });
+      }
+      
+      // 会社一覧を表示
+      function displayCompanies() {
+        const tbody = document.getElementById('companyTableBody');
+        tbody.innerHTML = '';
+        
+        companies.forEach(company => {
+          const row = tbody.insertRow();
+          row.innerHTML = `
+            <td>${company.id}</td>
+            <td>${company.name}</td>
+            <td>${company.plan}</td>
+            <td>${company.startDate || ''}</td>
+            <td>${company.stemCell || 0}</td>
+            <td>${company.treatment || 0}</td>
+            <td>${company.infusion || 0}</td>
+            <td>
+              <button class="btn btn-secondary" onclick="manageCompanyVisitors('${company.id}', '${company.name}')">管理</button>
+            </td>
+            <td class="action-buttons">
+              <button class="btn" onclick="editCompany('${company.id}')">編集</button>
+              <button class="btn btn-danger" onclick="deleteCompany('${company.id}')">削除</button>
+            </td>
+          `;
+        });
+        
+        document.getElementById('companyTable').style.display = 'table';
+      }
+      
+      // 新規会社追加モーダルを表示
+      function showAddCompanyModal() {
+        editingCompanyId = null;
+        document.getElementById('modalTitle').textContent = '新規会社追加';
+        document.getElementById('companyForm').reset();
+        document.getElementById('companyId').disabled = false;
+        // チケット情報要素は削除されたためコメントアウト
+        // document.getElementById('ticketInfo').style.display = 'none';
+        document.getElementById('companyIdError').textContent = '';
+        
+        // 開始日のデフォルト値を今日に設定
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        document.getElementById('startDate').value = `${yyyy}-${mm}-${dd}`;
+        
+        document.getElementById('companyModal').style.display = 'block';
+      }
+      
+      // 会社編集モーダルを表示
+      function editCompany(companyId) {
+        const company = companies.find(c => c.id === companyId);
+        if (!company) return;
+        
+        editingCompanyId = companyId;
+        document.getElementById('modalTitle').textContent = '会社情報編集';
+        document.getElementById('companyId').value = company.id;
+        document.getElementById('companyId').disabled = true;
+        document.getElementById('companyName').value = company.name;
+        document.getElementById('planName').value = company.plan;
+        document.getElementById('startDate').value = company.startDate || '';
+        // updateTicketDisplay(); // チケット表示機能を無効化
+        document.getElementById('companyIdError').textContent = '';
+        document.getElementById('companyModal').style.display = 'block';
+      }
+      
+      // チケット数表示を更新（無効化済み）
+      function updateTicketDisplay() {
+        // チケット表示機能を無効化
+        // const select = document.getElementById('planName');
+        // const selectedOption = select.options[select.selectedIndex];
+        // 
+        // if (selectedOption && selectedOption.value) {
+        //   document.getElementById('stemCellTickets').textContent = selectedOption.dataset.stemCell || 0;
+        //   document.getElementById('treatmentTickets').textContent = selectedOption.dataset.treatment || 0;
+        //   document.getElementById('infusionTickets').textContent = selectedOption.dataset.infusion || 0;
+        //   document.getElementById('ticketInfo').style.display = 'block';
+        // } else {
+        //   document.getElementById('ticketInfo').style.display = 'none';
+        // }
+      }
+      
+      // 会社情報を保存
+      function saveCompany(event) {
+        event.preventDefault();
+        
+        const formData = {
+          companyId: document.getElementById('companyId').value.trim(),
+          companyName: document.getElementById('companyName').value.trim(),
+          planName: document.getElementById('planName').value,
+          startDate: document.getElementById('startDate').value
+        };
+        
+        console.log('保存データ:', formData);
+        
+        // バリデーション
+        if (!formData.companyId || !formData.companyName || !formData.planName) {
+          alert('すべての必須項目を入力してください。');
+          return;
+        }
+        
+        // 新規追加時の重複チェック
+        if (!editingCompanyId && companies.some(c => c.id === formData.companyId)) {
+          document.getElementById('companyIdError').textContent = 'この会社IDは既に使用されています。';
+          return;
+        }
+        
+        const button = event.target.querySelector('button[type="submit"]');
+        button.disabled = true;
+        button.textContent = '保存中...';
+        
+        const handler = editingCompanyId ? 'updateCompanyFromDialog' : 'addCompanyFromDialog';
+        
+        google.script.run
+          .withSuccessHandler(function(result) {
+            button.disabled = false;
+            button.textContent = '保存';
+            
+            if (result.success) {
+              alert(editingCompanyId ? '会社情報を更新しました。' : '新規会社を追加しました。');
+              closeModal();
+              loadCompanies();
+            } else {
+              alert('保存に失敗しました: ' + result.error);
+            }
+          })
+          .withFailureHandler(function(error) {
+            button.disabled = false;
+            button.textContent = '保存';
+            alert('エラーが発生しました: ' + error);
+          })
+          [handler](formData);
+      }
+      
+      // 会社を削除
+      function deleteCompany(companyId) {
+        const company = companies.find(c => c.id === companyId);
+        if (!company) return;
+        
+        if (!confirm(`会社「${company.name}」を削除してもよろしいですか？\n\n注意：この会社に関連するチケット履歴も削除されます。`)) {
+          return;
+        }
+        
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result.success) {
+              alert('会社を削除しました。');
+              loadCompanies();
+            } else {
+              alert('削除に失敗しました: ' + result.error);
+            }
+          })
+          .withFailureHandler(function(error) {
+            alert('エラーが発生しました: ' + error);
+          })
+          .deleteCompanyFromDialog(companyId);
+      }
+      
+      // モーダルを閉じる
+      function closeModal() {
+        document.getElementById('companyModal').style.display = 'none';
+      }
+      
+      // 会社一覧を更新
+      // refreshCompanyList関数は508行目に定義済み（重複削除）
+      
+      // モーダル外クリックで閉じる
+      window.onclick = function(event) {
+        const modal = document.getElementById('companyModal');
+        const visitorModal = document.getElementById('visitorModal');
+        if (event.target === modal) {
+          closeModal();
+        } else if (event.target === visitorModal) {
+          // 未保存変更がある場合はクリックを無視
+          if (hasUnsavedChanges) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeVisitorModal();
+          } else {
+            closeVisitorModal();
+          }
+        }
+      }
+      
+      // 来院者管理を開く
+      function manageCompanyVisitors(companyId, companyName) {
+        currentCompanyId = companyId;
+        currentCompanyName = companyName;
+        document.getElementById('visitorModalTitle').textContent = `来院者管理 - ${companyName}`;
+        
+        // 現在の来院者を読み込み
+        loadCompanyVisitors(companyId);
+        
+        // 全来院者リストを読み込み
+        loadAllVisitors();
+        
+        document.getElementById('visitorModal').style.display = 'block';
+      }
+      
+      // 会社の来院者を読み込み
+      function loadCompanyVisitors(companyId) {
+        console.log(`loadCompanyVisitors開始 - 会社ID: ${companyId}`);
+        google.script.run
+          .withSuccessHandler(function(visitors) {
+            console.log('サーバーから受信したデータ:', visitors);
+            console.log('データ型:', typeof visitors);
+            console.log('配列かどうか:', Array.isArray(visitors));
+            
+            // nullや未定義の場合は空配列に変換
+            if (!visitors || !Array.isArray(visitors)) {
+              console.warn('無効なデータを受信しました。空配列として処理します。');
+              companyVisitors = [];
+            } else {
+              companyVisitors = visitors;
+            }
+            
+            // 未保存変更フラグと変更リストをリセット
+            clearPendingChanges();
+            
+            updateCurrentVisitorsDisplay();
+          })
+          .withFailureHandler(function(error) {
+            console.error('来院者読み込みエラー:', error);
+            companyVisitors = []; // エラー時も空配列を設定
+            updateCurrentVisitorsDisplay();
+          })
+          .getCompanyVisitorsFromDialog(companyId);
+      }
+      
+      // 全来院者を読み込み
+      function loadAllVisitors() {
+        google.script.run
+          .withSuccessHandler(function(visitors) {
+            allVisitors = visitors;
+            displayVisitorList();
+          })
+          .withFailureHandler(function(error) {
+            console.error('全来院者読み込みエラー:', error);
+            document.getElementById('visitorList').innerHTML = '<div style="color: red; text-align: center;">読み込みエラーが発生しました</div>';
+          })
+          .getAllVisitorsForCompanyFromDialog();
+      }
+      
+      // 現在の来院者表示を更新
+      function updateCurrentVisitorsDisplay() {
+        console.log('=== 現在の来院者表示を更新開始 ===');
+        console.log('companyVisitors全体:', companyVisitors);
+        
+        // nullチェック
+        if (!companyVisitors || !Array.isArray(companyVisitors)) {
+          console.error('companyVisitorsが無効です:', companyVisitors);
+          companyVisitors = [];
+        }
+        
+        console.log('companyVisitorsの件数:', companyVisitors.length);
+        
+        // 各来院者のpositionフィールドを詳細に確認
+        companyVisitors.forEach((visitor, index) => {
+          console.log(`来院者[${index}]:`, {
+            visitorName: visitor.visitorName,
+            position: visitor.position,
+            positionType: typeof visitor.position,
+            positionLength: visitor.position ? visitor.position.length : 0,
+            positionCharCodes: visitor.position ? Array.from(visitor.position).map(c => c.charCodeAt(0)) : [],
+            allFields: Object.keys(visitor)
+          });
+        });
+        
+        const president = companyVisitors.find(v => v.position === '社長');
+        const secretaries = companyVisitors.filter(v => v.position === '秘書');
+        
+        console.log('フィルタ結果 - 社長:', president);
+        console.log('フィルタ結果 - 秘書:', secretaries);
+        console.log('=== 更新処理終了 ===');
+        
+        // 社長の表示
+        const presidentDiv = document.getElementById('currentPresident');
+        if (president) {
+          const hasPending = hasPendingChangeForVisitor(president.visitorId);
+          const pendingClass = hasPending ? 'pending-change' : '';
+          const pendingLabel = hasPending ? '<span class="pending-change-label">変更予定</span>' : '';
+          
+          // LINE認証ステータスを判定
+          let lineStatusHtml = '';
+          if (president.lineId && president.lineId.trim() !== '') {
+            // LINE ID がある = 連携完了
+            lineStatusHtml = '<span class="line-status linked">連携完了</span>';
+          } else if (president.linkUrl && president.linkUrl.trim() !== '') {
+            // LINE ID はないがリンクURLがある = リンク発行済み
+            lineStatusHtml = `
+              <span class="line-status link-issued">リンク発行</span>
+              <a href="${president.linkUrl}" target="_blank" style="margin-left: 5px; font-size: 11px;">リンクを開く</a>
+            `;
+          } else {
+            // どちらもない = 未連携
+            lineStatusHtml = '<span class="line-status not-linked">未連携</span>';
+          }
+          
+          presidentDiv.innerHTML = `
+            <div class="${pendingClass}" style="display: flex; justify-content: space-between; align-items: center; padding: 4px;">
+              <div style="flex: 1;">
+                <span>${president.visitorName}${pendingLabel}</span>
+                ${lineStatusHtml}
+              </div>
+              <button class="btn btn-danger" style="padding: 2px 8px; font-size: 12px; margin-left: 10px;" 
+                      onclick="removeVisitor('${president.visitorId}')">削除</button>
+            </div>
+          `;
+        } else {
+          presidentDiv.innerHTML = '未設定';
+        }
+        
+        // 秘書の表示（複数対応だが実際は1名制限）
+        const secretariesDiv = document.getElementById('currentSecretaries');
+        if (secretaries.length > 0) {
+          secretariesDiv.innerHTML = secretaries.map(secretary => {
+            const hasPending = hasPendingChangeForVisitor(secretary.visitorId);
+            const pendingClass = hasPending ? 'pending-change' : '';
+            const pendingLabel = hasPending ? '<span class="pending-change-label">変更予定</span>' : '';
+            
+            // LINE認証ステータスを判定
+            let lineStatusHtml = '';
+            if (secretary.lineId && secretary.lineId.trim() !== '') {
+              // LINE ID がある = 連携完了
+              lineStatusHtml = '<span class="line-status linked">連携完了</span>';
+            } else if (secretary.linkUrl && secretary.linkUrl.trim() !== '') {
+              // LINE ID はないがリンクURLがある = リンク発行済み
+              lineStatusHtml = `
+                <span class="line-status link-issued">リンク発行</span>
+                <a href="${secretary.linkUrl}" target="_blank" style="margin-left: 5px; font-size: 11px;">リンクを開く</a>
+              `;
+            } else {
+              // どちらもない = 未連携
+              lineStatusHtml = '<span class="line-status not-linked">未連携</span>';
+            }
+            
+            return `
+              <div class="${pendingClass}" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; padding: 4px;">
+                <div style="flex: 1;">
+                  <span>${secretary.visitorName}${pendingLabel}</span>
+                  ${lineStatusHtml}
+                </div>
+                <button class="btn btn-danger" style="padding: 2px 8px; font-size: 12px; margin-left: 10px;" 
+                        onclick="removeVisitor('${secretary.visitorId}')">削除</button>
+              </div>
+            `;
+          }).join('');
+        } else {
+          secretariesDiv.innerHTML = '未設定';
+        }
+      }
+      
+      // 来院者リストを表示
+      function displayVisitorList() {
+        const searchTerm = document.getElementById('visitorSearch').value.toLowerCase();
+        const visitorListDiv = document.getElementById('visitorList');
+        
+        console.log(`フィルタリング開始 - 検索語: "${searchTerm}"`);
+        console.log(`全来院者数: ${allVisitors.length}`);
+        console.log(`会社の来院者数: ${companyVisitors.length}`);
+        
+        // データの存在確認
+        if (!allVisitors || allVisitors.length === 0) {
+          visitorListDiv.innerHTML = '<div style="color: #666; text-align: center;">来院者データが読み込まれていません</div>';
+          console.log('全来院者データが空です');
+          return;
+        }
+        
+        // 全ての来院者を表示（登録済みかどうかに関係なく）
+        let filteredVisitors = allVisitors.slice(); // 全来院者のコピー
+        
+        console.log(`表示対象の来院者数: ${filteredVisitors.length}`);
+        
+        // 検索語がある場合は更にフィルタリング
+        if (searchTerm) {
+          const beforeSearchCount = filteredVisitors.length;
+          filteredVisitors = filteredVisitors.filter(visitor => {
+            const nameMatch = visitor.name && visitor.name.toLowerCase().includes(searchTerm);
+            const kanaMatch = visitor.name_kana && visitor.name_kana.toLowerCase().includes(searchTerm);
+            const matched = nameMatch || kanaMatch;
+            if (matched) {
+              console.log(`検索マッチ: ${visitor.name}`);
+            }
+            return matched;
+          });
+          console.log(`検索後の来院者数: ${beforeSearchCount} → ${filteredVisitors.length}`);
+        }
+        
+        if (filteredVisitors.length === 0) {
+          visitorListDiv.innerHTML = '<div style="color: #666; text-align: center;">表示する来院者がありません</div>';
+          return;
+        }
+        
+        // 最大100件まで表示
+        const displayVisitors = filteredVisitors.slice(0, 100);
+        
+        // 来院者リストを表示
+        visitorListDiv.innerHTML = displayVisitors.map(visitor => {
+          const buttonHtml = generateVisitorButtons(visitor);
+          return `
+            <div style="padding: 8px; border-bottom: 1px solid #eee;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <strong>${visitor.name}</strong>
+                  ${visitor.name_kana ? `<span style="color: #666; font-size: 12px;">（${visitor.name_kana}）</span>` : ''}
+                </div>
+                <div>
+                  ${buttonHtml}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+        
+        // 100件以上ある場合は注記を表示
+        if (filteredVisitors.length > 100) {
+          visitorListDiv.innerHTML += `<div style="padding: 8px; color: #666; text-align: center;">
+            他${filteredVisitors.length - 100}名あります。検索して絞り込んでください。
+          </div>`;
+        }
+      }
+      
+      // 来院者をフィルタリング
+      function filterVisitors() {
+        displayVisitorList();
+      }
+      
+      // 来院者ボタンを生成
+      function generateVisitorButtons(visitor) {
+        return `
+          <button class="btn btn-secondary" style="padding: 2px 8px; font-size: 12px; margin-right: 5px;" 
+                  onclick="addVisitorAsPresident('${visitor.visitor_id}', '${visitor.name}')">
+            社長に設定
+          </button>
+          <button class="btn btn-secondary" style="padding: 2px 8px; font-size: 12px;" 
+                  onclick="addVisitorAsSecretary('${visitor.visitor_id}', '${visitor.name}')">
+            秘書に設定
+          </button>
+        `;
+      }
+      
+      // 社長として追加
+      function addVisitorAsPresident(visitorId, visitorName) {
+        console.log(`社長として追加開始: ${visitorName} (ID: ${visitorId})`);
+        
+        // 楽観的UI更新：即座にUIを更新（pendingChangesは関数内で管理）
+        optimisticUpdatePresident(visitorId, visitorName);
+      }
+      
+      // 秘書として追加
+      function addVisitorAsSecretary(visitorId, visitorName) {
+        console.log(`秘書として追加開始: ${visitorName} (ID: ${visitorId})`);
+        
+        // 楽観的UI更新：即座にUIを更新（pendingChangesは関数内で管理）
+        optimisticUpdateSecretary(visitorId, visitorName);
+      }
+      
+      // 来院者を削除
+      function removeVisitor(visitorId) {
+        if (!confirm('この来院者を会社から削除してもよろしいですか？')) {
+          return;
+        }
+        
+        // 来院者名を取得
+        const visitor = companyVisitors.find(v => v.visitorId === visitorId);
+        const visitorName = visitor ? visitor.visitorName : '';
+        
+        // 変更を蓄積
+        addPendingChange('remove', {
+          visitorId: visitorId,
+          visitorName: visitorName
+        });
+        
+        // 楽観的UI更新：即座にUIから削除
+        optimisticRemoveVisitor(visitorId);
+      }
+      
+      // 来院者管理モーダルを閉じる
+      function closeVisitorModal() {
+        // 未保存変更がある場合は確認
+        if (hasUnsavedChanges) {
+          if (!confirm('未保存の変更があります。本当に閉じますか？')) {
+            return;
+          }
+        }
+        
+        document.getElementById('visitorModal').style.display = 'none';
+        document.getElementById('visitorSearch').value = '';
+        document.getElementById('visitorList').innerHTML = '<div style="color: #666; text-align: center;">読み込み中...</div>';
+        
+        // 未保存変更フラグをリセット
+        hasUnsavedChanges = false;
+      }
+      
+      // 楽観的UI更新：社長設定
+      function optimisticUpdatePresident(visitorId, visitorName) {
+        console.log(`社長設定UI更新開始: ${visitorName} (ID: ${visitorId})`);
+        
+        // 1. 既存の社長をsubに変更（1名制限）
+        const existingPresident = companyVisitors.find(v => v.position === '社長');
+        if (existingPresident && existingPresident.visitorId !== visitorId) {
+          console.log(`既存社長を降格: ${existingPresident.visitorName}`);
+          existingPresident.memberType = 'sub';
+          existingPresident.position = '';
+          
+          // pendingChangesに既存社長の降格を追加
+          addPendingChange('update', {
+            visitorId: existingPresident.visitorId,
+            visitorName: existingPresident.visitorName,
+            memberType: 'sub',
+            position: ''
+          });
+        }
+        
+        // 2. クリックした人が現在の秘書かどうかチェック（排他制御）
+        const existingSecretary = companyVisitors.find(v => v.position === '秘書' && v.visitorId === visitorId);
+        if (existingSecretary) {
+          console.log(`同一人物を秘書から社長に変更: ${existingSecretary.visitorName}`);
+          existingSecretary.memberType = 'main';
+          existingSecretary.position = '社長';
+          
+          // pendingChangesに役職変更を追加
+          addPendingChange('update', {
+            visitorId: visitorId,
+            visitorName: visitorName,
+            memberType: 'main',
+            position: '社長'
+          });
+        } else {
+          // 3. 新しい社長を設定
+          const existingVisitor = companyVisitors.find(v => v.visitorId === visitorId);
+          if (existingVisitor) {
+            console.log(`既存来院者を社長に昇格: ${existingVisitor.visitorName}`);
+            existingVisitor.memberType = 'main';
+            existingVisitor.position = '社長';
+            
+            // pendingChangesに昇格を追加
+            addPendingChange('update', {
+              visitorId: visitorId,
+              visitorName: visitorName,
+              memberType: 'main',
+              position: '社長'
+            });
+          } else {
+            console.log(`新規来院者を社長として追加: ${visitorName}`);
+            companyVisitors.push({
+              visitorId: visitorId,
+              visitorName: visitorName,
+              memberType: 'main',
+              position: '社長'
+            });
+            
+            // pendingChangesに新規追加を追加
+            addPendingChange('add', {
+              visitorId: visitorId,
+              visitorName: visitorName,
+              memberType: 'main',
+              position: '社長'
+            });
+          }
+        }
+        
+        // 未保存変更フラグを設定
+        hasUnsavedChanges = true;
+        
+        console.log('社長設定後のcompanyVisitors:', companyVisitors);
+        
+        // UIを即座に更新
+        updateCurrentVisitorsDisplay();
+        displayVisitorList();
+      }
+      
+      // 楽観的UI更新：秘書設定
+      function optimisticUpdateSecretary(visitorId, visitorName) {
+        console.log(`秘書設定UI更新開始: ${visitorName} (ID: ${visitorId})`);
+        
+        // 1. 既存の秘書をsubに変更（1名制限）
+        const existingSecretary = companyVisitors.find(v => v.position === '秘書');
+        if (existingSecretary && existingSecretary.visitorId !== visitorId) {
+          console.log(`既存秘書を降格: ${existingSecretary.visitorName}`);
+          existingSecretary.memberType = 'sub';
+          existingSecretary.position = '';
+          
+          // pendingChangesに既存秘書の降格を追加
+          addPendingChange('update', {
+            visitorId: existingSecretary.visitorId,
+            visitorName: existingSecretary.visitorName,
+            memberType: 'sub',
+            position: ''
+          });
+        }
+        
+        // 2. クリックした人が現在の社長かどうかチェック（排他制御）
+        const existingPresident = companyVisitors.find(v => v.position === '社長' && v.visitorId === visitorId);
+        if (existingPresident) {
+          console.log(`同一人物を社長から秘書に変更: ${existingPresident.visitorName}`);
+          existingPresident.memberType = 'sub';
+          existingPresident.position = '秘書';
+          
+          // pendingChangesに役職変更を追加
+          addPendingChange('update', {
+            visitorId: visitorId,
+            visitorName: visitorName,
+            memberType: 'sub',
+            position: '秘書'
+          });
+        } else {
+          // 3. 新しい秘書を設定
+          const existingVisitor = companyVisitors.find(v => v.visitorId === visitorId);
+          if (existingVisitor) {
+            console.log(`既存来院者を秘書に設定: ${existingVisitor.visitorName}`);
+            existingVisitor.memberType = 'sub';
+            existingVisitor.position = '秘書';
+            
+            // pendingChangesに設定を追加
+            addPendingChange('update', {
+              visitorId: visitorId,
+              visitorName: visitorName,
+              memberType: 'sub',
+              position: '秘書'
+            });
+          } else {
+            console.log(`新規来院者を秘書として追加: ${visitorName}`);
+            companyVisitors.push({
+              visitorId: visitorId,
+              visitorName: visitorName,
+              memberType: 'sub',
+              position: '秘書'
+            });
+            
+            // pendingChangesに新規追加を追加
+            addPendingChange('add', {
+              visitorId: visitorId,
+              visitorName: visitorName,
+              memberType: 'sub',
+              position: '秘書'
+            });
+          }
+        }
+        
+        // 未保存変更フラグを設定
+        hasUnsavedChanges = true;
+        
+        console.log('秘書設定後のcompanyVisitors:', companyVisitors);
+        
+        // UIを即座に更新
+        updateCurrentVisitorsDisplay();
+        displayVisitorList();
+      }
+      
+      // 楽観的UI更新：来院者削除
+      function optimisticRemoveVisitor(visitorId) {
+        // companyVisitorsから削除
+        const index = companyVisitors.findIndex(v => v.visitorId === visitorId);
+        if (index !== -1) {
+          companyVisitors.splice(index, 1);
+        }
+        
+        // 未保存変更フラグを設定
+        hasUnsavedChanges = true;
+        
+        // UIを即座に更新
+        updateCurrentVisitorsDisplay();
+        displayVisitorList();
+      }
+      
+      // 初期化実行
+      init();
+    </script>
+  </body>
+</html>

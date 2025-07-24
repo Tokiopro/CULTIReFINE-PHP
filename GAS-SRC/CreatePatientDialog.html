@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        margin: 0;
+      }
+      
+      .container {
+        max-width: 100%;
+        margin: 0 auto;
+      }
+      
+      h2 {
+        color: #333;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #4285f4;
+        padding-bottom: 10px;
+      }
+      
+      .form-section {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+      }
+      
+      .form-row {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 15px;
+      }
+      
+      .form-group {
+        flex: 1;
+      }
+      
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+        color: #555;
+      }
+      
+      .required {
+        color: #d32f2f;
+      }
+      
+      input[type="text"],
+      input[type="email"],
+      input[type="tel"],
+      input[type="date"],
+      select,
+      textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+      
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: #4285f4;
+        box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
+      }
+      
+      textarea {
+        resize: vertical;
+        min-height: 80px;
+      }
+      
+      button {
+        padding: 10px 20px;
+        font-size: 14px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-right: 10px;
+      }
+      
+      .register-btn {
+        background-color: #4285f4;
+        color: white;
+      }
+      
+      .register-btn:hover {
+        background-color: #357ae8;
+      }
+      
+      .register-btn:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+      
+      .clear-btn {
+        background-color: #f44336;
+        color: white;
+      }
+      
+      .clear-btn:hover {
+        background-color: #d32f2f;
+      }
+      
+      .close-btn {
+        background-color: #666;
+        color: white;
+      }
+      
+      .close-btn:hover {
+        background-color: #555;
+      }
+      
+      #loading {
+        display: none;
+        text-align: center;
+        padding: 20px;
+      }
+      
+      .status {
+        margin-top: 15px;
+        padding: 15px;
+        border-radius: 4px;
+        display: none;
+      }
+      
+      .success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+      
+      .error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+      
+      .info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+      }
+      
+      .help-text {
+        font-size: 12px;
+        color: #666;
+        margin-top: 5px;
+      }
+      
+      .button-group {
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid #ddd;
+        text-align: center;
+      }
+      
+      @media (max-width: 600px) {
+        .form-row {
+          flex-direction: column;
+          gap: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>患者登録</h2>
+      
+      <form id="patientForm">
+        <!-- 基本情報 -->
+        <div class="form-section">
+          <h3>基本情報</h3>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="lastName">姓 <span class="required">*</span></label>
+              <input type="text" id="lastName" name="lastName" required>
+            </div>
+            <div class="form-group">
+              <label for="firstName">名 <span class="required">*</span></label>
+              <input type="text" id="firstName" name="firstName" required>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="lastNameKana">セイ <span class="required">*</span></label>
+              <input type="text" id="lastNameKana" name="lastNameKana" required>
+              <span class="help-text">カタカナで入力してください</span>
+            </div>
+            <div class="form-group">
+              <label for="firstNameKana">メイ <span class="required">*</span></label>
+              <input type="text" id="firstNameKana" name="firstNameKana" required>
+              <span class="help-text">カタカナで入力してください</span>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="gender">性別</label>
+              <select id="gender" name="gender">
+                <option value="">選択してください</option>
+                <option value="MALE">男性</option>
+                <option value="FEMALE">女性</option>
+                <option value="OTHER">その他</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="birthday">生年月日</label>
+              <input type="date" id="birthday" name="birthday">
+            </div>
+          </div>
+        </div>
+        
+        <!-- 連絡先情報 -->
+        <div class="form-section">
+          <h3>連絡先情報</h3>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="phone">電話番号</label>
+              <input type="tel" id="phone" name="phone" placeholder="090-1234-5678">
+            </div>
+            <div class="form-group">
+              <label for="email">メールアドレス</label>
+              <input type="email" id="email" name="email" placeholder="example@email.com">
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="address">住所</label>
+            <textarea id="address" name="address" placeholder="東京都渋谷区..."></textarea>
+          </div>
+        </div>
+        
+        <!-- 診療情報 -->
+        <div class="form-section">
+          <h3>診療情報</h3>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label for="code">患者コード</label>
+              <input type="text" id="code" name="code" placeholder="自動生成される場合は空欄">
+            </div>
+            <div class="form-group">
+              <label for="karteNumber">カルテ番号</label>
+              <input type="text" id="karteNumber" name="karteNumber" placeholder="例: NA3039">
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="isSubscribed">メール配信</label>
+            <select id="isSubscribed" name="isSubscribed">
+              <option value="true">希望する</option>
+              <option value="false">希望しない</option>
+            </select>
+          </div>
+        </div>
+        
+        <div id="loading">
+          <img src="https://www.google.com/images/spin-32.gif" alt="Loading">
+          <p>登録処理中...</p>
+        </div>
+        
+        <div id="statusMessage" class="status"></div>
+        
+        <div class="button-group">
+          <button type="submit" class="register-btn" id="registerBtn">患者を登録</button>
+          <button type="button" class="clear-btn" onclick="clearForm()">クリア</button>
+          <button type="button" class="close-btn" onclick="google.script.host.close()">閉じる</button>
+        </div>
+      </form>
+    </div>
+    
+    <script>
+      // フォームの送信処理
+      document.getElementById('patientForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        registerPatient();
+      });
+      
+      function registerPatient() {
+        // バリデーション
+        const lastName = document.getElementById('lastName').value.trim();
+        const firstName = document.getElementById('firstName').value.trim();
+        const lastNameKana = document.getElementById('lastNameKana').value.trim();
+        const firstNameKana = document.getElementById('firstNameKana').value.trim();
+        
+        if (!lastName || !firstName || !lastNameKana || !firstNameKana) {
+          showStatus('姓名とカナは必須項目です。', 'error');
+          return;
+        }
+        
+        // カタカナチェック
+        const katakanaRegex = /^[ァ-ヶー]+$/;
+        if (!katakanaRegex.test(lastNameKana) || !katakanaRegex.test(firstNameKana)) {
+          showStatus('カナはカタカナで入力してください。', 'error');
+          return;
+        }
+        
+        // フォームデータの収集
+        const patientData = {
+          name: lastName + ' ' + firstName,
+          name_kana: lastNameKana + firstNameKana,
+          first_name: firstName,
+          last_name: lastName,
+          first_name_kana: firstNameKana,
+          last_name_kana: lastNameKana,
+          gender: document.getElementById('gender').value,
+          birthday: document.getElementById('birthday').value,
+          phone: document.getElementById('phone').value,
+          email: document.getElementById('email').value,
+          address: document.getElementById('address').value,
+          code: document.getElementById('code').value,
+          karte_number: document.getElementById('karteNumber').value,
+          is_subscribed: document.getElementById('isSubscribed').value === 'true'
+        };
+        
+        // 空の値を除外
+        Object.keys(patientData).forEach(key => {
+          if (patientData[key] === '' || patientData[key] === null) {
+            delete patientData[key];
+          }
+        });
+        
+        // 登録処理
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('registerBtn').disabled = true;
+        hideStatus();
+        
+        google.script.run
+          .withSuccessHandler(onRegisterSuccess)
+          .withFailureHandler(onRegisterError)
+          .createPatientFromDialog(patientData);
+      }
+      
+      function onRegisterSuccess(result) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('registerBtn').disabled = false;
+        
+        if (result.success) {
+          showStatus('患者登録が完了しました。患者ID: ' + result.data.visitor_id, 'success');
+          
+          // 3秒後にフォームをクリア
+          setTimeout(function() {
+            if (confirm('フォームをクリアして新規登録を続けますか？')) {
+              clearForm();
+              hideStatus();
+            }
+          }, 3000);
+        } else {
+          showStatus('登録に失敗しました: ' + (result.error || '不明なエラー'), 'error');
+        }
+      }
+      
+      function onRegisterError(error) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('registerBtn').disabled = false;
+        showStatus('エラーが発生しました: ' + error, 'error');
+      }
+      
+      function clearForm() {
+        if (confirm('入力内容をクリアしますか？')) {
+          document.getElementById('patientForm').reset();
+          hideStatus();
+        }
+      }
+      
+      function showStatus(message, type) {
+        const statusDiv = document.getElementById('statusMessage');
+        statusDiv.textContent = message;
+        statusDiv.className = 'status ' + type;
+        statusDiv.style.display = 'block';
+      }
+      
+      function hideStatus() {
+        document.getElementById('statusMessage').style.display = 'none';
+      }
+      
+      // カナ入力の自動変換（ひらがな→カタカナ）
+      document.getElementById('lastNameKana').addEventListener('input', function(e) {
+        e.target.value = hiraganaToKatakana(e.target.value);
+      });
+      
+      document.getElementById('firstNameKana').addEventListener('input', function(e) {
+        e.target.value = hiraganaToKatakana(e.target.value);
+      });
+      
+      function hiraganaToKatakana(str) {
+        return str.replace(/[\u3041-\u3096]/g, function(match) {
+          const chr = match.charCodeAt(0) + 0x60;
+          return String.fromCharCode(chr);
+        });
+      }
+    </script>
+  </body>
+</html>

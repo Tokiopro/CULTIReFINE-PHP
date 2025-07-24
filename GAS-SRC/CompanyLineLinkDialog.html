@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>会社別LINE連携リンク管理</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+    
+    .header h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+    }
+    
+    .content {
+      padding: 20px;
+    }
+    
+    .company-selector {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 6px;
+      border: 1px solid #e9ecef;
+    }
+    
+    .company-selector label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #495057;
+    }
+    
+    .company-selector select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      font-size: 16px;
+      background-color: white;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #6c757d;
+    }
+    
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 15px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .links-container {
+      margin-top: 20px;
+    }
+    
+    .link-item {
+      background: #fff;
+      border: 1px solid #e9ecef;
+      border-radius: 6px;
+      padding: 15px;
+      margin-bottom: 15px;
+      transition: box-shadow 0.2s ease;
+    }
+    
+    .link-item:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .visitor-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    
+    .visitor-name {
+      font-weight: 600;
+      font-size: 16px;
+      color: #2c3e50;
+    }
+    
+    .visitor-id {
+      font-size: 12px;
+      color: #6c757d;
+      background: #e9ecef;
+      padding: 2px 8px;
+      border-radius: 12px;
+    }
+    
+    .link-info {
+      background: #f8f9fa;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    
+    .link-url {
+      word-break: break-all;
+      color: #0066cc;
+      margin-bottom: 5px;
+    }
+    
+    .link-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #6c757d;
+    }
+    
+    .copy-button {
+      background: #28a745;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.2s ease;
+    }
+    
+    .copy-button:hover {
+      background: #218838;
+    }
+    
+    .copy-button:active {
+      background: #1e7e34;
+    }
+    
+    .copy-button.copied {
+      background: #6c757d;
+      cursor: default;
+    }
+    
+    .no-links {
+      text-align: center;
+      padding: 40px;
+      color: #6c757d;
+    }
+    
+    .no-links .icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+    
+    .action-buttons {
+      text-align: center;
+      padding: 20px;
+      border-top: 1px solid #e9ecef;
+      background: #f8f9fa;
+    }
+    
+    .btn-primary {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 0 5px;
+    }
+    
+    .btn-primary:hover {
+      background: #0056b3;
+    }
+    
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 0 5px;
+    }
+    
+    .btn-secondary:hover {
+      background: #545b62;
+    }
+    
+    .status-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    
+    .status-active {
+      background: #d4edda;
+      color: #155724;
+    }
+    
+    .status-expired {
+      background: #f8d7da;
+      color: #721c24;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>会社別LINE連携リンク管理</h1>
+    </div>
+    
+    <div class="content">
+      <div class="company-selector">
+        <label for="companySelect">会社を選択してください:</label>
+        <select id="companySelect" onchange="loadCompanyLinks()">
+          <option value="">-- 会社を選択 --</option>
+        </select>
+      </div>
+      
+      <div id="errorMessage" class="error" style="display: none;"></div>
+      
+      <div id="loadingIndicator" class="loading" style="display: none;">
+        <p>データを読み込み中...</p>
+      </div>
+      
+      <div id="linksContainer" class="links-container" style="display: none;">
+        <!-- リンク一覧がここに表示される -->
+      </div>
+      
+      <div id="noLinksMessage" class="no-links" style="display: none;">
+        <div class="icon">🔗</div>
+        <p>選択した会社の有効なLINE連携リンクがありません</p>
+        <p>新しいリンクを生成するには「リンク生成」ボタンをクリックしてください</p>
+      </div>
+    </div>
+    
+    <div class="action-buttons">
+      <button class="btn-primary" onclick="generateNewLinks()">リンク生成</button>
+      <button class="btn-secondary" onclick="refreshData()">更新</button>
+      <button class="btn-secondary" onclick="google.script.host.close()">閉じる</button>
+    </div>
+  </div>
+
+  <script>
+    let currentCompanyId = null;
+    let companies = [];
+    
+    // 初期化
+    document.addEventListener('DOMContentLoaded', function() {
+      loadCompanies();
+    });
+    
+    // 会社一覧を読み込み
+    function loadCompanies() {
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          companies = result;
+          populateCompanySelect();
+          showLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          showError('会社一覧の読み込みに失敗しました: ' + error.toString());
+          showLoading(false);
+        })
+        .getCompanyList();
+    }
+    
+    // 会社選択ボックスに選択肢を追加
+    function populateCompanySelect() {
+      const select = document.getElementById('companySelect');
+      select.innerHTML = '<option value="">-- 会社を選択 --</option>';
+      
+      companies.forEach(function(company) {
+        const option = document.createElement('option');
+        option.value = company.id;
+        option.textContent = company.name;
+        select.appendChild(option);
+      });
+    }
+    
+    // 選択した会社のリンクを読み込み
+    function loadCompanyLinks() {
+      const select = document.getElementById('companySelect');
+      const companyId = select.value;
+      
+      if (!companyId) {
+        hideAllContainers();
+        return;
+      }
+      
+      currentCompanyId = companyId;
+      showLoading(true);
+      hideError();
+      
+      google.script.run
+        .withSuccessHandler(function(links) {
+          displayLinks(links);
+          showLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          showError('リンクの読み込みに失敗しました: ' + error.toString());
+          showLoading(false);
+        })
+        .getActiveLinksForCompany(companyId);
+    }
+    
+    // リンク一覧を表示
+    function displayLinks(links) {
+      const container = document.getElementById('linksContainer');
+      const noLinksMessage = document.getElementById('noLinksMessage');
+      
+      if (!links || links.length === 0) {
+        container.style.display = 'none';
+        noLinksMessage.style.display = 'block';
+        return;
+      }
+      
+      container.innerHTML = '';
+      
+      links.forEach(function(link) {
+        const linkItem = createLinkElement(link);
+        container.appendChild(linkItem);
+      });
+      
+      container.style.display = 'block';
+      noLinksMessage.style.display = 'none';
+    }
+    
+    // リンク要素を作成
+    function createLinkElement(link) {
+      const div = document.createElement('div');
+      div.className = 'link-item';
+      
+      const expireDate = new Date(link.expireTime);
+      const isExpired = expireDate <= new Date();
+      const statusClass = isExpired ? 'status-expired' : 'status-active';
+      const statusText = isExpired ? '期限切れ' : '有効';
+      
+      div.innerHTML = `
+        <div class="visitor-info">
+          <div class="visitor-name">${escapeHtml(link.visitorName)}</div>
+          <div class="visitor-id">ID: ${escapeHtml(link.visitorId)}</div>
+        </div>
+        <div class="link-info">
+          <div class="link-url">${escapeHtml(link.linkUrl)}</div>
+          <div class="link-meta">
+            <span>有効期限: ${expireDate.toLocaleString('ja-JP')}</span>
+            <span class="status-badge ${statusClass}">${statusText}</span>
+          </div>
+        </div>
+        <button class="copy-button" onclick="copyToClipboard('${escapeHtml(link.linkUrl)}', this)" ${isExpired ? 'disabled' : ''}>
+          ${isExpired ? '期限切れ' : 'リンクをコピー'}
+        </button>
+      `;
+      
+      return div;
+    }
+    
+    // クリップボードにコピー
+    function copyToClipboard(text, button) {
+      navigator.clipboard.writeText(text).then(function() {
+        const originalText = button.textContent;
+        button.textContent = 'コピー完了!';
+        button.classList.add('copied');
+        
+        setTimeout(function() {
+          button.textContent = originalText;
+          button.classList.remove('copied');
+        }, 2000);
+      }).catch(function(error) {
+        alert('コピーに失敗しました: ' + error.toString());
+      });
+    }
+    
+    // 新しいリンクを生成
+    function generateNewLinks() {
+      if (!currentCompanyId) {
+        alert('会社を選択してください');
+        return;
+      }
+      
+      if (!confirm('選択した会社の来院者に新しいLINE連携リンクを生成しますか？')) {
+        return;
+      }
+      
+      showLoading(true);
+      hideError();
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          alert(`リンク生成完了\n処理: ${result.processed}件\n生成: ${result.generated}件\nスキップ: ${result.skipped}件\nエラー: ${result.errors}件`);
+          loadCompanyLinks(); // リストを更新
+          showLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          showError('リンク生成に失敗しました: ' + error.toString());
+          showLoading(false);
+        })
+        .generateLinksForCompany(currentCompanyId);
+    }
+    
+    // データを更新
+    function refreshData() {
+      if (currentCompanyId) {
+        loadCompanyLinks();
+      } else {
+        loadCompanies();
+      }
+    }
+    
+    // ローディング表示の切り替え
+    function showLoading(show) {
+      const loading = document.getElementById('loadingIndicator');
+      if (show) {
+        hideAllContainers();
+        loading.style.display = 'block';
+      } else {
+        loading.style.display = 'none';
+      }
+    }
+    
+    // エラー表示
+    function showError(message) {
+      const errorDiv = document.getElementById('errorMessage');
+      errorDiv.textContent = message;
+      errorDiv.style.display = 'block';
+    }
+    
+    // エラー非表示
+    function hideError() {
+      document.getElementById('errorMessage').style.display = 'none';
+    }
+    
+    // 全コンテナを非表示
+    function hideAllContainers() {
+      document.getElementById('linksContainer').style.display = 'none';
+      document.getElementById('noLinksMessage').style.display = 'none';
+    }
+    
+    // HTMLエスケープ
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

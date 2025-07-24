@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    h2 {
+      color: #333;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #4285f4;
+      padding-bottom: 10px;
+    }
+    
+    .controls {
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 10px;
+    }
+    
+    button {
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.3s;
+    }
+    
+    button:hover {
+      background-color: #357ae8;
+    }
+    
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    
+    .secondary-button {
+      background-color: #6c757d;
+    }
+    
+    .secondary-button:hover {
+      background-color: #5a6268;
+    }
+    
+    .danger-button {
+      background-color: #dc3545;
+    }
+    
+    .danger-button:hover {
+      background-color: #c82333;
+    }
+    
+    .table-container {
+      overflow: auto;
+      max-height: 600px;
+      position: relative;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 14px;
+    }
+    
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+      min-width: 100px;
+      position: relative;
+    }
+    
+    th {
+      background-color: #f8f9fa;
+      font-weight: bold;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    
+    th:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 11;
+      background-color: #e9ecef;
+    }
+    
+    td:first-child {
+      position: sticky;
+      left: 0;
+      background-color: #f8f9fa;
+      font-weight: bold;
+      z-index: 9;
+    }
+    
+    .diagonal {
+      background-color: #f0f0f0 !important;
+      cursor: not-allowed;
+    }
+    
+    .editable {
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .editable:hover {
+      background-color: #e3f2fd;
+    }
+    
+    .editing input {
+      width: 100%;
+      padding: 4px;
+      border: 2px solid #4285f4;
+      border-radius: 3px;
+      text-align: center;
+      font-size: 14px;
+    }
+    
+    .error {
+      background-color: #ffcccc !important;
+    }
+    
+    .warning {
+      background-color: #fff3cd !important;
+    }
+    
+    .success {
+      background-color: #d4edda !important;
+    }
+    
+    .info-panel {
+      background-color: #e7f1ff;
+      border: 1px solid #b8daff;
+      border-radius: 4px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    
+    .info-panel h3 {
+      margin-top: 0;
+      color: #004085;
+    }
+    
+    .info-panel ul {
+      margin: 5px 0;
+      padding-left: 20px;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 50px;
+      color: #666;
+    }
+    
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #4285f4;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .message {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      display: none;
+    }
+    
+    .message.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .message.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .legend {
+      display: flex;
+      gap: 20px;
+      margin-top: 10px;
+      font-size: 12px;
+    }
+    
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    
+    .legend-box {
+      width: 20px;
+      height: 20px;
+      border: 1px solid #ddd;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>施術間隔管理</h2>
+    
+    <div class="info-panel">
+      <h3>使い方</h3>
+      <ul>
+        <li>各セルには施術間の必要間隔（日数）を入力します</li>
+        <li>縦軸の施術を受けた後、横軸の施術を受けるまでの必要日数です</li>
+        <li>空欄または0は制限なしを意味します</li>
+        <li>セルをクリックして直接編集できます</li>
+        <li>変更は自動的に保存されます</li>
+        <li><strong>週単位入力：</strong> 「4w」「2週」「3week」などで入力可能（自動で日数に変換）</li>
+        <li><strong>月単位入力：</strong> 「1m」「2月」「3month」などで入力可能（自動で日数に変換）</li>
+      </ul>
+    </div>
+    
+    <div id="message" class="message"></div>
+    
+    <div class="controls">
+      <div class="button-group">
+        <button onclick="loadIntervalData()">更新</button>
+        <button onclick="syncWithMenus()" class="secondary-button">メニューと同期</button>
+        <button onclick="autoFormat()" class="secondary-button">自動整形</button>
+        <button onclick="exportData()" class="secondary-button">エクスポート</button>
+      </div>
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-box diagonal"></div>
+          <span>同じ施術（編集不可）</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-box error"></div>
+          <span>365日以上</span>
+        </div>
+      </div>
+    </div>
+    
+    <div id="matrixStatus" class="info-panel" style="display: none;">
+      <h3>マトリクス状態</h3>
+      <div id="statusContent"></div>
+    </div>
+    
+    <div id="tableContainer" class="table-container">
+      <div class="loading">
+        <div class="spinner"></div>
+        <p>データを読み込み中...</p>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    let currentData = null;
+    let menuNames = [];
+    
+    // 初期化
+    window.onload = function() {
+      loadIntervalData();
+    };
+    
+    // データ読み込み
+    function loadIntervalData() {
+      showMessage('');
+      document.getElementById('tableContainer').innerHTML = '<div class="loading"><div class="spinner"></div><p>データを読み込み中...</p></div>';
+      
+      google.script.run
+        .withSuccessHandler(onDataLoaded)
+        .withFailureHandler(onError)
+        .getTreatmentIntervalData();
+    }
+    
+    // データ読み込み成功
+    function onDataLoaded(data) {
+      currentData = data;
+      menuNames = data.menuNames || [];
+      renderTable();
+      displayMatrixStatus(data.matrixStatus);
+    }
+    
+    // テーブル描画
+    function renderTable() {
+      if (!currentData || menuNames.length === 0) {
+        document.getElementById('tableContainer').innerHTML = '<p style="text-align: center; padding: 50px;">データがありません。メニューを同期してください。</p>';
+        return;
+      }
+      
+      let html = '<table><thead><tr><th>施術＼後</th>';
+      
+      // ヘッダー行
+      menuNames.forEach(menu => {
+        html += `<th>${escapeHtml(menu)}</th>`;
+      });
+      html += '</tr></thead><tbody>';
+      
+      // データ行
+      menuNames.forEach((fromMenu, rowIndex) => {
+        html += '<tr>';
+        html += `<td>${escapeHtml(fromMenu)}</td>`;
+        
+        menuNames.forEach((toMenu, colIndex) => {
+          const key = `${fromMenu}→${toMenu}`;
+          const value = currentData.intervals[key] || '';
+          const formattedValue = currentData.formattedIntervals ? currentData.formattedIntervals[key] : value;
+          const isDiagonal = rowIndex === colIndex;
+          
+          if (isDiagonal) {
+            html += '<td class="diagonal">0</td>';
+          } else {
+            const cellClass = value >= 365 ? 'error' : '';
+            const displayValue = formattedValue || value;
+            html += `<td class="editable ${cellClass}" data-from="${escapeHtml(fromMenu)}" data-to="${escapeHtml(toMenu)}" data-value="${value}" onclick="editCell(this)" title="${displayValue}">${displayValue}</td>`;
+          }
+        });
+        
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table>';
+      document.getElementById('tableContainer').innerHTML = html;
+    }
+    
+    // セル編集
+    function editCell(cell) {
+      if (cell.classList.contains('editing')) return;
+      
+      const currentValue = cell.getAttribute('data-value') || cell.textContent;
+      cell.classList.add('editing');
+      cell.innerHTML = `<input type="text" value="${currentValue}" onblur="saveCell(this)" onkeypress="handleKeyPress(event, this)" placeholder="例: 28, 4w, 2週">`;
+      cell.querySelector('input').focus();
+      cell.querySelector('input').select();
+    }
+    
+    // キー押下処理
+    function handleKeyPress(event, input) {
+      if (event.key === 'Enter') {
+        saveCell(input);
+      } else if (event.key === 'Escape') {
+        cancelEdit(input);
+      }
+    }
+    
+    // セル保存
+    function saveCell(input) {
+      const cell = input.parentElement;
+      const newValue = input.value.trim();
+      const fromMenu = cell.getAttribute('data-from');
+      const toMenu = cell.getAttribute('data-to');
+      
+      // 週単位・月単位変換（簡易版）
+      let processedValue = newValue;
+      if (newValue !== '') {
+        const weekMatch = newValue.match(/^(\d+)w$/i);
+        const weekJpMatch = newValue.match(/^(\d+)週$/);
+        const monthMatch = newValue.match(/^(\d+)m$/i);
+        const monthJpMatch = newValue.match(/^(\d+)月$/);
+        
+        if (weekMatch) {
+          processedValue = (parseInt(weekMatch[1]) * 7).toString();
+        } else if (weekJpMatch) {
+          processedValue = (parseInt(weekJpMatch[1]) * 7).toString();
+        } else if (monthMatch) {
+          processedValue = (parseInt(monthMatch[1]) * 30).toString();
+        } else if (monthJpMatch) {
+          processedValue = (parseInt(monthJpMatch[1]) * 30).toString();
+        }
+      }
+      
+      // バリデーション
+      if (processedValue !== '' && (isNaN(processedValue) || parseInt(processedValue) < 0 || parseInt(processedValue) > 365)) {
+        showMessage('0〜365の数値を入力してください（週単位・月単位も可）', 'error');
+        input.focus();
+        return;
+      }
+      
+      cell.classList.remove('editing');
+      
+      // 値に応じてクラスを更新
+      cell.classList.remove('error');
+      if (processedValue >= 365) {
+        cell.classList.add('error');
+      }
+      
+      // サーバーに保存（実際の値を送信）
+      google.script.run
+        .withSuccessHandler((result) => {
+          showMessage('保存しました', 'success');
+          // データを更新
+          const key = `${fromMenu}→${toMenu}`;
+          if (processedValue === '') {
+            delete currentData.intervals[key];
+            cell.textContent = '';
+            cell.setAttribute('data-value', '');
+          } else {
+            const numValue = parseInt(processedValue);
+            currentData.intervals[key] = numValue;
+            cell.setAttribute('data-value', numValue);
+            // フォーマット済み表示を更新
+            const displayValue = formatIntervalDisplay(numValue);
+            cell.textContent = displayValue;
+            cell.title = displayValue;
+          }
+        })
+        .withFailureHandler(onError)
+        .updateTreatmentInterval(fromMenu, toMenu, processedValue === '' ? null : processedValue);
+    }
+    
+    // 編集キャンセル
+    function cancelEdit(input) {
+      const cell = input.parentElement;
+      const fromMenu = cell.getAttribute('data-from');
+      const toMenu = cell.getAttribute('data-to');
+      const key = `${fromMenu}→${toMenu}`;
+      const originalValue = currentData.intervals[key] || '';
+      
+      cell.classList.remove('editing');
+      cell.textContent = originalValue;
+    }
+    
+    // メニューと同期
+    function syncWithMenus() {
+      if (!confirm('メニューの追加・削除に合わせて施術間隔マトリクスを更新します。\n既存のデータは保持されます。続行しますか？')) {
+        return;
+      }
+      
+      showMessage('');
+      document.getElementById('tableContainer').innerHTML = '<div class="loading"><div class="spinner"></div><p>同期中...</p></div>';
+      
+      google.script.run
+        .withSuccessHandler(() => {
+          showMessage('同期が完了しました', 'success');
+          loadIntervalData();
+        })
+        .withFailureHandler(onError)
+        .syncTreatmentIntervalWithMenus();
+    }
+    
+    // エクスポート
+    function exportData() {
+      if (!currentData || menuNames.length === 0) {
+        showMessage('エクスポートするデータがありません', 'error');
+        return;
+      }
+      
+      let csv = '施術＼後,' + menuNames.map(name => `"${name}"`).join(',') + '\n';
+      
+      menuNames.forEach(fromMenu => {
+        let row = [`"${fromMenu}"`];
+        menuNames.forEach(toMenu => {
+          const key = `${fromMenu}→${toMenu}`;
+          const value = currentData.intervals[key] || '';
+          row.push(value);
+        });
+        csv += row.join(',') + '\n';
+      });
+      
+      // ダウンロード
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `施術間隔_${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+      
+      showMessage('エクスポートしました', 'success');
+    }
+    
+    // メッセージ表示
+    function showMessage(text, type = '') {
+      const messageEl = document.getElementById('message');
+      messageEl.textContent = text;
+      messageEl.className = 'message ' + type;
+      messageEl.style.display = text ? 'block' : 'none';
+      
+      if (text && type === 'success') {
+        setTimeout(() => {
+          messageEl.style.display = 'none';
+        }, 3000);
+      }
+    }
+    
+    // エラー処理
+    function onError(error) {
+      console.error('エラー:', error);
+      showMessage('エラーが発生しました: ' + error.message, 'error');
+    }
+    
+    // HTMLエスケープ
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+    
+    // 自動整形
+    function autoFormat() {
+      if (!confirm('すべての値を正規化し、マトリクス構造を修復します。\nバックアップが作成されます。続行しますか？')) {
+        return;
+      }
+      
+      showMessage('');
+      document.getElementById('tableContainer').innerHTML = '<div class="loading"><div class="spinner"></div><p>自動整形中...</p></div>';
+      
+      google.script.run
+        .withSuccessHandler((result) => {
+          if (result.success) {
+            showMessage('自動整形が完了しました', 'success');
+          } else {
+            showMessage('自動整形中にエラーが発生しました', 'error');
+          }
+          loadIntervalData();
+        })
+        .withFailureHandler(onError)
+        .autoFormatTreatmentIntervals();
+    }
+    
+    // マトリクス状態表示
+    function displayMatrixStatus(status) {
+      const statusPanel = document.getElementById('matrixStatus');
+      const statusContent = document.getElementById('statusContent');
+      
+      if (!status) {
+        statusPanel.style.display = 'none';
+        return;
+      }
+      
+      let html = '';
+      
+      if (status.isValid) {
+        html += '<div style="color: green;">✓ マトリクスは正常です</div>';
+      } else {
+        html += '<div style="color: red;">⚠ マトリクスに問題があります</div>';
+      }
+      
+      if (status.summary) {
+        html += '<ul>';
+        html += `<li>メニュー数: ${status.summary.menuCount}</li>`;
+        html += `<li>総セル数: ${status.summary.totalCells}</li>`;
+        if (status.summary.invalidCells > 0) {
+          html += `<li style="color: red;">無効なセル: ${status.summary.invalidCells}</li>`;
+        }
+        if (status.summary.missingMenus > 0) {
+          html += `<li style="color: orange;">未同期メニュー: ${status.summary.missingMenus}</li>`;
+        }
+        html += '</ul>';
+      }
+      
+      if (status.errors && status.errors.length > 0) {
+        html += '<details><summary style="color: red;">エラー詳細</summary><ul>';
+        status.errors.forEach(error => {
+          html += `<li style="color: red;">${escapeHtml(error)}</li>`;
+        });
+        html += '</ul></details>';
+      }
+      
+      if (status.warnings && status.warnings.length > 0) {
+        html += '<details><summary style="color: orange;">警告</summary><ul>';
+        status.warnings.forEach(warning => {
+          html += `<li style="color: orange;">${escapeHtml(warning)}</li>`;
+        });
+        html += '</ul></details>';
+      }
+      
+      statusContent.innerHTML = html;
+      statusPanel.style.display = 'block';
+    }
+    
+    // 日数を表示形式に変換（クライアント側簡易版）
+    function formatIntervalDisplay(days) {
+      if (!days || days === 0) {
+        return '制限なし';
+      }
+      
+      if (days % 7 === 0) {
+        const weeks = days / 7;
+        return weeks === 1 ? '1週間' : `${weeks}週間`;
+      }
+      
+      if (days % 30 === 0) {
+        const months = days / 30;
+        return months === 1 ? '1ヶ月' : `${months}ヶ月`;
+      }
+      
+      return `${days}日`;
+    }
+  </script>
+</body>
+</html>

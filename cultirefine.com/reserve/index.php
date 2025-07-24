@@ -1,10 +1,27 @@
 <?php
-session_start();
+// セッションを最初に開始
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once __DIR__ . '/line-auth/url-helper.php';
+
+// セッションデバッグ情報
+$sessionDebug = [
+    'session_id' => session_id(),
+    'session_status' => session_status(),
+    'has_line_user_id' => isset($_SESSION['line_user_id']),
+    'has_user_data' => isset($_SESSION['user_data']),
+    'session_keys' => array_keys($_SESSION)
+];
+
+error_log('[Index] Session Debug: ' . json_encode($sessionDebug));
 
 // LINE認証チェック
 if (!isset($_SESSION['line_user_id'])) {
-    // 未認証の場合はLINE認証へリダイレクト
+    error_log('[Auth Check] No LINE user ID in session at index.php: ' . json_encode($sessionDebug));
+    
+    // LINE認証へリダイレクト
     header('Location: ' . getRedirectUrl('/reserve/line-auth/'));
     exit;
 }
@@ -14,6 +31,12 @@ $lineUserId = $_SESSION['line_user_id'];
 $displayName = $_SESSION['line_display_name'] ?? 'ゲスト';
 $pictureUrl = $_SESSION['line_picture_url'] ?? null;
 $userData = $_SESSION['user_data'] ?? null;
+
+// user_dataがない場合のデバッグ情報
+if (!$userData && defined('DEBUG_MODE') && DEBUG_MODE) {
+    error_log('[Index] user_data not found in session, will fetch from GAS API');
+    error_log('[Index] Session data: ' . json_encode($_SESSION));
+}
 
 // 権限管理とGAS APIから来院者データを取得
 require_once __DIR__ . '/line-auth/config.php';
@@ -33,7 +56,9 @@ try {
             'line_user_id' => $_SESSION['line_user_id'] ?? 'not_set',
             'line_display_name' => $_SESSION['line_display_name'] ?? 'not_set',
             'session_id' => session_id(),
-            'all_session_data' => $_SESSION
+            'has_user_data' => isset($_SESSION['user_data']),
+            'user_data_keys' => isset($_SESSION['user_data']) ? array_keys($_SESSION['user_data']) : [],
+            'all_session_keys' => array_keys($_SESSION)
         ];
         error_log('[DEBUG] Session info: ' . json_encode($debugInfo['session']));
     }
@@ -69,30 +94,40 @@ try {
         error_log('[DEBUG] GAS API Response: ' . json_encode($debugInfo['gas_api_response']));
     }
     
-    // GAS APIの実際のレスポンス形式に対応
-    if (isset($userInfo['visitor']) && isset($userInfo['company'])) {
-        // ログインユーザーのvisitor_idを取得
-        $currentUserVisitorId = $userInfo['visitor']['visitor_id'] ?? null;
+    // GAS APIのレスポンス形式を確認
+    // 現在の形式（visitor, company, ticketInfo）をそのまま使用
+    
+    // user_dataがセッションにない場合は保存
+    if (!$userData && $userInfo['status'] === 'success' && isset($userInfo['data'])) {
+        $_SESSION['user_data'] = $userInfo['data'];
+        error_log('[Index] Saved user_data to session from GAS API');
+    }
+    
+    // GAS APIのレスポンス形式に対応（visitor, company, ticketInfo）
+    if (isset($userInfo['data']['visitor']) && isset($userInfo['data']['company'])) {
+        // ログインユーザーのIDを取得
+        $currentUserVisitorId = $userInfo['data']['visitor']['visitor_id'] ?? null;
         
-        // 実際のGAS APIレスポンスから membership_info 形式に変換
-        $membershipInfo = [
-            'company_id' => $userInfo['company']['company_id'] ?? null,
-            'company_name' => $userInfo['company']['name'] ?? '不明',
-            'member_type' => $userInfo['visitor']['member_type'] === true ? '本会員' : 'サブ会員'
-        ];
+        // 会社情報を取得
+        $companyData = $userInfo['data']['company'] ?? null;
         
         if (DEBUG_MODE) {
             error_log('[DEBUG] Current user visitor_id: ' . $currentUserVisitorId);
-            error_log('[DEBUG] Converted membership info: ' . json_encode($membershipInfo));
+            error_log('[DEBUG] Company data: ' . json_encode($companyData));
         }
         
-        // 会社情報を取得
-        if (isset($membershipInfo['company_id']) && !empty($membershipInfo['company_id'])) {
+        // 会社情報の処理
+        if ($companyData && isset($companyData['company_id']) && !empty($companyData['company_id'])) {
+            // member_typeの判定（visitor.member_typeがtrueなら本会員、falseならサブ会員）
+            $isMemberType = $userInfo['data']['visitor']['member_type'] ?? false;
+            $memberTypeLabel = $isMemberType ? '本会員' : 'サブ会員';
+            
             $companyInfo = [
-                'id' => $membershipInfo['company_id'],
-                'name' => $membershipInfo['company_name'] ?? '不明',
-                'member_type' => $membershipInfo['member_type'] ?? 'サブ会員',
-                'role' => ($membershipInfo['member_type'] === '本会員') ? 'main' : 'sub'
+                'id' => $companyData['company_id'],
+                'name' => $companyData['name'] ?? '不明',
+                'plan' => $companyData['plan'] ?? '',
+                'member_type' => $memberTypeLabel,
+                'role' => $isMemberType ? 'main' : 'sub'
             ];
             
             $userRole = $companyInfo['role'];
@@ -132,8 +167,8 @@ try {
         }
     } else {
         // GAS APIレスポンスの形式をチェックして適切なエラーメッセージを生成
-        $hasVisitorInfo = isset($userInfo['visitor']);
-        $hasCompanyInfo = isset($userInfo['company']);
+        $hasVisitorInfo = isset($userInfo['data']['visitor']);
+        $hasCompanyInfo = isset($userInfo['data']['company']);
         
         if ($hasVisitorInfo && !$hasCompanyInfo) {
             $errorMessage = '来院者情報は取得できましたが、会社情報が見つかりません。';
@@ -150,9 +185,9 @@ try {
             $debugInfo['failure_details'] = [
                 'has_visitor_info' => $hasVisitorInfo,
                 'has_company_info' => $hasCompanyInfo,
-                'response_keys' => array_keys($userInfo),
-                'visitor_data' => $userInfo['visitor'] ?? null,
-                'company_data' => $userInfo['company'] ?? null,
+                'response_keys' => isset($userInfo['data']) ? array_keys($userInfo['data']) : array_keys($userInfo),
+                'visitor_data' => $userInfo['data']['visitor'] ?? null,
+                'company_data' => $userInfo['data']['company'] ?? null,
                 'full_user_info' => $userInfo
             ];
             error_log('[DEBUG] Failure details: ' . json_encode($debugInfo['failure_details']));
@@ -365,24 +400,19 @@ try {
                             <div id="treatment-categories" class="border border-gray-200 rounded-lg overflow-hidden"></div>
                         </section>
 
+                        <!-- 選択メニュー表示エリア -->
+                        <div id="selected-menus-display" class="hidden"></div>
+
                         <div id="interval-error" class="hidden bg-red-50 border-l-4 border-red-500 p-4 rounded">
-                            <h4 class="text-sm font-semibold text-red-800">施術間隔エラー</h4>
+                            <h4 class="text-sm font-semibold text-red-800">エラー</h4>
                             <p id="interval-error-text" class="text-xs text-red-600"></p>
                         </div>
 
                         <section id="date-time-selection" class="space-y-4 hidden">
                             <h3 class="text-lg font-semibold text-gray-700">2. ご希望日時を選択</h3>
-                            <div class="bg-slate-100 border border-gray-200 rounded-md p-3">
-                                <label class="flex items-center space-x-2 cursor-pointer">
-                                    <input type="checkbox" id="pair-room-switch" class="sr-only">
-                                    <div class="switch relative w-11 h-6 bg-gray-200 rounded-full transition-colors">
-                                        <div class="switch-thumb absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform"></div>
-                                    </div>
-                                    <span class="text-base font-medium text-pink-600 flex items-center">
-                                        <span class="mr-2">👫</span> ペア施術を希望 (2枠確保)
-                                    </span>
-                                </label>
-                            </div>
+                            
+                            <!-- カレンダーローディングメッセージ -->
+                            <div id="calendar-loading-message" class="hidden"></div>
                             
                             <div id="slot-availability-message" class="hidden bg-teal-50 border-l-4 border-teal-500 p-4 rounded">
                                 <h4 id="slot-availability-title" class="text-sm font-semibold text-teal-800">予約可能な時間</h4>
@@ -606,6 +636,56 @@ try {
         </div>
     </div>
 
+    <!-- 予約確認モーダル -->
+    <div id="reservation-confirm-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-10 mx-auto p-5 border max-w-2xl shadow-lg rounded-md bg-white">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-bold text-gray-900">予約内容の確認</h3>
+                    <button id="close-confirm-modal" class="text-gray-400 hover:text-gray-600">
+                        <span class="sr-only">閉じる</span>
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- 予約サマリー表示エリア -->
+                <div id="reservation-summary" class="space-y-4 mb-6">
+                    <!-- JavaScriptで動的に生成 -->
+                </div>
+                
+                <!-- 確認メッセージ -->
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-yellow-700">
+                                上記の内容で予約を確定してもよろしいですか？<br>
+                                確定後のキャンセル・変更については、直接クリニックまでお電話ください。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- ボタン -->
+                <div class="flex flex-col sm:flex-row justify-end gap-3">
+                    <button id="cancel-reservation-btn" class="w-full sm:w-auto border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 py-2 px-4 rounded-md">
+                        戻る
+                    </button>
+                    <button id="confirm-reservation-btn" class="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 text-white py-2 px-4 rounded-md font-medium flex items-center justify-center">
+                        <span id="confirm-btn-text">予約を確定する</span>
+                        <div id="confirm-btn-spinner" class="hidden ml-2 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- スピナー -->
     <div id="loading-spinner" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="flex items-center justify-center h-full">
@@ -646,6 +726,7 @@ try {
     <script type="module" src="./js/components/calendar.js"></script>
     <script type="module" src="./js/components/treatment-accordion.js"></script>
     <script type="module" src="./js/components/modal.js"></script>
+    <script type="module" src="./js/components/reservation-confirm.js"></script>
     <script type="module" src="./js/screens/patient-selection.js"></script>
     <script type="module" src="./js/screens/menu-calendar.js"></script>
     <script type="module" src="./js/screens/pair-booking.js"></script>
