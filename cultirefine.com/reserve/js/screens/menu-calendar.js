@@ -298,7 +298,7 @@ async function displayPatientMenus(patientId) {
     container.innerHTML = '<div class="text-center py-4">メニューを読み込んでいます...</div>';
     
     // メニュー選択時のコールバック
-    const onMenuSelect = (menu, patientId) => {
+    const onMenuSelect = (menu, patientId, isChecked) => {
         // 選択されたメニューを配列に追加
         if (!appState.selectedTreatments[patientId]) {
             appState.selectedTreatments[patientId] = [];
@@ -307,15 +307,17 @@ async function displayPatientMenus(patientId) {
             appState.selectedMenuIds[patientId] = [];
         }
         
-        const menuIndex = appState.selectedTreatments[patientId].findIndex(t => t.id === menu.id);
-        if (menuIndex > -1) {
-            // 既に選択されている場合は削除
-            appState.selectedTreatments[patientId].splice(menuIndex, 1);
-            appState.selectedMenuIds[patientId] = appState.selectedMenuIds[patientId].filter(id => id !== menu.id);
+        if (isChecked) {
+            // チェックされた場合は追加
+            const exists = appState.selectedTreatments[patientId].some(t => t.id === menu.id);
+            if (!exists) {
+                appState.selectedTreatments[patientId].push(menu);
+                appState.selectedMenuIds[patientId].push(menu.id);
+            }
         } else {
-            // 新規選択
-            appState.selectedTreatments[patientId].push(menu);
-            appState.selectedMenuIds[patientId].push(menu.id);
+            // チェック解除された場合は削除
+            appState.selectedTreatments[patientId] = appState.selectedTreatments[patientId].filter(t => t.id !== menu.id);
+            appState.selectedMenuIds[patientId] = appState.selectedMenuIds[patientId].filter(id => id !== menu.id);
         }
         
         updateSelectedMenusDisplay(patientId);
@@ -323,7 +325,7 @@ async function displayPatientMenus(patientId) {
         
         // メニューが選択されたらカレンダーの空き情報を更新
         if (appState.selectedTreatments[patientId].length > 0) {
-            loadCalendarAvailability(patientId, appState.selectedTreatments[patientId][0].id);
+            loadCalendarAvailability(patientId, appState.selectedTreatments[patientId]);
         }
     };
     
@@ -342,16 +344,40 @@ async function displayPatientMenus(patientId) {
  */
 function updateSelectedMenusDisplay(patientId) {
     const selectedMenus = appState.selectedTreatments[patientId] || [];
-    const totalDuration = selectedMenus.reduce((sum, menu) => sum + menu.duration, 0);
+    const totalDuration = selectedMenus.reduce((sum, menu) => sum + (menu.duration_minutes || menu.duration || 0), 0);
     const totalPrice = selectedMenus.reduce((sum, menu) => sum + (menu.price || 0), 0);
     
-    // 既存のエラー表示を更新
+    // 選択メニュー表示エリアを更新
+    const selectedMenusDisplay = document.getElementById('selected-menus-display');
+    if (selectedMenusDisplay) {
+        if (selectedMenus.length > 0) {
+            selectedMenusDisplay.classList.remove('hidden');
+            const menuList = selectedMenus.map(menu => 
+                `<span class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-teal-100 text-teal-800">
+                    ${menu.name || menu.menu_name}
+                    <button onclick="removeSelectedMenu('${patientId}', '${menu.id}')" class="ml-2 text-teal-600 hover:text-teal-800">
+                        ×
+                    </button>
+                </span>`
+            ).join(' ');
+            
+            selectedMenusDisplay.innerHTML = `
+                <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                    <h4 class="text-sm font-semibold text-blue-800 mb-2">選択中のメニュー</h4>
+                    <div class="flex flex-wrap gap-2 mb-2">${menuList}</div>
+                    <p class="text-sm text-blue-700">
+                        合計: ${selectedMenus.length}件 / ${totalDuration}分 / ￥${totalPrice.toLocaleString()}
+                    </p>
+                </div>
+            `;
+        } else {
+            selectedMenusDisplay.classList.add('hidden');
+        }
+    }
+    
+    // エラー表示エリアを非表示に（エラー用に確保）
     const intervalError = document.getElementById('interval-error');
-    if (selectedMenus.length > 0) {
-        intervalError.classList.remove('hidden');
-        document.getElementById('interval-error-text').innerHTML = 
-            `選択中: ${selectedMenus.length}件 / 合計${totalDuration}分 / ￥${totalPrice.toLocaleString()}`;
-    } else {
+    if (intervalError) {
         intervalError.classList.add('hidden');
     }
     
@@ -445,12 +471,36 @@ export function updateNextButtonState() {
     console.log('Times:', selectedTimes);
     
     nextBtn.disabled = !hasAllRequired;
+    
+    // ボタンのテキストを更新
+    if (hasAllRequired) {
+        nextBtn.innerHTML = '予約内容を確認する <span class="ml-2">➡️</span>';
+    } else {
+        nextBtn.innerHTML = '予約内容の確認へ <span class="ml-2">➡️</span>';
+    }
 }
 
 // カレンダーの空き情報を読み込む
-async function loadCalendarAvailability(patientId, menuId) {
+async function loadCalendarAvailability(patientId, selectedMenus) {
     const calendar = calendars['calendar'];
     if (!calendar) return;
+    
+    // ローディング表示
+    const calendarLoadingMsg = document.getElementById('calendar-loading-message');
+    if (calendarLoadingMsg) {
+        calendarLoadingMsg.classList.remove('hidden');
+        calendarLoadingMsg.innerHTML = `
+            <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                <p class="text-sm text-blue-700 flex items-center">
+                    <svg class="animate-spin h-4 w-4 mr-2 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    空き情報を取得しています...
+                </p>
+            </div>
+        `;
+    }
     
     // ローディング状態を設定
     calendar.setLoading(true);
@@ -461,43 +511,99 @@ async function loadCalendarAvailability(patientId, menuId) {
         const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
         const dateKey = calendar.formatDateKey(startDate);
         
-        // ペア予約の設定を取得
-        const pairRoom = appState.pairRoomDesired[patientId] || false;
+        // 複数メニューの場合、メニューIDの配列と合計時間を準備
+        const menuIds = selectedMenus.map(menu => menu.id || menu.menu_id);
+        const totalDuration = selectedMenus.reduce((sum, menu) => sum + (menu.duration_minutes || menu.duration || 0), 0);
         
-        // API呼び出し
-        const result = await getAvailableSlots(patientId, menuId, dateKey, 30, {
-            pairBooking: pairRoom,
-            allowMultipleSameDay: false
+        // API呼び出し（複数メニュー対応）
+        const result = await getAvailableSlots(patientId, menuIds, dateKey, 30, {
+            pairBooking: false,
+            allowMultipleSameDay: false,
+            totalDuration: totalDuration
         });
         
         if (result.success && result.data) {
             const data = result.data;
             
-            // 施術間隔制限の警告表示
-            if (data.treatment_interval_rules && data.treatment_interval_rules.has_restrictions) {
-                const rules = data.treatment_interval_rules;
-                if (rules.last_treatment_date && rules.next_available_date) {
-                    showAlert('interval-warning', 'info', '施術間隔制限', 
-                        `前回施術日: ${rules.last_treatment_date}、次回予約可能日: ${rules.next_available_date}`);
-                }
-            }
-            
             // カレンダーに空き情報を設定
             if (data.available_slots) {
                 calendar.setAvailableSlots(data.available_slots);
+                // ローディング表示を成功メッセージに変更
+                if (calendarLoadingMsg) {
+                    calendarLoadingMsg.innerHTML = `
+                        <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded">
+                            <p class="text-sm text-green-700">
+                                空き情報を取得しました
+                            </p>
+                        </div>
+                    `;
+                    // 3秒後に非表示
+                    setTimeout(() => {
+                        calendarLoadingMsg.classList.add('hidden');
+                    }, 3000);
+                }
             }
         } else {
             console.error('Failed to load availability:', result);
-            showAlert('availability-error', 'error', 'エラー', 
-                result.message || '空き情報の取得に失敗しました');
+            if (calendarLoadingMsg) {
+                calendarLoadingMsg.innerHTML = `
+                    <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+                        <p class="text-sm text-red-700">
+                            ${result.message || '空き情報の取得に失敗しました'}
+                        </p>
+                    </div>
+                `;
+            }
         }
         
     } catch (error) {
         console.error('Error loading availability:', error);
-        showAlert('availability-error', 'error', 'エラー', 
-            '空き情報の取得中にエラーが発生しました');
+        if (calendarLoadingMsg) {
+            calendarLoadingMsg.innerHTML = `
+                <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+                    <p class="text-sm text-red-700">
+                        空き情報の取得中にエラーが発生しました
+                    </p>
+                </div>
+            `;
+        }
     } finally {
         // ローディング状態を解除
         calendar.setLoading(false);
     }
 }
+
+// 選択されたメニューを削除
+window.removeSelectedMenu = function(patientId, menuId) {
+    if (!appState.selectedTreatments[patientId]) return;
+    
+    // メニューを削除
+    appState.selectedTreatments[patientId] = appState.selectedTreatments[patientId].filter(t => t.id !== menuId);
+    appState.selectedMenuIds[patientId] = appState.selectedMenuIds[patientId].filter(id => id !== menuId);
+    
+    // チェックボックスのチェックを外す
+    const checkbox = document.querySelector(`input[type="checkbox"][value="${menuId}"]`);
+    if (checkbox) {
+        checkbox.checked = false;
+    }
+    
+    // 表示を更新
+    updateSelectedMenusDisplay(patientId);
+    updateNextButtonState();
+    
+    // メニューがなくなったらカレンダーをリセット、残っていれば再読み込み
+    if (appState.selectedTreatments[patientId].length === 0) {
+        const calendar = calendars['calendar'];
+        if (calendar) {
+            calendar.setAvailableSlots({});
+        }
+        // カレンダーローディングメッセージを非表示
+        const calendarLoadingMsg = document.getElementById('calendar-loading-message');
+        if (calendarLoadingMsg) {
+            calendarLoadingMsg.classList.add('hidden');
+        }
+    } else {
+        // まだメニューが残っている場合は、空き情報を再読み込み
+        loadCalendarAvailability(patientId, appState.selectedTreatments[patientId]);
+    }
+};

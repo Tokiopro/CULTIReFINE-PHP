@@ -44,12 +44,19 @@ try {
     $userInfo = $gasApi->getUserFullInfo($lineUserId);
     
     if (isset($userInfo['status']) && $userInfo['status'] === 'success' && isset($userInfo['data'])) {
-        // 会社情報
-        $companyName = $userInfo['data']['membership_info']['company_name'] ?? '';
-        $companyPlan = $userInfo['data']['membership_info']['plan'] ?? '';
+        // 会社情報（新形式対応）
+        $companyData = $userInfo['data']['company'] ?? null;
+        if ($companyData) {
+            $companyName = $companyData['name'] ?? $companyData['company_name'] ?? '';
+            $companyPlan = $companyData['plan'] ?? '';
+        } else {
+            // 旧形式との後方互換性
+            $companyName = $userInfo['data']['membership_info']['company_name'] ?? '';
+            $companyPlan = $userInfo['data']['membership_info']['plan'] ?? '';
+        }
         
-        // チケット情報を取得
-        $tickets = $userInfo['data']['membership_info']['tickets'] ?? [];
+        // チケット情報を取得（新形式対応）
+        $tickets = $userInfo['data']['ticketInfo'] ?? $userInfo['data']['membership_info']['tickets'] ?? [];
         
         // デバッグ: チケット情報の構造を確認
         if (DEBUG_MODE && !empty($tickets)) {
@@ -92,8 +99,8 @@ try {
             }
         }
         
-        // 予約履歴を取得
-        $reservationHistory = $userInfo['data']['reservation_history'] ?? [];
+        // 予約履歴を取得（新形式対応）
+        $reservationHistory = $userInfo['data']['ReservationHistory'] ?? $userInfo['data']['reservation_history'] ?? [];
         
     } else {
         $errorMessage = 'チケット情報の取得に失敗しました。';
@@ -128,12 +135,27 @@ $usedCounts = [
 ];
 
 foreach ($reservationHistory as $reservation) {
-    if ($reservation['status'] === '予約済み' || $reservation['status'] === 'reserved') {
-        $reservedReservations[] = $reservation;
+    // 新形式のフィールド名に対応
+    $status = $reservation['reservestatus'] ?? $reservation['status'] ?? '';
+    $menuName = $reservation['reservename'] ?? $reservation['menu_name'] ?? '';
+    
+    // 予約データを統一形式に変換
+    $normalizedReservation = [
+        'patient_name' => $reservation['reservepatient'] ?? $reservation['patient_name'] ?? '',
+        'date' => $reservation['reservedate'] ?? $reservation['date'] ?? '',
+        'time' => $reservation['reservetime'] ?? $reservation['time'] ?? '',
+        'menu_name' => $menuName,
+        'category' => $reservation['category'] ?? '',
+        'notes' => $reservation['notes'] ?? '',
+        'status' => $status
+    ];
+    
+    if ($status === '予約' || $status === '予約済み' || $status === 'reserved') {
+        $reservedReservations[] = $normalizedReservation;
         // メニュータイプに基づいてカウント
         // TODO: 実際のメニューとチケットタイプのマッピングが必要
-    } elseif ($reservation['status'] === '来院済み' || $reservation['status'] === 'visited') {
-        $usedReservations[] = $reservation;
+    } elseif ($status === '完了' || $status === '来院済み' || $status === 'visited') {
+        $usedReservations[] = $normalizedReservation;
     }
 }
 

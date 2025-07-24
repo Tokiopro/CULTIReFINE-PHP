@@ -369,24 +369,19 @@ try {
                             <div id="treatment-categories" class="border border-gray-200 rounded-lg overflow-hidden"></div>
                         </section>
 
+                        <!-- 選択メニュー表示エリア -->
+                        <div id="selected-menus-display" class="hidden"></div>
+
                         <div id="interval-error" class="hidden bg-red-50 border-l-4 border-red-500 p-4 rounded">
-                            <h4 class="text-sm font-semibold text-red-800">施術間隔エラー</h4>
+                            <h4 class="text-sm font-semibold text-red-800">エラー</h4>
                             <p id="interval-error-text" class="text-xs text-red-600"></p>
                         </div>
 
                         <section id="date-time-selection" class="space-y-4 hidden">
                             <h3 class="text-lg font-semibold text-gray-700">2. ご希望日時を選択</h3>
-                            <div class="bg-slate-100 border border-gray-200 rounded-md p-3">
-                                <label class="flex items-center space-x-2 cursor-pointer">
-                                    <input type="checkbox" id="pair-room-switch" class="sr-only">
-                                    <div class="switch relative w-11 h-6 bg-gray-200 rounded-full transition-colors">
-                                        <div class="switch-thumb absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform"></div>
-                                    </div>
-                                    <span class="text-base font-medium text-pink-600 flex items-center">
-                                        <span class="mr-2">👫</span> ペア施術を希望 (2枠確保)
-                                    </span>
-                                </label>
-                            </div>
+                            
+                            <!-- カレンダーローディングメッセージ -->
+                            <div id="calendar-loading-message" class="hidden"></div>
                             
                             <div id="slot-availability-message" class="hidden bg-teal-50 border-l-4 border-teal-500 p-4 rounded">
                                 <h4 id="slot-availability-title" class="text-sm font-semibold text-teal-800">予約可能な時間</h4>
@@ -610,6 +605,56 @@ try {
         </div>
     </div>
 
+    <!-- 予約確認モーダル -->
+    <div id="reservation-confirm-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-10 mx-auto p-5 border max-w-2xl shadow-lg rounded-md bg-white">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-bold text-gray-900">予約内容の確認</h3>
+                    <button id="close-confirm-modal" class="text-gray-400 hover:text-gray-600">
+                        <span class="sr-only">閉じる</span>
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- 予約サマリー表示エリア -->
+                <div id="reservation-summary" class="space-y-4 mb-6">
+                    <!-- JavaScriptで動的に生成 -->
+                </div>
+                
+                <!-- 確認メッセージ -->
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-yellow-700">
+                                上記の内容で予約を確定してもよろしいですか？<br>
+                                確定後のキャンセル・変更については、直接クリニックまでお電話ください。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- ボタン -->
+                <div class="flex flex-col sm:flex-row justify-end gap-3">
+                    <button id="cancel-reservation-btn" class="w-full sm:w-auto border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 py-2 px-4 rounded-md">
+                        戻る
+                    </button>
+                    <button id="confirm-reservation-btn" class="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 text-white py-2 px-4 rounded-md font-medium flex items-center justify-center">
+                        <span id="confirm-btn-text">予約を確定する</span>
+                        <div id="confirm-btn-spinner" class="hidden ml-2 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- スピナー -->
     <div id="loading-spinner" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="flex items-center justify-center h-full">
@@ -650,6 +695,7 @@ try {
     <script type="module" src="./js/components/calendar.js"></script>
     <script type="module" src="./js/components/treatment-accordion.js"></script>
     <script type="module" src="./js/components/modal.js"></script>
+    <script type="module" src="./js/components/reservation-confirm.js"></script>
     <script type="module" src="./js/screens/patient-selection.js"></script>
     <script type="module" src="./js/screens/menu-calendar.js"></script>
     <script type="module" src="./js/screens/pair-booking.js"></script>

@@ -1,32 +1,111 @@
 /**
- * 予約（Reservation）管理サービス
+ * 予約管理サービス
  */
 class ReservationService {
   constructor() {
+    this.spreadsheetManager = new SpreadsheetManager();
     this.apiClient = new ApiClient();
     this.sheetName = Config.getSheetNames().reservations;
+    this.phpSyncEndpoint = Config.getPHPSyncEndpoint ? Config.getPHPSyncEndpoint() : null;
   }
   
   /**
-   * 実行時間を監視しながら予約情報を同期
+   * 時間制限付き予約同期（PHP経由版）
+   * PHPを使用してMedical Force APIから予約データを取得
    */
-  syncReservationsWithTimeLimit(params = {}, maxExecutionTime = 300000) { // 5分
+  syncReservationsViaPhp(params = {}) {
+    return Utils.executeWithErrorHandling(() => {
+      Logger.log('=== PHP経由での予約情報同期を開始 ===');
+      
+      if (!this.phpSyncEndpoint) {
+        throw new Error('PHP同期エンドポイントが設定されていません');
+      }
+      
+      const startTime = new Date();
+      
+      // デフォルトパラメータの設定
+      const syncParams = {
+        date_from: params.date_from || Utils.getToday(),
+        date_to: params.date_to || Utils.formatDate(new Date(new Date().setDate(new Date().getDate() + 14))),
+        offset: params.offset || 0,
+        limit: params.limit || 500
+      };
+      
+      Logger.log(`同期パラメータ: ${JSON.stringify(syncParams)}`);
+      
+      // PHPエンドポイントを呼び出し
+      const response = UrlFetchApp.fetch(this.phpSyncEndpoint, {
+        method: 'post',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Config.getApiKey()}`
+        },
+        payload: JSON.stringify({
+          action: 'syncMedicalForceReservations',
+          ...syncParams
+        }),
+        muteHttpExceptions: true
+      });
+      
+      const responseCode = response.getResponseCode();
+      const responseText = response.getContentText();
+      
+      if (responseCode !== 200) {
+        Logger.log(`PHPエンドポイントエラー: ${responseCode} - ${responseText}`);
+        throw new Error(`PHP同期エラー: ${responseCode}`);
+      }
+      
+      const result = JSON.parse(responseText);
+      
+      if (!result.success) {
+        throw new Error(`同期失敗: ${result.error?.message || 'Unknown error'}`);
+      }
+      
+      const syncData = result.data;
+      Logger.log(`同期結果: ${syncData.summary.processed_count}件の予約を取得`);
+      
+      // スプレッドシートに書き込み
+      if (syncData.reservations && syncData.reservations.length > 0) {
+        this._writeReservationsToSheetBatch(syncData.reservations);
+      }
+      
+      const endTime = new Date();
+      const executionTime = (endTime - startTime) / 1000;
+      
+      return {
+        completed: true,
+        totalSynced: syncData.summary.processed_count,
+        errorCount: syncData.summary.error_count,
+        executionTime: executionTime,
+        dateRange: syncData.summary.date_range,
+        errors: syncData.errors
+      };
+      
+    }, 'PHP経由予約同期');
+  }
+  
+  /**
+   * 時間制限付き予約同期（従来のGAS版 - フォールバック用）
+   * 実行時間を監視しながら段階的に同期
+   */
+  syncReservationsWithTimeLimit(maxExecutionTime = 270000) { // 4.5分
     const startTime = new Date().getTime();
-    const syncStatus = {
-      totalSynced: 0,
-      completed: false,
-      lastOffset: 0,
-      dateFrom: params.date_from,
-      dateTo: params.date_to
-    };
+    const cache = CacheService.getScriptCache();
     
     try {
-      // キャッシュから前回の同期状態を取得
-      const cache = CacheService.getScriptCache();
-      const savedStatus = cache.get('reservation_sync_status');
+      // 前回の同期状態を確認
+      const syncStatus = {
+        completed: false,
+        lastOffset: 0,
+        dateFrom: Utils.getToday(),
+        dateTo: Utils.formatDate(new Date(new Date().setDate(new Date().getDate() + 14))),
+        totalSynced: 0
+      };
       
-      if (savedStatus) {
-        const parsed = JSON.parse(savedStatus);
+      // キャッシュから前回の状態を取得
+      const cachedStatus = cache.get('reservation_sync_status');
+      if (cachedStatus) {
+        const parsed = JSON.parse(cachedStatus);
         // 前回の同期が未完了の場合は続きから
         if (!parsed.completed) {
           syncStatus.lastOffset = parsed.lastOffset;
@@ -49,7 +128,7 @@ class ReservationService {
   }
   
   /**
-   * 予約情報を同期（ページネーション対応）
+   * 予約情報を同期（ページネーション対応 - 従来版）
    */
   syncReservations(params = {}) {
     return Utils.executeWithErrorHandling(() => {
@@ -78,7 +157,6 @@ class ReservationService {
         Logger.log(`予約情報を取得中... (offset: ${offset})`);
         Logger.log(`取得期間: ${params.date_from} ～ ${params.date_to}`);
         
-        // APIから予約情報を取得
         const requestParams = {
           ...params,
           limit: limit,
@@ -197,14 +275,13 @@ class ReservationService {
           }
         }
         
-        // API制限を考慮
+        // API制限を考慮して少し待機
         if (hasMore) {
           Utilities.sleep(100);
         }
         
       } catch (error) {
         Logger.log(`APIエラー: ${error.toString()}`);
-        // エラー時も現在の進捗を保存
         syncStatus.completed = false;
         syncStatus.lastOffset = offset;
         syncStatus.totalSynced = allReservations.length;
@@ -213,86 +290,163 @@ class ReservationService {
       }
     }
     
-    // 同期完了
-    Logger.log(`合計${allReservations.length}件の予約情報を取得しました`);
-    
+    // スプレッドシートに書き込み
     if (allReservations.length > 0) {
       this._writeReservationsToSheetBatch(allReservations);
     }
     
     syncStatus.completed = true;
+    syncStatus.lastOffset = 0;
     syncStatus.totalSynced = allReservations.length;
-    syncStatus.lastOffset = 0; // リセット
+    
+    Logger.log(`同期完了: ${allReservations.length}件`);
     
     return syncStatus;
   }
   
   /**
-   * 日次増分同期（過去7日分のみ）
+   * 日次増分同期（過去7日～今後7日分）
+   * PHP経由版を優先的に使用
    */
   dailyIncrementalSync() {
     Logger.log('=== 日次増分同期開始 ===');
     
+    // PHP経由での同期を試みる
+    if (this.phpSyncEndpoint) {
+      try {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        
+        const sevenDaysLater = new Date();
+        sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+        
+        const result = this.syncReservationsViaPhp({
+          date_from: Utils.formatDate(sevenDaysAgo),
+          date_to: Utils.formatDate(sevenDaysLater)
+        });
+        
+        Logger.log('PHP経由での日次同期完了');
+        return result;
+        
+      } catch (error) {
+        Logger.log(`PHP経由の同期に失敗、従来の方法にフォールバック: ${error.toString()}`);
+      }
+    }
+    
+    // 従来のGAS版同期
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     
-    const params = {
-      date_from: Utils.formatDate(sevenDaysAgo),
-      date_to: Utils.formatDate(new Date(new Date().setDate(new Date().getDate() + 7)))
-    };
+    const sevenDaysLater = new Date();
+    sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
     
-    return this.syncReservationsWithTimeLimit(params, 240000); // 4分制限
+    return this.syncReservationsWithTimeLimit();
   }
   
   /**
-   * 週次同期（過去30日分）
+   * 週次同期（過去30日～今後1ヶ月分）
+   * PHP経由版を優先的に使用
    */
   weeklySync() {
     Logger.log('=== 週次同期開始 ===');
     
+    // PHP経由での同期を試みる
+    if (this.phpSyncEndpoint) {
+      try {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const oneMonthLater = new Date();
+        oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
+        
+        const result = this.syncReservationsViaPhp({
+          date_from: Utils.formatDate(thirtyDaysAgo),
+          date_to: Utils.formatDate(oneMonthLater)
+        });
+        
+        Logger.log('PHP経由での週次同期完了');
+        return result;
+        
+      } catch (error) {
+        Logger.log(`PHP経由の同期に失敗、従来の方法にフォールバック: ${error.toString()}`);
+      }
+    }
+    
+    // 従来のGAS版同期
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    const params = {
-      date_from: Utils.formatDate(thirtyDaysAgo),
-      date_to: Utils.formatDate(new Date(new Date().setMonth(new Date().getMonth() + 1)))
-    };
+    const oneMonthLater = new Date();
+    oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
     
-    return this.syncReservationsWithTimeLimit(params, 300000); // 5分制限
+    const cache = CacheService.getScriptCache();
+    cache.put('reservation_sync_status', JSON.stringify({
+      completed: false,
+      lastOffset: 0,
+      dateFrom: Utils.formatDate(thirtyDaysAgo),
+      dateTo: Utils.formatDate(oneMonthLater),
+      totalSynced: 0
+    }), 3600);
+    
+    return this.syncReservationsWithTimeLimit();
   }
   
   /**
-   * 月次フル同期（3ヶ月分）
+   * 月次完全同期（今日～3ヶ月後）
+   * PHP経由版を優先的に使用
    */
   monthlyFullSync() {
-    Logger.log('=== 月次フル同期開始 ===');
+    Logger.log('=== 月次完全同期開始 ===');
     
-    const params = {
-      date_from: Utils.getToday(),
-      date_to: Utils.formatDate(new Date(new Date().setMonth(new Date().getMonth() + 3)))
-    };
+    // PHP経由での同期を試みる
+    if (this.phpSyncEndpoint) {
+      try {
+        const today = new Date();
+        const threeMonthsLater = new Date();
+        threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
+        
+        const result = this.syncReservationsViaPhp({
+          date_from: Utils.formatDate(today),
+          date_to: Utils.formatDate(threeMonthsLater)
+        });
+        
+        Logger.log('PHP経由での月次同期完了');
+        return result;
+        
+      } catch (error) {
+        Logger.log(`PHP経由の同期に失敗、従来の方法にフォールバック: ${error.toString()}`);
+      }
+    }
     
-    return this.syncReservationsWithTimeLimit(params, 300000); // 5分制限
+    // 従来のGAS版同期
+    const today = new Date();
+    const threeMonthsLater = new Date();
+    threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
+    
+    const cache = CacheService.getScriptCache();
+    cache.put('reservation_sync_status', JSON.stringify({
+      completed: false,
+      lastOffset: 0,
+      dateFrom: Utils.formatDate(today),
+      dateTo: Utils.formatDate(threeMonthsLater),
+      totalSynced: 0
+    }), 3600);
+    
+    return this.syncReservationsWithTimeLimit(300000); // 5分
   }
   
   /**
-   * 更新された予約情報を同期
+   * 更新された予約情報のみ同期
    */
-  syncUpdatedReservations(date = null) {
+  syncUpdatedReservations(lastSyncTime) {
     return Utils.executeWithErrorHandling(() => {
-      if (!date) {
-        // デフォルトは今日の日付
-        date = Utils.getToday();
-      }
+      Logger.log(`更新予約同期: ${lastSyncTime}以降の変更を取得`);
       
-      Logger.log(`${date}以降に更新された予約情報を同期します`);
-      
-      // APIから更新された予約情報を取得
       const response = this.apiClient.get(
-        this.apiClient.config.endpoints.updatedReservations,
+        this.apiClient.config.endpoints.reservations,
         {
-          clinic_id: Config.getClinicId(),
-          date: date
+          updated_after: lastSyncTime,
+          limit: 1000
         }
       );
       
@@ -448,153 +602,37 @@ class ReservationService {
   }
   
   /**
-   * 予約に基づいてチケットを消費
-   * @private
+   * 予約をキャンセル
    */
-  _consumeTicketForReservation(reservationData) {
-    try {
-      // 患者情報を取得
-      const visitorService = new VisitorService();
-      const visitor = visitorService.getVisitorById(reservationData.visitor_id);
+  cancelReservation(reservationId) {
+    return Utils.executeWithErrorHandling(() => {
+      Logger.log(`予約をキャンセルします: ID=${reservationId}`);
       
-      if (!visitor) {
-        return { consumed: false, reason: '患者情報が見つかりません' };
+      // キャンセル前に予約情報を取得
+      const reservation = this.getReservationById(reservationId);
+      
+      // APIでキャンセル
+      const response = this.apiClient.delete(
+        this.apiClient.config.endpoints.reservationById,
+        {
+          id: reservationId
+        }
+      );
+      
+      if (!response.success) {
+        throw new Error('予約のキャンセルに失敗しました');
       }
       
-      // 会社所属を確認
-      const companyVisitorSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(Config.getSheetNames().companyVisitors);
-      if (!companyVisitorSheet) {
-        return { consumed: false, reason: '会社管理シートが見つかりません' };
+      // スプレッドシートのステータスを更新
+      this._updateReservationStatus(reservationId, 'キャンセル');
+      
+      // チケットを返却
+      if (reservation && reservation.used_ticket_id) {
+        this._restoreTicketByReservation(reservation);
       }
       
-      const companyData = this._getVisitorCompany(companyVisitorSheet, reservationData.visitor_id);
-      if (!companyData) {
-        return { consumed: false, reason: '会社所属なし' };
-      }
-      
-      // メニュー情報を取得
-      const menuData = this._getMenuInfo(reservationData.menu_id);
-      if (!menuData || !menuData.ticketType) {
-        return { consumed: false, reason: 'チケット不要のメニュー' };
-      }
-      
-      // チケット消費
-      const ticketService = new TicketManagementService();
-      const ticketData = {
-        companyId: companyData.companyId,
-        visitorId: reservationData.visitor_id,
-        menuId: reservationData.menu_id,
-        menuName: menuData.name,
-        ticketType: menuData.ticketType,
-        reason: `予約ID: ${reservationData.reservation_id || 'NEW'} - 自動消費`
-      };
-      
-      const result = ticketService.useCompanyTickets(ticketData);
-      
-      return {
-        consumed: result.success,
-        companyId: companyData.companyId,
-        ticketType: menuData.ticketType,
-        alert: result.alert,
-        ticketData: ticketData
-      };
-      
-    } catch (error) {
-      Logger.log('チケット自動消費エラー: ' + error.toString());
-      return { consumed: false, reason: error.toString() };
-    }
-  }
-  
-  /**
-   * チケットを復元（予約作成失敗時）
-   * @private
-   */
-  _restoreTicket(ticketResult) {
-    try {
-      const ticketService = new TicketManagementService();
-      const restoreData = {
-        companyId: ticketResult.companyId,
-        type: 'manual',
-        reason: '予約作成失敗によるチケット復元'
-      };
-      
-      // チケットタイプに応じて復元数を設定
-      switch(ticketResult.ticketType) {
-        case '幹細胞':
-          restoreData.stemCell = 1;
-          restoreData.treatment = 0;
-          restoreData.infusion = 0;
-          break;
-        case '施術':
-          restoreData.stemCell = 0;
-          restoreData.treatment = 1;
-          restoreData.infusion = 0;
-          break;
-        case '点滴':
-          restoreData.stemCell = 0;
-          restoreData.treatment = 0;
-          restoreData.infusion = 1;
-          break;
-      }
-      
-      ticketService.addCompanyTickets(restoreData);
-      Logger.log('チケットを復元しました');
-      
-    } catch (error) {
-      Logger.log('チケット復元エラー: ' + error.toString());
-    }
-  }
-  
-  /**
-   * 患者の会社情報を取得
-   * @private
-   */
-  _getVisitorCompany(sheet, visitorId) {
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const visitorIdIndex = headers.indexOf('visitor_id');
-    const companyIdIndex = headers.indexOf('会社ID');
-    const companyNameIndex = headers.indexOf('会社名');
-    const memberTypeIndex = headers.indexOf('会員種別');
-    const isPublicIndex = headers.indexOf('公開設定');
-    
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][visitorIdIndex] === visitorId) {
-        return {
-          companyId: data[i][companyIdIndex],
-          companyName: data[i][companyNameIndex] || '',
-          memberType: data[i][memberTypeIndex] || '',
-          isPublic: data[i][isPublicIndex] === true || data[i][isPublicIndex] === 'TRUE' || data[i][isPublicIndex] === '公開'
-        };
-      }
-    }
-    return null;
-  }
-  
-  /**
-   * メニュー情報を取得
-   * @private
-   */
-  _getMenuInfo(menuId) {
-    const menuSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(Config.getSheetNames().menus);
-    if (!menuSheet) return null;
-    
-    const data = menuSheet.getDataRange().getValues();
-    const headers = data[0];
-    const menuIdIndex = headers.indexOf('menu_id');
-    const nameIndex = headers.indexOf('メニュー名');
-    const ticketTypeIndex = headers.indexOf('チケットタイプ');
-    
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][menuIdIndex] === menuId) {
-        return {
-          id: menuId,
-          name: data[i][nameIndex] || '',
-          ticketType: data[i][ticketTypeIndex] || ''
-        };
-      }
-    }
-    return null;
+      return response.data;
+    }, '予約キャンセル');
   }
   
   /**
@@ -748,116 +786,50 @@ class ReservationService {
    */
   getReservationsByPatientId(patientId, params = {}) {
     return Utils.executeWithErrorHandling(() => {
-      Logger.log(`LINE Bot用：患者ID ${patientId} の予約情報を取得します`);
+      Logger.log(`患者ID ${patientId} の予約情報を取得します`);
       
-      // 予約情報シートから直接データを取得
-      const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(Config.getSheetNames().reservations);
-      const data = sheet.getDataRange().getValues();
+      const sheet = this.spreadsheetManager.getSheetData(this.sheetName);
       
-      if (data.length <= 1) {
-        return []; // ヘッダーのみの場合
-      }
-      
-      const headers = data[0];
-      const reservations = [];
-      
-      // ヘッダーのインデックスを取得
-      const statusIndex = headers.indexOf('ステータス');
-      const reservationIdIndex = headers.indexOf('reservation_id');
-      const patientIdIndex = headers.indexOf('patient_id');
-      const patientNameIndex = headers.indexOf('患者名');
-      const patientTypeIndex = headers.indexOf('患者属性');
-      const visitorIdIndex = headers.indexOf('visitor_id');
-      const visitorNameIndex = headers.indexOf('予約者');
-      const dateIndex = headers.indexOf('予約日');
-      const timeIndex = headers.indexOf('予約時間');
-      const endTimeIndex = headers.indexOf('終了時間');
-      const menuIndex = headers.indexOf('メニュー');
-      const staffIndex = headers.indexOf('担当スタッフ');
-      const notesIndex = headers.indexOf('メモ');
-      const createdAtIndex = headers.indexOf('作成日時');
-      const updatedAtIndex = headers.indexOf('更新日時');
-      const companyIdIndex = headers.indexOf('会社ID');
-      const companyNameIndex = headers.indexOf('会社名');
-      const roomIdIndex = headers.indexOf('部屋ID');
-      const roomNameIndex = headers.indexOf('部屋名');
-      // visitor_idでフィルタリングしてデータを収集
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][visitorIdIndex] === patientId) {
-          const status = data[i][statusIndex];
-          const reservationDate = data[i][dateIndex];
-          
-          // ステータスフィルタリング（日本語のまま処理）
-          //if (params.statusFilter && params.statusFilter.length > 0) {
-          //  if (!params.statusFilter.includes(status)) {
-          //    continue;
-          //  }
-          //}
-          // 指定された形式でデータを追加
-          const reservationObj = {
-            'history_id': data[i][reservationIdIndex] || '',
-            'reservename': data[i][menuIndex] || '',
-            'reservedate': Utils.formatDate(new Date(reservationDate)),
-            'reservetime': data[i][timeIndex] || '',
-            'reservestatus': status || '',
-            'reservepatient': data[i][visitorNameIndex] || '',
-            'patient_id': data[i][patientIdIndex] || '',
-            'patient_name': data[i][patientNameIndex] || '',
-            'patient_type': data[i][patientTypeIndex] || '',
-            'visitor_id': data[i][visitorIdIndex] || '',
-            'end_time': data[i][endTimeIndex] || '',
-            'staff': data[i][staffIndex] || '',
-            'notes': data[i][notesIndex] || '',
-            'created_at': data[i][createdAtIndex] || '',
-            'updated_at': data[i][updatedAtIndex] || '',
-            'company_id': data[i][companyIdIndex] || '',
-            'company_name': data[i][companyNameIndex] || '',
-            'room_id': data[i][roomIdIndex] || '',
-            'room_name': data[i][roomNameIndex] || ''
-          };
-          reservations.push(reservationObj);
-          Logger.log(`getReservationsByPatientId: 予約情報取得成功: ${reservationObj.history_id}, ${reservationObj.reservename}, ${reservationObj.reservedate}, ${reservationObj.reservetime}, ${reservationObj.reservestatus}, ${reservationObj.reservepatient}, ${reservationObj.patient_id}, ${reservationObj.patient_name}, ${reservationObj.patient_type}, ${reservationObj.visitor_id}, ${reservationObj.end_time}, ${reservationObj.staff}, ${reservationObj.notes}, ${reservationObj.created_at}, ${reservationObj.updated_at}, ${reservationObj.company_id}, ${reservationObj.company_name}, ${reservationObj.room_id}, ${reservationObj.room_name}`);
-        }
-      }
-      
-      // ソート
-      if (params.sortBy === 'date_desc') {
-        reservations.sort((a, b) => {
-          const dateA = new Date(a.reservedate + ' ' + a.reservetime);
-          const dateB = new Date(b.reservedate + ' ' + b.reservetime);
-          return dateB - dateA;
-        });
-      } else {
-        // デフォルトは日付昇順
-        reservations.sort((a, b) => {
-          const dateA = new Date(a.reservedate + ' ' + a.reservetime);
-          const dateB = new Date(b.reservedate + ' ' + b.reservetime);
-          return dateA - dateB;
-        });
-      }
-      
-      return reservations;
-    }, 'LINE Bot患者予約取得');
-  }
-  
-  /**
-   * 予約枠を作成
-   */
-  createVacancy(vacancyData) {
-    return Utils.executeWithErrorHandling(() => {
-      Logger.log('予約枠を作成します');
-      
-      const response = this.apiClient.post(
-        this.apiClient.config.endpoints.createVacancy,
-        vacancyData
+      // visitor_idまたはpatient_idで検索
+      const patientReservations = sheet.filter(row => 
+        row['visitor_id'] === patientId || row['patient_id'] === patientId
       );
       
-      if (!response.success || !response.data) {
-        throw new Error('予約枠の作成に失敗しました');
+      // 期間でフィルタリング
+      let filteredReservations = patientReservations;
+      
+      if (params.date_from) {
+        const fromDate = new Date(params.date_from);
+        filteredReservations = filteredReservations.filter(row => {
+          const reservationDate = new Date(row['予約日']);
+          return reservationDate >= fromDate;
+        });
       }
       
-      return response.data;
-    }, '予約枠作成');
+      if (params.date_to) {
+        const toDate = new Date(params.date_to);
+        filteredReservations = filteredReservations.filter(row => {
+          const reservationDate = new Date(row['予約日']);
+          return reservationDate <= toDate;
+        });
+      }
+      
+      // ステータスでフィルタリング
+      if (params.status) {
+        filteredReservations = filteredReservations.filter(row => 
+          row['ステータス'] === params.status
+        );
+      }
+      
+      // 予約日時でソート（新しい順）
+      filteredReservations.sort((a, b) => {
+        const dateA = new Date(a['予約日'] + ' ' + a['予約時間']);
+        const dateB = new Date(b['予約日'] + ' ' + b['予約時間']);
+        return dateB - dateA;
+      });
+      
+      return filteredReservations;
+    }, '患者別予約情報取得');
   }
   
   /**
@@ -866,137 +838,95 @@ class ReservationService {
   _writeReservationsToSheet(reservations) {
     const sheet = Utils.getOrCreateSheet(this.sheetName);
     
-    // データをクリア（ヘッダーは残す）
-    Utils.clearSheet(sheet, true);
-    
-    if (reservations.length === 0) {
-      Logger.log('書き込む予約データがありません');
-      return;
+    // ヘッダーが存在しない場合は作成
+    if (sheet.getLastRow() === 0) {
+      this._createReservationHeaders(sheet);
     }
     
-    // データを配列に変換
-    const data = reservations.map(reservation => this._reservationToRow(reservation));
+    // 既存データをクリア（ヘッダー以外）
+    if (sheet.getLastRow() > 1) {
+      sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).clear();
+    }
     
-    // シートに書き込み
-    Utils.writeDataToSheet(sheet, data);
+    // 予約データを行形式に変換
+    const rows = reservations.map(reservation => this._reservationToRow(reservation));
     
-    Logger.log(`${reservations.length}件の予約情報をシートに書き込みました`);
+    // 一括書き込み
+    if (rows.length > 0) {
+      sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+    }
+    
+    Logger.log(`${rows.length}件の予約情報を書き込みました`);
   }
   
   /**
-   * 予約情報をバッチで効率的に書き込み
+   * 予約情報をバッチでスプレッドシートに書き込み（高速版）
    */
   _writeReservationsToSheetBatch(reservations) {
     const sheet = Utils.getOrCreateSheet(this.sheetName);
+    const batchSize = 500; // バッチサイズ
     
-    if (reservations.length === 0) {
-      Logger.log('書き込む予約データがありません');
-      return;
+    // ヘッダーが存在しない場合は作成
+    if (sheet.getLastRow() === 0) {
+      this._createReservationHeaders(sheet);
     }
     
-    // 既存データを取得
-    const lastRow = sheet.getLastRow();
-    const existingData = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues() : [];
+    // 既存データをクリア（ヘッダー以外）
+    if (sheet.getLastRow() > 1) {
+      sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).clear();
+    }
     
-    // reservation_idでインデックスを作成
-    const existingMap = new Map();
-    existingData.forEach((row, index) => {
-      if (row[0]) { // reservation_id
-        existingMap.set(row[0], index + 2); // 行番号（1-indexed + ヘッダー行）
+    // バッチ処理で書き込み
+    for (let i = 0; i < reservations.length; i += batchSize) {
+      const batch = reservations.slice(i, i + batchSize);
+      const rows = batch.map(reservation => this._reservationToRow(reservation));
+      
+      if (rows.length > 0) {
+        const startRow = 2 + i;
+        sheet.getRange(startRow, 1, rows.length, rows[0].length).setValues(rows);
       }
-    });
-    
-    // 新規・更新データを分類
-    const newReservations = [];
-    const updateOperations = [];
-    
-    reservations.forEach(reservation => {
-      const rowData = this._reservationToRow(reservation);
-      const existingRowNum = existingMap.get(reservation.reservation_id);
       
-      if (existingRowNum) {
-        // 更新
-        updateOperations.push({
-          row: existingRowNum,
-          data: rowData
-        });
-      } else {
-        // 新規
-        newReservations.push(rowData);
+      Logger.log(`バッチ書き込み: ${i + rows.length}/${reservations.length}件完了`);
+      
+      // GASの処理制限を考慮して少し待機
+      if (i + batchSize < reservations.length) {
+        Utilities.sleep(100);
       }
-    });
-    
-    // 更新を一括で実行
-    if (updateOperations.length > 0) {
-      // 連続した行をグループ化して一括更新
-      updateOperations.sort((a, b) => a.row - b.row);
-      
-      let currentGroup = [];
-      let startRow = updateOperations[0].row;
-      
-      updateOperations.forEach((op, index) => {
-        if (currentGroup.length === 0 || op.row === startRow + currentGroup.length) {
-          currentGroup.push(op.data);
-        } else {
-          // グループを書き込み
-          if (currentGroup.length > 0) {
-            sheet.getRange(startRow, 1, currentGroup.length, currentGroup[0].length).setValues(currentGroup);
-          }
-          // 新しいグループを開始
-          currentGroup = [op.data];
-          startRow = op.row;
-        }
-        
-        // 最後の要素の場合
-        if (index === updateOperations.length - 1 && currentGroup.length > 0) {
-          sheet.getRange(startRow, 1, currentGroup.length, currentGroup[0].length).setValues(currentGroup);
-        }
-      });
-      
-      Logger.log(`${updateOperations.length}件の予約を更新しました`);
     }
     
-    // 新規データを一括追加
-    if (newReservations.length > 0) {
-      const startRow = sheet.getLastRow() + 1;
-      sheet.getRange(startRow, 1, newReservations.length, newReservations[0].length).setValues(newReservations);
-      Logger.log(`${newReservations.length}件の新規予約を追加しました`);
-    }
+    Logger.log(`合計${reservations.length}件の予約情報を書き込みました`);
   }
   
   /**
-   * 予約情報をマージして更新
+   * 予約情報をマージ（更新）
    */
   _mergeReservationsToSheet(reservations) {
     const sheet = Utils.getOrCreateSheet(this.sheetName);
     const existingData = sheet.getDataRange().getValues();
+    const headers = existingData[0];
+    const reservationIdIndex = headers.indexOf('reservation_id');
     
-    if (existingData.length <= 1) {
-      // 既存データがない場合は新規書き込み
-      this._writeReservationsToSheet(reservations);
-      return;
-    }
-    
-    // reservation_idをキーとして既存データをマップ化
+    // 既存データをMapに変換（高速検索用）
     const existingMap = new Map();
     for (let i = 1; i < existingData.length; i++) {
-      const reservationId = existingData[i][0];
+      const reservationId = existingData[i][reservationIdIndex];
       if (reservationId) {
         existingMap.set(reservationId, i);
       }
     }
     
-    // 更新データを処理
+    // 更新・追加処理
     reservations.forEach(reservation => {
-      const rowIndex = existingMap.get(reservation.reservation_id);
-      if (rowIndex) {
+      const reservationId = reservation.id || reservation.reservation_id;
+      const rowData = this._reservationToRow(reservation);
+      
+      if (existingMap.has(reservationId)) {
         // 既存レコードを更新
-        const rowData = this._reservationToRow(reservation);
-        const range = sheet.getRange(rowIndex + 1, 1, 1, rowData.length);
-        range.setValues([rowData]);
+        const rowIndex = existingMap.get(reservationId);
+        sheet.getRange(rowIndex + 1, 1, 1, rowData.length).setValues([rowData]);
       } else {
         // 新規レコードを追加
-        this._appendReservationToSheet(reservation);
+        sheet.appendRow(rowData);
       }
     });
     
@@ -1149,149 +1079,137 @@ class ReservationService {
    */
   _getStatusLabel(status) {
     const statusMap = {
-      'reserved': '予約済',
-      'confirmed': '確定',
-      'arrived': '来院',
-      'in_progress': '施術中',
+      'reserved': '予約済み',
+      'confirmed': '確認済み',
+      'arrived': '来院済み',
+      'in_treatment': '施術中',
       'completed': '完了',
       'cancelled': 'キャンセル',
       'no_show': '無断キャンセル'
     };
     
-    return statusMap[status] || status || '';
+    return statusMap[status] || status || '予約済み';
   }
   
   /**
-   * 予約仮押さえを削除
+   * 予約ステータスを更新
    */
-  deleteProcessingReservation(reservationId) {
-    return Utils.executeWithErrorHandling(() => {
-      Logger.log(`予約仮押さえを削除: ID=${reservationId}`);
-      
-      const response = this.apiClient.delete(
-        this.apiClient.config.endpoints.deleteProcessingReservation.replace('{id}', reservationId)
-      );
-      
-      if (!response.success) {
-        throw new Error('予約仮押さえの削除に失敗しました');
+  _updateReservationStatus(reservationId, newStatus) {
+    const sheet = this.spreadsheetManager.getSheet(this.sheetName);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    const idIndex = headers.indexOf('reservation_id');
+    const statusIndex = headers.indexOf('ステータス');
+    const updatedAtIndex = headers.indexOf('更新日時');
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][idIndex] === reservationId) {
+        sheet.getRange(i + 1, statusIndex + 1).setValue(newStatus);
+        sheet.getRange(i + 1, updatedAtIndex + 1).setValue(Utils.formatDateTime(new Date()));
+        break;
       }
-      
-      Logger.log('予約仮押さえを削除しました');
-      return true;
-    }, '予約仮押さえ削除');
-  }
-  
-  /**
-   * 会社別会員向け通知を送信
-   * @private
-   */
-  _sendCompanyMemberNotification(reservation, bookerId) {
-    try {
-      // 非同期で通知を送信（エラーがあっても予約作成処理は継続）
-      const notificationService = new CompanyMemberNotificationService();
-      notificationService.sendReservationConfirmation(reservation, bookerId)
-        .catch(error => {
-          Logger.log(`通知送信エラー（予約作成は成功）: ${error.toString()}`);
-        });
-    } catch (error) {
-      Logger.log(`通知サービス初期化エラー: ${error.toString()}`);
     }
   }
   
   /**
-   * 日付範囲で予約を取得
-   * @param {Date} startDate 開始日
-   * @param {Date} endDate 終了日
-   * @return {Array} 予約リスト
+   * 予約ヘッダーを作成
    */
-  async getReservationsByDateRange(startDate, endDate) {
-    try {
-      const sheet = Utils.getOrCreateSheet(this.sheetName);
-      const data = sheet.getDataRange().getValues();
-      
-      if (data.length <= 1) {
-        return [];
-      }
-      
-      const headers = data[0];
-      const dateIndex = headers.indexOf('予約日');
-      
-      const reservations = [];
-      for (let i = 1; i < data.length; i++) {
-        const reservationDate = new Date(data[i][dateIndex]);
-        if (reservationDate >= startDate && reservationDate <= endDate) {
-          // 予約オブジェクトを再構築
-          const reservation = {
-            id: data[i][headers.indexOf('reservation_id')],
-            visitor_id: data[i][headers.indexOf('visitor_id')],
-            visitor_name: data[i][headers.indexOf('予約者')],
-            date: data[i][dateIndex],
-            start_time: data[i][headers.indexOf('予約時間')],
-            end_time: data[i][headers.indexOf('終了時間')],
-            menu_name: data[i][headers.indexOf('メニュー')],
-            status: data[i][headers.indexOf('ステータス')],
-            booked_by: data[i][headers.indexOf('予約者')] || data[i][headers.indexOf('visitor_id')]
-          };
-          reservations.push(reservation);
-        }
-      }
-      
-      return reservations;
-    } catch (error) {
-      Logger.log(`予約取得エラー: ${error.toString()}`);
-      return [];
+  _createReservationHeaders(sheet) {
+    const headers = [
+      'reservation_id',
+      'patient_id',
+      '患者名',
+      '患者属性',
+      'visitor_id',
+      '予約者',
+      '予約日',
+      '予約時間',
+      '終了時間',
+      'メニュー',
+      '担当スタッフ',
+      'ステータス',
+      'メモ',
+      '作成日時',
+      '更新日時',
+      '会社ID',
+      '会社名',
+      '会員種別',
+      '公開設定',
+      '部屋ID',
+      '部屋名'
+    ];
+    
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    
+    // ヘッダーのスタイリング
+    const headerRange = sheet.getRange(1, 1, 1, headers.length);
+    headerRange.setBackground('#f0f0f0');
+    headerRange.setFontWeight('bold');
+    
+    // 列幅の自動調整
+    for (let i = 1; i <= headers.length; i++) {
+      sheet.autoResizeColumn(i);
     }
   }
   
   /**
-   * 完了した予約を取得
-   * @param {Date} targetTime 対象時刻
-   * @return {Array} 完了予約リスト
+   * 来院者の会社情報を取得
    */
-  async getCompletedReservations(targetTime) {
-    try {
-      const sheet = Utils.getOrCreateSheet(this.sheetName);
-      const data = sheet.getDataRange().getValues();
-      
-      if (data.length <= 1) {
-        return [];
+  _getVisitorCompany(companyVisitorSheet, visitorId) {
+    const data = companyVisitorSheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    const visitorIdIndex = headers.indexOf('visitor_id');
+    const companyIdIndex = headers.indexOf('会社ID');
+    const companyNameIndex = headers.indexOf('会社名');
+    const memberTypeIndex = headers.indexOf('会員種別');
+    const isPublicIndex = headers.indexOf('公開設定');
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][visitorIdIndex] === visitorId) {
+        return {
+          companyId: data[i][companyIdIndex],
+          companyName: data[i][companyNameIndex],
+          memberType: data[i][memberTypeIndex],
+          isPublic: data[i][isPublicIndex] === '公開'
+        };
       }
-      
-      const headers = data[0];
-      const statusIndex = headers.indexOf('ステータス');
-      const endTimeIndex = headers.indexOf('終了時間');
-      const dateIndex = headers.indexOf('予約日');
-      
-      const reservations = [];
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][statusIndex] === '完了' || data[i][statusIndex] === 'completed') {
-          const endTimeStr = data[i][endTimeIndex];
-          const dateStr = data[i][dateIndex];
-          
-          if (endTimeStr && dateStr) {
-            const endDateTime = new Date(`${dateStr} ${endTimeStr}`);
-            if (endDateTime <= targetTime) {
-              // 予約オブジェクトを再構築
-              const reservation = {
-                id: data[i][headers.indexOf('reservation_id')],
-                visitor_id: data[i][headers.indexOf('visitor_id')],
-                visitor_name: data[i][headers.indexOf('予約者')],
-                date: dateStr,
-                end_time: endTimeStr,
-                menu_name: data[i][headers.indexOf('メニュー')],
-                status: data[i][statusIndex],
-                booked_by: data[i][headers.indexOf('予約者')] || data[i][headers.indexOf('visitor_id')]
-              };
-              reservations.push(reservation);
-            }
-          }
-        }
-      }
-      
-      return reservations;
-    } catch (error) {
-      Logger.log(`完了予約取得エラー: ${error.toString()}`);
-      return [];
     }
+    
+    return null;
+  }
+  
+  /**
+   * チケット自動消費処理
+   */
+  _consumeTicketForReservation(reservationData) {
+    // TODO: チケット管理サービスと連携
+    return {
+      consumed: false,
+      ticketId: null,
+      alert: null
+    };
+  }
+  
+  /**
+   * チケット返却処理
+   */
+  _restoreTicket(ticketResult) {
+    // TODO: チケット管理サービスと連携
+  }
+  
+  /**
+   * 予約情報からチケット返却
+   */
+  _restoreTicketByReservation(reservation) {
+    // TODO: チケット管理サービスと連携
+  }
+  
+  /**
+   * 会社別会員向け通知
+   */
+  _sendCompanyMemberNotification(reservation, bookedBy) {
+    // TODO: 通知サービスと連携
   }
 }

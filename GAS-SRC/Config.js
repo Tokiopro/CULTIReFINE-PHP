@@ -138,4 +138,15 @@ class Config {
   static getDateTimeFormat() {
     return 'yyyy-MM-dd HH:mm:ss';
   }
+  
+  static getPHPSyncEndpoint() {
+    // PHP側の同期エンドポイント
+    return 'https://cultirefine.com/reserve/api-bridge.php';
+  }
+  
+  static getAdminEmail() {
+    // 管理者メールアドレス（同期エラー通知用）
+    const scriptProperties = PropertiesService.getScriptProperties();
+    return scriptProperties.getProperty('ADMIN_EMAIL') || '';
+  }
 }

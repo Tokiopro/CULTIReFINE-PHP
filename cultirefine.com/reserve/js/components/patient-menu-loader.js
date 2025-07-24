@@ -48,6 +48,17 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
         let menuCategories = data.categories || data.menu_categories || data.menus;
         let hasMenus = false;
         
+        // デバッグ: メニューデータの構造を詳細に確認
+        if (window.DEBUG_MODE) {
+            console.log('Menu data structure check:');
+            console.log('- data.categories:', data.categories);
+            console.log('- data.menu_categories:', data.menu_categories);
+            console.log('- data.menus:', data.menus);
+            console.log('- Selected menuCategories:', menuCategories);
+            console.log('- Type of menuCategories:', typeof menuCategories);
+            console.log('- Is Array?:', Array.isArray(menuCategories));
+        }
+        
         // メニューの存在チェック（改善版）
         if (menuCategories) {
             if (Array.isArray(menuCategories)) {
@@ -58,6 +69,13 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
                 if (menuCategories.length > 0) {
                     // 最初の要素がカテゴリ形式かメニュー形式かを判定
                     const firstItem = menuCategories[0];
+                    if (window.DEBUG_MODE) {
+                        console.log('First menu item structure:', firstItem);
+                        console.log('Has menus property?:', !!firstItem.menus);
+                        console.log('Has menu_id?:', !!firstItem.menu_id);
+                        console.log('Has name?:', !!firstItem.name);
+                    }
+                    
                     if (firstItem.menus && Array.isArray(firstItem.menus)) {
                         // カテゴリ形式の場合
                         hasMenus = menuCategories.some(cat => {
@@ -67,9 +85,13 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
                         });
                     } else if (firstItem.menu_id || firstItem.name) {
                         // フラットなメニュー配列の場合
-                        hasMenus = menuCategories.some(menu => 
-                            menu.should_display !== false && menu.is_active !== false
-                        );
+                        // should_displayやis_activeが存在しない場合も考慮
+                        hasMenus = true; // メニューがあれば基本的に表示
+                        
+                        if (window.DEBUG_MODE) {
+                            console.log('Flat menu array detected. Setting hasMenus to true.');
+                            console.log('Total menus in array:', menuCategories.length);
+                        }
                     }
                 }
             } else if (typeof menuCategories === 'object') {
@@ -90,6 +112,20 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
             console.log('Full API response:', result);
             console.log('Data object:', data);
             console.log('Categories found:', menuCategories);
+            console.log('Has menus boolean:', hasMenus);
+            
+            // メニューがあるのに表示されない場合のデバッグ
+            if (menuCategories && Array.isArray(menuCategories) && menuCategories.length > 0 && !hasMenus) {
+                console.warn('Menus found but hasMenus is false. Checking menu conditions:');
+                menuCategories.forEach((menu, index) => {
+                    console.log(`Menu ${index}:`, {
+                        name: menu.name || menu.menu_name,
+                        should_display: menu.should_display,
+                        is_active: menu.is_active,
+                        will_display: menu.should_display !== false && menu.is_active !== false
+                    });
+                });
+            }
         }
         
         if (window.DEBUG_MODE) {
@@ -199,10 +235,19 @@ function createPatientInfoElement(data) {
 function createMenuAccordion(menuCategories, recommendedCategory, patientId, onSelectCallback) {
     const accordionDiv = createElement('div', 'space-y-2');
     
+    if (window.DEBUG_MODE) {
+        console.log('createMenuAccordion called with:');
+        console.log('- menuCategories type:', typeof menuCategories);
+        console.log('- menuCategories isArray:', Array.isArray(menuCategories));
+        console.log('- recommendedCategory:', recommendedCategory);
+        console.log('- patientId:', patientId);
+    }
+    
     // 新形式のcategories配列の場合
     if (Array.isArray(menuCategories)) {
         if (window.DEBUG_MODE) {
             console.log('Processing categories array:', menuCategories);
+            console.log('Array length:', menuCategories.length);
         }
         
         // フラットなメニュー配列かカテゴリ配列かを判定
@@ -230,40 +275,59 @@ function createMenuAccordion(menuCategories, recommendedCategory, patientId, onS
                 });
             } else if (firstItem.menu_id || firstItem.name) {
                 // フラットなメニュー配列の場合 - 階層構造を作成
-                const hierarchicalMenus = createHierarchicalStructure(menuCategories);
+                const categorizedMenus = createHierarchicalStructure(menuCategories);
                 
-                // チケット付与メニューと通常メニューで分類
-                const ticketMenusCategory = {
-                    category_id: 'ticket-menus',
-                    category_name: 'チケット付与メニュー',
-                    menus: []
+                // カテゴリラベルの定義
+                const categoryLabels = {
+                    'first_time_menus': '初回メニュー',
+                    'repeat_menus': '2回目以降メニュー'
                 };
                 
-                const regularMenusCategory = {
-                    category_id: 'regular-menus',
-                    category_name: '通常メニュー',
-                    menus: []
+                const subCategoryLabels = {
+                    'regular': '通常メニュー',
+                    'ticket_based': 'チケット付与メニュー'
                 };
                 
-                // メニューを分類
-                hierarchicalMenus.forEach(menu => {
-                    if (menu.is_ticket_menu) {
-                        ticketMenusCategory.menus.push(menu);
-                    } else {
-                        regularMenusCategory.menus.push(menu);
-                    }
+                // 推奨カテゴリを判定（初回メニューがある場合は初回を推奨）
+                const hasFirstTimeMenus = 
+                    categorizedMenus.first_time_menus.regular.length > 0 || 
+                    categorizedMenus.first_time_menus.ticket_based.length > 0;
+                const recommendedCategory = hasFirstTimeMenus ? 'first_time_menus' : 'repeat_menus';
+                
+                if (window.DEBUG_MODE) {
+                    console.log('Categorized menus structure:', categorizedMenus);
+                    console.log('Has first time menus:', hasFirstTimeMenus);
+                    console.log('Recommended category:', recommendedCategory);
+                }
+                
+                // 推奨カテゴリを先に表示
+                const categoryOrder = recommendedCategory === 'first_time_menus' 
+                    ? ['first_time_menus', 'repeat_menus']
+                    : ['repeat_menus', 'first_time_menus'];
+                
+                categoryOrder.forEach(mainCategoryKey => {
+                    const mainCategory = categorizedMenus[mainCategoryKey];
+                    const mainCategoryLabel = categoryLabels[mainCategoryKey] + 
+                        (mainCategoryKey === recommendedCategory ? ' （推奨）' : '');
+                    
+                    // サブカテゴリごとにアコーディオンを作成（空のカテゴリも表示）
+                    ['regular', 'ticket_based'].forEach(subCategoryKey => {
+                        const menus = mainCategory[subCategoryKey] || [];
+                        
+                        if (window.DEBUG_MODE) {
+                            console.log(`Creating accordion for ${mainCategoryKey}-${subCategoryKey}:`, menus.length, 'menus');
+                        }
+                        
+                        const categoryData = {
+                            category_id: `${mainCategoryKey}-${subCategoryKey}`,
+                            category_name: `${mainCategoryLabel} - ${subCategoryLabels[subCategoryKey]}`,
+                            menus: menus
+                        };
+                        
+                        const categoryDiv = createCategoryAccordion(categoryData, patientId, onSelectCallback);
+                        accordionDiv.appendChild(categoryDiv);
+                    });
                 });
-                
-                // カテゴリを表示（メニューがある場合のみ）
-                if (ticketMenusCategory.menus.length > 0) {
-                    const ticketDiv = createCategoryAccordion(ticketMenusCategory, patientId, onSelectCallback);
-                    accordionDiv.appendChild(ticketDiv);
-                }
-                
-                if (regularMenusCategory.menus.length > 0) {
-                    const regularDiv = createCategoryAccordion(regularMenusCategory, patientId, onSelectCallback);
-                    accordionDiv.appendChild(regularDiv);
-                }
             }
         }
     }
@@ -302,6 +366,11 @@ function createMenuAccordion(menuCategories, recommendedCategory, patientId, onS
  * 新形式のカテゴリアコーディオンを作成（categories配列用）
  */
 function createCategoryAccordion(category, patientId, onSelectCallback) {
+    if (window.DEBUG_MODE) {
+        console.log('createCategoryAccordion called for category:', category.category_name);
+        console.log('Number of menus in category:', category.menus.length);
+    }
+    
     const categoryDiv = createElement('div', 'border border-gray-200 rounded-lg');
     const categoryId = 'cat-' + category.category_id;
     const contentId = 'content-' + categoryId;
@@ -318,12 +387,21 @@ function createCategoryAccordion(category, patientId, onSelectCallback) {
     
     // メニューアイテムを直接追加
     const itemsDiv = createElement('div', 'space-y-2');
-    category.menus.forEach(menu => {
-        if (menu.should_display) {
-            const menuItem = createMenuItem(menu, patientId, onSelectCallback);
-            itemsDiv.appendChild(menuItem);
-        }
-    });
+    
+    if (category.menus && category.menus.length > 0) {
+        category.menus.forEach(menu => {
+            // should_displayがない場合も表示（後方互換性）
+            if (menu.should_display !== false) {
+                const menuItem = createMenuItem(menu, patientId, onSelectCallback);
+                itemsDiv.appendChild(menuItem);
+            }
+        });
+    } else {
+        // メニューがない場合のメッセージ
+        const emptyMessage = createElement('p', 'text-gray-500 text-sm italic py-2');
+        emptyMessage.textContent = '該当するメニューがありません';
+        itemsDiv.appendChild(emptyMessage);
+    }
     
     contentDiv.appendChild(itemsDiv);
     categoryDiv.appendChild(headerButton);
@@ -455,14 +533,21 @@ function createMenuItem(menu, patientId, onSelectCallback) {
     const menuId = menu.menu_id || menu.id;
     const menuName = menu.name || menu.menu_name;
     const duration = menu.duration_minutes || menu.duration;
-    const canReserve = menu.can_reserve !== undefined ? menu.can_reserve : (menu.is_available !== undefined ? menu.is_available : menu.canReserve);
     const price = menu.price;
     
-    const itemDiv = createElement('div', 'p-3 rounded cursor-pointer transition-all ' + 
-        (canReserve ? 'bg-white hover:bg-blue-50 border border-gray-200' : 'bg-gray-100 opacity-60 cursor-not-allowed'));
+    // 常に選択可能として表示（予約可否はカレンダーAPIで判定）
+    const itemDiv = createElement('div', 'p-3 rounded transition-all bg-white hover:bg-blue-50 border border-gray-200');
     
-    let html = '<div class="flex justify-between items-start">';
-    html += '<div class="flex-1">';
+    // チェックボックスを含むレイアウト
+    let html = '<div class="flex items-start gap-3">';
+    
+    // チェックボックス
+    html += '<input type="checkbox" id="menu-' + menuId + '" name="selected-menus" value="' + menuId + '" ';
+    html += 'class="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" ';
+    html += 'data-menu-id="' + menuId + '" data-menu-name="' + menuName + '" data-duration="' + duration + '">';
+    
+    // メニュー情報
+    html += '<label for="menu-' + menuId + '" class="flex-1 cursor-pointer">';
     html += '<div class="font-medium">' + menuName + '</div>';
     
     // メニュータイプ表示（新形式）
@@ -483,8 +568,11 @@ function createMenuItem(menu, patientId, onSelectCallback) {
     }
     
     // チケットメニューの場合
-    if (menu.is_ticket_menu) {
+    if (menu.is_ticket_menu || menu.ticket_type || (menu.required_tickets && menu.required_tickets > 0)) {
         html += ' | チケットメニュー';
+        if (menu.required_tickets) {
+            html += ' (' + menu.required_tickets + '枚)';
+        }
     }
     
     // 利用回数表示（新形式）
@@ -499,37 +587,22 @@ function createMenuItem(menu, patientId, onSelectCallback) {
         html += '<div class="text-xs text-gray-600 mt-1">' + menu.description + '</div>';
     }
     
-    // 予約不可理由表示
-    if (!canReserve) {
-        const reason = menu.reason || menu.availability_reason;
-        if (reason) {
-            html += '<div class="text-xs text-red-600 mt-1">※ ' + reason + '</div>';
-        } else {
-            html += '<div class="text-xs text-red-600 mt-1">※ 現在予約できません</div>';
-        }
-    }
-    
-    html += '</div>';
-    
-    // 予約可能ステータス表示
-    html += '<div class="ml-2 text-right">';
-    if (canReserve) {
-        html += '<span class="text-xs text-green-600 bg-green-100 px-2 py-1 rounded">予約可</span>';
-    } else {
-        html += '<span class="text-xs text-red-600 bg-red-100 px-2 py-1 rounded">予約不可</span>';
-    }
-    html += '</div>';
-    
-    html += '</div>';
+    html += '</label>';  // labelタグを閉じる
+    html += '</div>';    // flex divを閉じる
     
     itemDiv.innerHTML = html;
     
-    if (canReserve && onSelectCallback) {
-        itemDiv.onclick = () => onSelectCallback({
-            id: menuId,
-            name: menuName,
-            ...menu
-        }, patientId);
+    // チェックボックスの変更イベント
+    const checkbox = itemDiv.querySelector('input[type="checkbox"]');
+    if (checkbox && onSelectCallback) {
+        checkbox.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            onSelectCallback({
+                id: menuId,
+                name: menuName,
+                ...menu
+            }, patientId, isChecked);
+        });
     }
     
     return itemDiv;
@@ -539,37 +612,77 @@ function createMenuItem(menu, patientId, onSelectCallback) {
  * フラットなメニュー配列から階層構造を作成
  */
 function createHierarchicalStructure(flatMenus) {
-    // カテゴリごとにメニューをグループ化
-    const categoryMap = new Map();
+    // デバッグ: メニューデータの構造を確認
+    if (window.DEBUG_MODE) {
+        console.log('Creating hierarchical structure from flat menus:', flatMenus);
+        if (flatMenus.length > 0) {
+            console.log('Sample menu item:', flatMenus[0]);
+        }
+    }
+    
+    // メニューを4つのカテゴリに分類
+    const categories = {
+        first_time_menus: {
+            regular: [],
+            ticket_based: []
+        },
+        repeat_menus: {
+            regular: [],
+            ticket_based: []
+        }
+    };
     
     flatMenus.forEach(menu => {
-        // カテゴリ情報がない場合は「未分類」とする
-        const categoryId = menu.category_id || menu.category || 'uncategorized';
-        const categoryName = menu.category || '未分類';
+        // is_first_timeプロパティで初回/リピートを判定
+        const isFirstTime = menu.is_first_time === true || menu.is_first_time === 'true' || menu.is_first_time === 1;
         
-        if (!categoryMap.has(categoryId)) {
-            categoryMap.set(categoryId, {
-                category_id: categoryId,
-                category_name: categoryName,
-                menus: []
-            });
+        // チケット制メニューの判定
+        // ticket_typeが明示的に設定されている場合のみチケット制とみなす
+        const isTicketBased = 
+            (menu.ticket_type && menu.ticket_type !== '') ||
+            (menu.requires_ticket === true) ||
+            (menu.is_ticket_menu === true);
+        
+        if (window.DEBUG_MODE) {
+            console.log(`Menu: ${menu.name}`);
+            console.log(`- is_first_time: ${menu.is_first_time} (${typeof menu.is_first_time}) -> isFirstTime: ${isFirstTime}`);
+            console.log(`- ticket_type: "${menu.ticket_type}"`);
+            console.log(`- required_tickets: ${menu.required_tickets}`);
+            console.log(`- isTicketBased: ${isTicketBased}`);
         }
         
-        categoryMap.get(categoryId).menus.push(menu);
+        // カテゴリに振り分け
+        if (isFirstTime) {
+            if (isTicketBased) {
+                categories.first_time_menus.ticket_based.push(menu);
+            } else {
+                categories.first_time_menus.regular.push(menu);
+            }
+        } else {
+            if (isTicketBased) {
+                categories.repeat_menus.ticket_based.push(menu);
+            } else {
+                categories.repeat_menus.regular.push(menu);
+            }
+        }
     });
     
-    // カテゴリごとにメニューをソート
-    categoryMap.forEach(category => {
-        category.menus.sort((a, b) => {
-            // 表示順でソート
-            const orderA = a.menu_order || a.order || 999;
-            const orderB = b.menu_order || b.order || 999;
-            return orderA - orderB;
+    // 各カテゴリ内でメニューをソート
+    Object.values(categories).forEach(mainCategory => {
+        Object.values(mainCategory).forEach(subCategory => {
+            subCategory.sort((a, b) => {
+                const orderA = a.menu_order || a.order || 999;
+                const orderB = b.menu_order || b.order || 999;
+                return orderA - orderB;
+            });
         });
     });
     
-    // フラット配列として返す（カテゴリ情報を保持したまま）
-    return flatMenus;
+    if (window.DEBUG_MODE) {
+        console.log('Categorized menus:', categories);
+    }
+    
+    return categories;
 }
 
 /**

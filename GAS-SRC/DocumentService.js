@@ -19,30 +19,58 @@ class DocumentService {
     const data = this.sheet.getDataRange().getValues();
     if (data.length <= 1) return []; // ヘッダーのみの場合
     
+    Logger.log(`DocumentService.getDocuments: 全データ行数: ${data.length - 1}`);
+    Logger.log(`DocumentService.getDocuments: フィルタ条件: ${JSON.stringify(filters)}`);
+    
     const headers = data[0];
+    Logger.log(`DocumentService.getDocuments: ヘッダー: ${JSON.stringify(headers)}`);
     const documents = [];
     
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
+      // シートの列構造: フォルダID(0), 書類ID(1), 書類タイトル(2), 書類URL(3), 対象患者ID(4), 対象患者名(5), 対象施術名(6), 登録日時(7), 更新日時(8), 備考(9)
       const document = {
-        documentId: row[0],
-        title: row[1],
-        url: row[2],
-        visitorId: row[3],
-        visitorName: row[4],
-        treatmentName: row[5],
-        createdAt: row[6],
-        updatedAt: row[7],
-        notes: row[8]
+        folderId: row[0],
+        documentId: row[1],
+        title: row[2],
+        url: row[3],
+        visitorId: row[4],
+        visitorName: row[5],
+        treatmentName: row[6],
+        createdAt: row[7],
+        updatedAt: row[8],
+        notes: row[9]
       };
       
+      // 空の行をスキップ
+      if (!document.documentId && !document.title && !document.visitorId) {
+        continue;
+      }
+      
       // フィルタリング
-      if (filters.visitorId && document.visitorId !== filters.visitorId) continue;
+      if (filters.visitorId) {
+        const docVisitorId = document.visitorId ? String(document.visitorId).trim() : '';
+        const filterVisitorId = String(filters.visitorId).trim();
+        
+        // デバッグ用詳細ログ（最初の5件のみ）
+        if (i <= 5) {
+          Logger.log(`DocumentService: 行${i} - visitorId比較:`);
+          Logger.log(`  - 元の値: "${document.visitorId}" (型: ${typeof document.visitorId})`);
+          Logger.log(`  - 変換後: "${docVisitorId}"`);
+          Logger.log(`  - フィルタ: "${filterVisitorId}"`);
+          Logger.log(`  - 一致: ${docVisitorId === filterVisitorId}`);
+        }
+        
+        if (docVisitorId !== filterVisitorId) {
+          continue;
+        }
+      }
       if (filters.treatmentName && !document.treatmentName.includes(filters.treatmentName)) continue;
       
       documents.push(document);
     }
     
+    Logger.log(`DocumentService.getDocuments: 取得された書類数: ${documents.length}`);
     return documents;
   }
   
@@ -63,17 +91,18 @@ class DocumentService {
     // 現在日時
     const now = new Date();
     
-    // データを準備
+    // データを準備（シートの列構造に合わせる）
     const rowData = [
-      documentId,
-      documentData.title,
-      documentData.url,
-      documentData.visitorId,
-      visitorName,
-      documentData.treatmentName,
-      now,
-      now,
-      documentData.notes || ''
+      documentData.folderId || '',  // フォルダID
+      documentId,                    // 書類ID
+      documentData.title,           // 書類タイトル
+      documentData.url,             // 書類URL
+      documentData.visitorId,       // 対象患者ID
+      visitorName,                  // 対象患者名
+      documentData.treatmentName,   // 対象施術名
+      now,                          // 登録日時
+      now,                          // 更新日時
+      documentData.notes || ''      // 備考
     ];
     
     // シートに追加
@@ -97,22 +126,22 @@ class DocumentService {
     const data = this.sheet.getDataRange().getValues();
     
     for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === documentId) {
+      if (data[i][1] === documentId) {  // 書類IDは2列目（インデックス1）
         // 患者IDが変更された場合は患者名も更新
-        if (updateData.visitorId && updateData.visitorId !== data[i][3]) {
+        if (updateData.visitorId && updateData.visitorId !== data[i][4]) {
           const visitorName = this._getVisitorName(updateData.visitorId);
-          this.sheet.getRange(i + 1, 5).setValue(visitorName);
-          this.sheet.getRange(i + 1, 4).setValue(updateData.visitorId);
+          this.sheet.getRange(i + 1, 6).setValue(visitorName);  // 対象患者名は6列目
+          this.sheet.getRange(i + 1, 5).setValue(updateData.visitorId);  // 対象患者IDは5列目
         }
         
         // その他のフィールドを更新
-        if (updateData.title) this.sheet.getRange(i + 1, 2).setValue(updateData.title);
-        if (updateData.url) this.sheet.getRange(i + 1, 3).setValue(updateData.url);
-        if (updateData.treatmentName !== undefined) this.sheet.getRange(i + 1, 6).setValue(updateData.treatmentName);
-        if (updateData.notes !== undefined) this.sheet.getRange(i + 1, 9).setValue(updateData.notes);
+        if (updateData.title) this.sheet.getRange(i + 1, 3).setValue(updateData.title);  // 書類タイトルは3列目
+        if (updateData.url) this.sheet.getRange(i + 1, 4).setValue(updateData.url);  // 書類URLは4列目
+        if (updateData.treatmentName !== undefined) this.sheet.getRange(i + 1, 7).setValue(updateData.treatmentName);  // 対象施術名は7列目
+        if (updateData.notes !== undefined) this.sheet.getRange(i + 1, 10).setValue(updateData.notes);  // 備考は10列目
         
         // 更新日時を更新
-        this.sheet.getRange(i + 1, 8).setValue(new Date());
+        this.sheet.getRange(i + 1, 9).setValue(new Date());  // 更新日時は9列目
         
         return {
           success: true,
@@ -135,7 +164,7 @@ class DocumentService {
     const data = this.sheet.getDataRange().getValues();
     
     for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === documentId) {
+      if (data[i][1] === documentId) {  // 書類IDは2列目（インデックス1）
         this.sheet.deleteRow(i + 1);
         return {
           success: true,

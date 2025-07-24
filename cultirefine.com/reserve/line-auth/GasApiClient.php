@@ -40,12 +40,23 @@ class GasApiClient
             error_log("[GAS API] Cache key: {$cacheKey}");
         }
         
+        // 開発モードではキャッシュを無効化（新形式テスト用）
+        $useCache = !defined('DEBUG_MODE') || !DEBUG_MODE;
+        
+        // 開発モードでは古いキャッシュを強制クリア
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            $this->clearCache("user_full_*");
+            error_log("[GAS API] Development mode: cleared all user_full caches");
+        }
+        
         // キャッシュチェック
-        if ($cachedData = $this->getFromCache($cacheKey)) {
+        if ($useCache && ($cachedData = $this->getFromCache($cacheKey))) {
             if (defined('DEBUG_MODE') && DEBUG_MODE) {
                 error_log("[GAS API] Returning cached data for: {$lineUserId}");
             }
             return $cachedData;
+        } else if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Cache disabled or no cached data found, making fresh request");
         }
         
         $path = "/api/users/line/" . urlencode($lineUserId) . "/full";
@@ -70,23 +81,25 @@ class GasApiClient
             }
         }
         
-        //if ($result['status'] === 'success') {
-		// 修正後：先に正規化してからstatusをチェック
-$normalizedResult = $this->normalizeGasApiResponse($result);
-if (isset($normalizedResult['status']) && $normalizedResult['status'] === 'success') {
-            // 成功時のみキャッシュ
-            $this->saveToCache($cacheKey, $result);
-            if (defined('DEBUG_MODE') && DEBUG_MODE) {
-                error_log("[GAS API] Data cached successfully for: {$lineUserId}");
+        // レスポンス形式を標準化
+        $normalizedResult = $this->normalizeGasApiResponse($result);
+        
+        // 正規化後のstatusをチェック
+        if (isset($normalizedResult['status']) && $normalizedResult['status'] === 'success') {
+            // 成功時かつキャッシュ使用時のみキャッシュ（正規化後のデータを保存）
+            if ($useCache) {
+                $this->saveToCache($cacheKey, $normalizedResult);
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    error_log("[GAS API] Data cached successfully for: {$lineUserId}");
+                }
+            } else if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Cache disabled, not saving to cache");
             }
         } else {
             if (defined('DEBUG_MODE') && DEBUG_MODE) {
-                error_log("[GAS API] Request failed, not caching. Status: " . ($result['status'] ?? 'unknown'));
+                error_log("[GAS API] Request failed, not caching. Status: " . ($normalizedResult['status'] ?? 'unknown'));
             }
         }
-        
-        // レスポンス形式を標準化
-        $normalizedResult = $this->normalizeGasApiResponse($result);
         
         return $normalizedResult;
     }
@@ -111,71 +124,33 @@ if (isset($normalizedResult['status']) && $normalizedResult['status'] === 'succe
             return $response;
         }
         
-        // 実際のGAS APIレスポンス形式を標準形式に変換
-        if (isset($response['visitor']) || isset($response['company'])) {
-            $normalizedResponse = [
+        // 成功レスポンスだがdataがない場合（GAS APIの標準レスポンス形式）
+        if (isset($response['status']) && $response['status'] === 'success' && !isset($response['data'])) {
+            // レスポンス全体をdataとして扱う
+            $data = $response;
+            unset($data['status']);
+            return [
                 'status' => 'success',
-                'data' => []
+                'data' => $data
             ];
-            
-            // visitor情報を user と patient_info に分割
-            if (isset($response['visitor'])) {
-                $visitor = $response['visitor'];
-                $normalizedResponse['data']['user'] = [
-                    'id' => $visitor['visitor_id'] ?? '',
-                    'name' => $visitor['visitor_name'] ?? '',
-                ];
-                
-                $normalizedResponse['data']['patient_info'] = [
-                    'id' => $visitor['visitor_id'] ?? '',
-                    'is_new' => true // 来院者情報があれば登録済み
-                ];
-            }
-            
-            // company情報を membership_info に変換
-            if (isset($response['company'])) {
-                $company = $response['company'];
-                $normalizedResponse['data']['membership_info'] = [
-                    'is_member' => true,
-                    'company_id' => $company['company_id'] ?? '',
-                    'company_name' => $company['name'] ?? '',
-                    'member_type' => isset($response['visitor']['member_type']) && $response['visitor']['member_type'] === true ? '本会員' : 'サブ会員'
-                ];
-            }
-            
-            // その他の情報も追加
-            /*if (isset($response['ticketInfo'])) {
-                $normalizedResponse['data']['membership_info']['ticket_balance'] = $response['ticketInfo'];
-            }
-            
-            if (isset($response['ReservationHistory'])) {
-                $normalizedResponse['data']['upcoming_reservations'] = $response['ReservationHistory'];
-            }
-            
-            if (isset($response['docsinfo'])) {
-                $normalizedResponse['data']['documents'] = $response['docsinfo'];
-            }*/
-            
-            // 施術履歴と利用可能施術は空配列で初期化（必要に応じて後で追加）
-            $normalizedResponse['data']['treatment_history'] = [];
-            $normalizedResponse['data']['available_treatments'] = [];
-            
-            // 統計情報も空で初期化
-            $normalizedResponse['data']['statistics'] = [
-                'total_visits' => 0,
-                'total_treatments' => [],
-                'last_30_days_visits' => 0,
-                'favorite_treatment' => ''
-            ];
-            
+        }
+        
+        // 新形式のGAS APIレスポンス（フラット構造: visitor_id, visitor_name, ticketInfo, docsinfo, ReservationHistory）
+        if (isset($response['visitor_id']) || isset($response['visitor_name']) || 
+            isset($response['ticketInfo']) || isset($response['docsinfo']) || 
+            isset($response['ReservationHistory'])) {
             if (defined('DEBUG_MODE') && DEBUG_MODE) {
-                error_log("[GAS API] Normalized response structure: " . implode(', ', array_keys($normalizedResponse['data'])));
-                if (isset($normalizedResponse['data']['membership_info'])) {
-                    error_log("[GAS API] Membership info: " . json_encode($normalizedResponse['data']['membership_info']));
-                }
+                error_log("[GAS API] Detected new flat format response");
+                error_log("[GAS API] Response has visitor_id: " . (isset($response['visitor_id']) ? 'yes' : 'no'));
+                error_log("[GAS API] Response has docsinfo: " . (isset($response['docsinfo']) ? 'yes' : 'no'));
+                error_log("[GAS API] Response has ReservationHistory: " . (isset($response['ReservationHistory']) ? 'yes' : 'no'));
             }
             
-            return $normalizedResponse;
+            // 新形式はそのまま返す（変換しない）
+            return [
+                'status' => 'success',
+                'data' => $response
+            ];
         }
         
         // その他の場合はエラーとして扱う
@@ -245,7 +220,6 @@ if (isset($normalizedResult['status']) && $normalizedResult['status'] === 'succe
     /**
      * 書類一覧取得（フォルダ階層対応）
      */
-	/*
     public function getDocuments(string $visitorId): array
     {
         $cacheKey = "documents_{$visitorId}";
@@ -268,7 +242,6 @@ if (isset($normalizedResult['status']) && $normalizedResult['status'] === 'succe
         
         return $result;
     }
-    */
     /**
      * 会社に紐づく来院者一覧取得（新しいGAS API対応）
      */
@@ -690,8 +663,15 @@ if (isset($normalizedResult['status']) && $normalizedResult['status'] === 'succe
     {
         $cacheKey = "patient_menus_{$visitorId}" . ($companyId ? "_{$companyId}" : "");
         
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] getPatientMenus called - visitorId: {$visitorId}, companyId: " . ($companyId ?? 'null'));
+        }
+        
         // キャッシュチェック（10分）
         if ($cachedData = $this->getFromCache($cacheKey, 600)) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Returning cached patient menus for: {$visitorId}");
+            }
             return $cachedData;
         }
         
@@ -703,9 +683,24 @@ if (isset($normalizedResult['status']) && $normalizedResult['status'] === 'succe
             $data['company_id'] = $companyId;
         }
         
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Making request to path: {$path} with params: " . json_encode($data));
+        }
+        
         $result = $this->makeRequest('GET', $path, $data);
         
-        if ($result['status'] === 'success') {
+        // デバッグ: レスポンス内容を確認
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Patient menus response status: " . ($result['status'] ?? 'no_status'));
+            if (isset($result['data'])) {
+                error_log("[GAS API] Response data keys: " . implode(', ', array_keys($result['data'])));
+                if (isset($result['data']['categories'])) {
+                    error_log("[GAS API] Categories count: " . count($result['data']['categories']));
+                }
+            }
+        }
+        
+        if (isset($result['status']) && $result['status'] === 'success') {
             $this->saveToCache($cacheKey, $result, 600);
         }
         
@@ -772,7 +767,6 @@ if (isset($normalizedResult['status']) && $normalizedResult['status'] === 'succe
     /**
      * 予約履歴一覧を取得
      */
-	/*
     public function getReservationHistory(string $memberType, string $date, string $companyId): array
     {
         $cacheKey = "reservation_history_{$companyId}_{$memberType}_{$date}";
@@ -799,7 +793,6 @@ if (isset($normalizedResult['status']) && $normalizedResult['status'] === 'succe
         
         return $result;
     }
-    */
     /**
      * API接続テスト
      */
