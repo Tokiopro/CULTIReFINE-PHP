@@ -13,40 +13,10 @@ define('LINE_CHANNEL_SECRET', getenv('LINE_CHANNEL_SECRET'));
 // コールバックURLを動的に生成
 define('LINE_CALLBACK_URL', getLineCallbackUrl());
 
-// セッション設定
+// セッション設定（参考値：SessionManagerで実際の設定を行う）
 define('SESSION_LIFETIME', 3600); // 1時間
 
-// セッションの初期設定（一度だけ実行）
-if (session_status() === PHP_SESSION_NONE) {
-    // HTTPS環境の確認
-    $isSecure = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ||
-                (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
-    
-    // セッションパラメータを設定
-    $sessionParams = [
-        'lifetime' => SESSION_LIFETIME,
-        'path' => '/',
-        'domain' => '',
-        'secure' => $isSecure,
-        'httponly' => true,
-        'samesite' => 'Lax'
-    ];
-    
-    // セッションクッキーパラメータを設定
-    session_set_cookie_params($sessionParams);
-    
-    // セッションのガベージコレクション設定
-    ini_set('session.gc_maxlifetime', SESSION_LIFETIME);
-    
-    // セッションを開始
-    session_start();
-    
-    // デバッグ情報
-    if (defined('DEBUG_MODE') && DEBUG_MODE) {
-        error_log('[Config] Session started with ID: ' . session_id());
-        error_log('[Config] Session cookie params: ' . json_encode($sessionParams));
-    }
-}
+// 注意: セッション開始処理はSessionManagerが一元管理するため、ここでは行わない
 
 // GAS API設定
 define('GAS_DEPLOYMENT_ID', getenv('GAS_DEPLOYMENT_ID'));

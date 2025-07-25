@@ -1,19 +1,17 @@
 <?php
-// セッションを最初に開始（config.phpより前に）
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// セッションIDを記録
-$callbackSessionId = session_id();
-
 require_once 'config.php';
 require_once 'url-helper.php';
 require_once 'LineAuth.php';
 require_once 'ExternalApi.php';
 require_once 'logger.php';
+require_once 'SessionManager.php';
 
 $logger = new Logger();
+$sessionManager = SessionManager::getInstance();
+
+// セッションを開始
+$sessionManager->startSession();
+$callbackSessionId = session_id();
 
 // セッションIDの確認
 $logger->info('Callback開始 - セッション情報', [
@@ -62,10 +60,8 @@ $lineUserId = $profile['userId'];
 $displayName = $profile['displayName'];
 $pictureUrl = $profile['pictureUrl'] ?? null;
 
-// セッションに保存
-$_SESSION['line_user_id'] = $lineUserId;
-$_SESSION['line_display_name'] = $displayName;
-$_SESSION['line_picture_url'] = $pictureUrl;
+// SessionManagerを使用してLINE認証情報を保存
+$sessionManager->saveLINEAuth($lineUserId, $displayName, $pictureUrl);
 
 // セッションデバッグ情報をログに記録
 $logger->info('LINE認証コールバック開始', [
@@ -77,9 +73,8 @@ $logger->info('LINE認証コールバック開始', [
     'session_name' => session_name()
 ]);
 
-// セッションデータを明示的に保存
-session_write_close();
-session_start();
+// セッションをリフレッシュ
+$sessionManager->refreshSession();
 
 // GAS APIからユーザー情報を取得
 $externalApi = new ExternalApi();
@@ -190,10 +185,7 @@ try {
 // 正常処理
 if ($userData) {
     // 既存ユーザーの場合
-    $_SESSION['user_data'] = $userData;
-    
-    // セッションデータを明示的に保存
-    session_write_close();
+    $sessionManager->saveUserData($userData);
     
     $logger->info('既存ユーザーとして予約ページへリダイレクト', [
         'user_id' => $userData['id'] ?? $userData['visitor_id'] ?? 'unknown',
@@ -213,11 +205,16 @@ if ($userData) {
         'gas_api_response' => 'null'
     ]);
     
+    // 未登録フラグをセッションに設定（再アクセス時の処理最適化のため）
+    $_SESSION['user_not_registered'] = true;
+    $_SESSION['not_registered_time'] = time();
+    
     // セッション情報が正しく設定されていることを確認
     $logger->info('セッション状態確認', [
         'session_data' => array_keys($_SESSION),
         'line_user_id_set' => isset($_SESSION['line_user_id']),
-        'line_user_id_value' => $_SESSION['line_user_id'] ?? 'not_set'
+        'line_user_id_value' => $_SESSION['line_user_id'] ?? 'not_set',
+        'user_not_registered_flag' => true
     ]);
     
     // 追加デバッグ: LINEプロフィール情報を確認

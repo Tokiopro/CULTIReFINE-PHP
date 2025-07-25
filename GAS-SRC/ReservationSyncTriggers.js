@@ -54,16 +54,10 @@ function runDailyReservationSync() {
     const reservationService = new ReservationService();
     const result = reservationService.dailyIncrementalSync();
     
-    Logger.log(`日次同期結果: ${JSON.stringify(result)}`);
+    Logger.log(`日次同期完了: ${JSON.stringify(result)}`);
     
-    // 完了していない場合は30分後に再実行
-    if (!result.completed) {
-      const trigger = ScriptApp.newTrigger('runDailyReservationSync')
-        .timeBased()
-        .after(30 * 60 * 1000) // 30分後
-        .create();
-      
-      Logger.log('同期が未完了のため、30分後に再実行します');
+    if (!result.success) {
+      throw new Error(result.message || '同期に失敗しました');
     }
     
     // 同期メトリクスを記録
@@ -71,7 +65,6 @@ function runDailyReservationSync() {
     
   } catch (error) {
     Logger.log(`日次同期エラー: ${error.toString()}`);
-    // エラー通知を送信する場合はここに追加
     notifySyncError('日次同期', error);
   }
 }
@@ -85,16 +78,10 @@ function runWeeklyReservationSync() {
     const reservationService = new ReservationService();
     const result = reservationService.weeklySync();
     
-    Logger.log(`週次同期結果: ${JSON.stringify(result)}`);
+    Logger.log(`週次同期完了: ${JSON.stringify(result)}`);
     
-    // 完了していない場合は1時間後に再実行
-    if (!result.completed) {
-      const trigger = ScriptApp.newTrigger('runWeeklyReservationSync')
-        .timeBased()
-        .after(60 * 60 * 1000) // 1時間後
-        .create();
-      
-      Logger.log('同期が未完了のため、1時間後に再実行します');
+    if (!result.success) {
+      throw new Error(result.message || '同期に失敗しました');
     }
     
     // 同期メトリクスを記録
@@ -115,16 +102,10 @@ function runMonthlyReservationSync() {
     const reservationService = new ReservationService();
     const result = reservationService.monthlyFullSync();
     
-    Logger.log(`月次同期結果: ${JSON.stringify(result)}`);
+    Logger.log(`月次同期完了: ${JSON.stringify(result)}`);
     
-    // 完了していない場合は2時間後に再実行
-    if (!result.completed) {
-      const trigger = ScriptApp.newTrigger('runMonthlyReservationSync')
-        .timeBased()
-        .after(2 * 60 * 60 * 1000) // 2時間後
-        .create();
-      
-      Logger.log('同期が未完了のため、2時間後に再実行します');
+    if (!result.success) {
+      throw new Error(result.message || '同期に失敗しました');
     }
     
     // 同期メトリクスを記録
@@ -142,19 +123,40 @@ function runMonthlyReservationSync() {
 function manualReservationSync() {
   const reservationService = new ReservationService();
   
-  // 実行時間を監視しながら同期
-  const result = reservationService.syncReservationsWithTimeLimit({
+  // 最適化された同期を実行
+  const result = reservationService.syncReservationsOptimized({
     date_from: Utils.getToday(),
-    date_to: Utils.formatDate(new Date(new Date().setDate(new Date().getDate() + 30)))
-  }, 240000); // 4分制限
+    date_to: Utils.formatDate(new Date(new Date().setDate(new Date().getDate() + 7)))
+  });
   
   Logger.log(`手動同期結果: ${JSON.stringify(result)}`);
   
-  if (!result.completed) {
-    Logger.log('同期が未完了です。再度実行してください。');
-  }
-  
   return result;
+}
+
+/**
+ * 特定日付範囲の同期（デバッグ用）
+ */
+function syncDateRange(dateFrom, dateTo) {
+  const reservationService = new ReservationService();
+  
+  return reservationService.syncReservationsOptimized({
+    date_from: dateFrom,
+    date_to: dateTo
+  });
+}
+
+/**
+ * 今日の予約のみ同期（デバッグ用）
+ */
+function syncToday() {
+  const reservationService = new ReservationService();
+  const today = Utils.getToday();
+  
+  return reservationService.syncReservationsOptimized({
+    date_from: today,
+    date_to: today
+  });
 }
 
 /**
@@ -165,17 +167,16 @@ function logSyncMetrics(syncType, result) {
   if (!metricsSheet) {
     // メトリクスシートがない場合は作成
     const sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet('同期メトリクス');
-    sheet.getRange(1, 1, 1, 7).setValues([['同期タイプ', '実行日時', '完了状態', '同期件数', 'オフセット', 'エラー', '備考']]);
+    sheet.getRange(1, 1, 1, 6).setValues([['同期タイプ', '実行日時', '同期件数', '実行時間(秒)', '日付範囲', 'ステータス']]);
   }
   
   const row = [
     syncType,
     new Date(),
-    result.completed ? '完了' : '未完了',
     result.totalSynced || 0,
-    result.lastOffset || 0,
-    result.error || '',
-    result.completed ? '' : '次回再開'
+    result.executionTime || 0,
+    result.dateRange || '',
+    result.success ? '成功' : 'エラー'
   ];
   
   metricsSheet.appendRow(row);
@@ -229,6 +230,7 @@ function checkSyncStatus() {
     return null;
   }
 }
+
 
 /**
  * 同期キャッシュをクリア

@@ -1,12 +1,39 @@
 <?php
-// セッションを最初に開始
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+// エラー表示を有効にして問題を特定しやすくする（一時的）
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
+// config.phpを最初に読み込み（DEBUG_MODE定義のため）
+if (!file_exists(__DIR__ . '/line-auth/config.php')) {
+    die('エラー: config.phpが見つかりません');
+}
+require_once __DIR__ . '/line-auth/config.php';
+
+// 次にSessionManagerとログ機能を読み込み
+if (!file_exists(__DIR__ . '/line-auth/SessionManager.php')) {
+    die('エラー: SessionManager.phpが見つかりません');
+}
+require_once __DIR__ . '/line-auth/SessionManager.php';
+
+if (!file_exists(__DIR__ . '/line-auth/logger.php')) {
+    die('エラー: logger.phpが見つかりません');
+}
+require_once __DIR__ . '/line-auth/logger.php';
+
+if (!file_exists(__DIR__ . '/line-auth/url-helper.php')) {
+    die('エラー: url-helper.phpが見つかりません');
+}
 require_once __DIR__ . '/line-auth/url-helper.php';
 
-// セッションデバッグ情報
+// SessionManagerインスタンスを取得
+$sessionManager = SessionManager::getInstance();
+$logger = new Logger();
+
+// セッションを開始
+$sessionManager->startSession();
+
+// セッション状態をログに記録
 $sessionDebug = [
     'session_id' => session_id(),
     'session_status' => session_status(),
@@ -15,31 +42,81 @@ $sessionDebug = [
     'session_keys' => array_keys($_SESSION)
 ];
 
-error_log('[Index] Session Debug: ' . json_encode($sessionDebug));
+$logger->info('[Index] Session Debug', $sessionDebug);
 
-// LINE認証チェック
-if (!isset($_SESSION['line_user_id'])) {
-    error_log('[Auth Check] No LINE user ID in session at index.php: ' . json_encode($sessionDebug));
+// SessionManagerを使用したLINE認証チェック
+if (!$sessionManager->isLINEAuthenticated()) {
+    $logger->info('[Auth Check] LINE認証が必要', [
+        'reason' => 'LINE認証情報がセッションにない',
+        'session_debug' => $sessionDebug
+    ]);
     
     // LINE認証へリダイレクト
     header('Location: ' . getRedirectUrl('/reserve/line-auth/'));
     exit;
 }
 
-// ユーザー情報を取得
-$lineUserId = $_SESSION['line_user_id'];
+// セッションの有効性をチェック
+if (!$sessionManager->validateSession()) {
+    $logger->info('[Auth Check] セッション無効', [
+        'reason' => 'セッション有効期限切れまたは無効',
+        'session_debug' => $sessionDebug
+    ]);
+    
+    // セッションを破棄してLINE認証へリダイレクト
+    $sessionManager->destroySession();
+    header('Location: ' . getRedirectUrl('/reserve/line-auth/'));
+    exit;
+}
+
+// SessionManagerからユーザー情報を取得
+$lineUserId = $sessionManager->getLINEUserId();
 $displayName = $_SESSION['line_display_name'] ?? 'ゲスト';
 $pictureUrl = $_SESSION['line_picture_url'] ?? null;
-$userData = $_SESSION['user_data'] ?? null;
+$userData = $sessionManager->getUserData();
+
+$logger->info('[Index] ユーザー情報取得完了', [
+    'line_user_id' => $lineUserId,
+    'display_name' => $displayName,
+    'has_user_data' => !is_null($userData)
+]);
+
+// ユーザーデータがない場合の処理改善
+if (!$userData) {
+    // セッションに未登録フラグがある場合の処理
+    if (isset($_SESSION['user_not_registered']) && $_SESSION['user_not_registered'] === true) {
+        // 未登録フラグの有効期限をチェック（24時間）
+        $notRegisteredTime = $_SESSION['not_registered_time'] ?? 0;
+        $timeSinceNotRegistered = time() - $notRegisteredTime;
+        
+        if ($timeSinceNotRegistered < 86400) { // 24時間以内
+            $logger->info('[Index] 未登録ユーザーとして直接案内ページへ', [
+                'line_user_id' => $lineUserId,
+                'reason' => 'セッションに未登録フラグあり（24時間以内）',
+                'time_since_not_registered' => $timeSinceNotRegistered
+            ]);
+            header('Location: ' . getRedirectUrl('/reserve/not-registered.php'));
+            exit;
+        } else {
+            // 24時間経過した場合、フラグをクリアしてGAS APIを再チェック
+            unset($_SESSION['user_not_registered'], $_SESSION['not_registered_time']);
+            $logger->info('[Index] 未登録フラグの有効期限切れ、GAS APIを再チェック', [
+                'line_user_id' => $lineUserId,
+                'time_since_not_registered' => $timeSinceNotRegistered
+            ]);
+        }
+    }
+}
 
 // user_dataがない場合のデバッグ情報
 if (!$userData && defined('DEBUG_MODE') && DEBUG_MODE) {
-    error_log('[Index] user_data not found in session, will fetch from GAS API');
-    error_log('[Index] Session data: ' . json_encode($_SESSION));
+    $logger->debug('[Index] user_data not found in session, will fetch from GAS API', [
+        'session_data_keys' => array_keys($_SESSION),
+        'session_size' => count($_SESSION)
+    ]);
 }
 
-// 権限管理とGAS APIから来院者データを取得
-require_once __DIR__ . '/line-auth/config.php';
+// GAS APIクライアントを読み込み（config.phpは既に読み込み済み）
 require_once __DIR__ . '/line-auth/GasApiClient.php';
 
 $companyPatients = [];
@@ -60,7 +137,7 @@ try {
             'user_data_keys' => isset($_SESSION['user_data']) ? array_keys($_SESSION['user_data']) : [],
             'all_session_keys' => array_keys($_SESSION)
         ];
-        error_log('[DEBUG] Session info: ' . json_encode($debugInfo['session']));
+        $logger->debug('[Index] Session info', $debugInfo['session']);
     }
     
     $gasApi = new GasApiClient(GAS_DEPLOYMENT_ID, GAS_API_KEY);
@@ -72,12 +149,12 @@ try {
             'api_key' => GAS_API_KEY ? '設定済み' : '未設定',
             'line_user_id' => $lineUserId
         ];
-        error_log('[DEBUG] GAS API config: ' . json_encode($debugInfo['gas_config']));
+        $logger->debug('[Index] GAS API config', $debugInfo['gas_config']);
     }
     
     // 1. ユーザー情報を取得して会社情報を確認
     if (DEBUG_MODE) {
-        error_log('[DEBUG] Calling getUserFullInfo for LINE User ID: ' . $lineUserId);
+        $logger->debug('[Index] Calling getUserFullInfo', ['line_user_id' => $lineUserId]);
     }
     
     $userInfo = $gasApi->getUserFullInfo($lineUserId);
@@ -91,16 +168,41 @@ try {
             'error' => $userInfo['error'] ?? null,
             'full_response' => $userInfo
         ];
-        error_log('[DEBUG] GAS API Response: ' . json_encode($debugInfo['gas_api_response']));
+        $logger->debug('[Index] GAS API Response', $debugInfo['gas_api_response']);
     }
     
     // GAS APIのレスポンス形式を確認
     // 現在の形式（visitor, company, ticketInfo）をそのまま使用
     
-    // user_dataがセッションにない場合は保存
-    if (!$userData && $userInfo['status'] === 'success' && isset($userInfo['data'])) {
-        $_SESSION['user_data'] = $userInfo['data'];
-        error_log('[Index] Saved user_data to session from GAS API');
+    // GAS APIの結果に基づく処理
+    if ($userInfo['status'] === 'success' && isset($userInfo['data'])) {
+        // ユーザーが見つかった場合
+        if (!$userData) {
+            $_SESSION['user_data'] = $userInfo['data'];
+            $sessionManager->saveUserData($userInfo['data']);
+            $logger->info('[Index] GAS APIからユーザーデータ取得・保存完了', [
+                'line_user_id' => $lineUserId,
+                'user_id' => $userInfo['data']['visitor']['visitor_id'] ?? 'unknown'
+            ]);
+        }
+        // 未登録フラグがあればクリア
+        if (isset($_SESSION['user_not_registered'])) {
+            unset($_SESSION['user_not_registered'], $_SESSION['not_registered_time']);
+        }
+    } else {
+        // ユーザーが見つからない場合
+        $logger->info('[Index] GAS APIでユーザー未発見、未登録ページへリダイレクト', [
+            'line_user_id' => $lineUserId,
+            'gas_status' => $userInfo['status'] ?? 'unknown',
+            'gas_error' => $userInfo['error'] ?? null
+        ]);
+        
+        // 未登録フラグを設定
+        $_SESSION['user_not_registered'] = true;
+        $_SESSION['not_registered_time'] = time();
+        
+        header('Location: ' . getRedirectUrl('/reserve/not-registered.php'));
+        exit;
     }
     
     // GAS APIのレスポンス形式に対応（visitor, company, ticketInfo）
@@ -112,8 +214,10 @@ try {
         $companyData = $userInfo['data']['company'] ?? null;
         
         if (DEBUG_MODE) {
-            error_log('[DEBUG] Current user visitor_id: ' . $currentUserVisitorId);
-            error_log('[DEBUG] Company data: ' . json_encode($companyData));
+            $logger->debug('[Index] User and company data', [
+                'current_user_visitor_id' => $currentUserVisitorId,
+                'company_data' => $companyData
+            ]);
         }
         
         // 会社情報の処理
@@ -190,7 +294,7 @@ try {
                 'company_data' => $userInfo['data']['company'] ?? null,
                 'full_user_info' => $userInfo
             ];
-            error_log('[DEBUG] Failure details: ' . json_encode($debugInfo['failure_details']));
+            $logger->debug('[Index] Failure details', $debugInfo['failure_details']);
         }
     }
 } catch (Exception $e) {
@@ -203,7 +307,7 @@ try {
             'line' => $e->getLine(),
             'trace' => $e->getTraceAsString()
         ];
-        error_log('[DEBUG] Exception: ' . json_encode($debugInfo['exception']));
+        $logger->error('[Index] Exception occurred', $debugInfo['exception']);
     }
     
     error_log('Patients loading error: ' . $e->getMessage());
