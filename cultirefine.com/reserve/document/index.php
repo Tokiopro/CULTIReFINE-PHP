@@ -19,7 +19,9 @@ $userData = $_SESSION['user_data'] ?? null;
 require_once __DIR__ . '/../line-auth/config.php';
 require_once __DIR__ . '/../line-auth/GasApiClient.php';
 
-$documents = [];
+$folders = [];
+$rootDocuments = [];
+$totalDocuments = 0;
 $errorMessage = '';
 $visitorId = null;
 
@@ -61,32 +63,61 @@ try {
         } else {
             // データ構造の詳細確認
             error_log('Data Keys: ' . json_encode(array_keys($userInfo['data'])));
-            error_log('Has user.id: ' . (isset($userInfo['data']['user']['id']) ? 'YES' : 'NO'));
+            error_log('Has visitor.visitor_id: ' . (isset($userInfo['data']['visitor']['visitor_id']) ? 'YES' : 'NO'));
             
-            if (isset($userInfo['data']['user']['id'])) {
-                $visitorId = $userInfo['data']['user']['id'];
+            if (isset($userInfo['data']['visitor']['visitor_id'])) {
+                $visitorId = $userInfo['data']['visitor']['visitor_id'];
                 error_log('Visitor ID found: ' . $visitorId);
                 
-                // 2. visitor_idで書類一覧取得
-                error_log('Calling getDocuments for visitor ID: ' . $visitorId);
-                $documentsResponse = $gasApi->getDocuments($visitorId);
-                
-                error_log('Documents API Response: ' . json_encode($documentsResponse, JSON_PRETTY_PRINT));
-                
-                if ($documentsResponse['status'] === 'success') {
-                    $documents = $documentsResponse['data']['documents'] ?? [];
-                    error_log('Documents count: ' . count($documents));
+                // docsinfo がレスポンスに含まれている場合は直接使用
+                if (isset($userInfo['data']['docsinfo'])) {
+                    $docsInfo = $userInfo['data']['docsinfo'];
+                    $totalDocuments = count($docsInfo);
+                    
+                    // docsinfo をフォルダ構造に変換（すべてルートドキュメントとして扱う）
+                    $rootDocuments = [];
+                    foreach ($docsInfo as $doc) {
+                        $rootDocuments[] = [
+                            'id' => $doc['docs_id'] ?? '',
+                            'name' => $doc['docs_name'] ?? '無題の書類',
+                            'url' => $doc['docs_url'] ?? '#',
+                            'created_at' => $doc['created_at'] ?? '',
+                            'treatment_name' => $doc['treatment_name'] ?? '',
+                            'notes' => $doc['notes'] ?? ''
+                        ];
+                    }
+                    
+                    $folders = []; // フォルダ機能は今後の実装のため空配列
+                    
+                    error_log('Documents from getUserFullInfo: ' . $totalDocuments);
+                    error_log('Root documents count: ' . count($rootDocuments));
                 } else {
-                    $errorMessage = '書類の取得に失敗しました。(' . ($documentsResponse['message'] ?? 'Unknown error') . ')';
-                    error_log('ERROR: Documents API failed with status: ' . $documentsResponse['status']);
+                    // 書類情報を別途取得（必要な場合）
+                    error_log('Calling getDocuments for visitor ID: ' . $visitorId);
+                    $documentsResponse = $gasApi->getDocuments($visitorId);
+                    
+                    error_log('Documents API Response: ' . json_encode($documentsResponse, JSON_PRETTY_PRINT));
+                    
+                    if ($documentsResponse['status'] === 'success') {
+                        $folders = $documentsResponse['data']['folders'] ?? [];
+                        $rootDocuments = $documentsResponse['data']['root_documents'] ?? [];
+                        $totalDocuments = $documentsResponse['data']['total_count'] ?? 0;
+                        
+                        error_log('Folders count: ' . count($folders));
+                        error_log('Root documents count: ' . count($rootDocuments));
+                        error_log('Total documents: ' . $totalDocuments);
+                    } else {
+                        $errorMessage = '書類の取得に失敗しました。(' . ($documentsResponse['message'] ?? 'Unknown error') . ')';
+                        error_log('ERROR: Documents API failed with status: ' . $documentsResponse['status']);
+                    }
                 }
             } else {
-                $errorMessage = 'ユーザーIDが見つかりません。userフィールドが存在しないか、IDが含まれていません。';
-                error_log('ERROR: user.id not found in data');
-                if (isset($userInfo['data']['user'])) {
-                    error_log('User field exists but no ID: ' . json_encode($userInfo['data']['user']));
+                $errorMessage = '来院者IDが見つかりません。visitorフィールドが存在しないか、visitor_idが含まれていません。';
+                error_log('ERROR: visitor.visitor_id not found in data');
+                if (isset($userInfo['data']['visitor'])) {
+                    error_log('Visitor field exists but no visitor_id: ' . json_encode($userInfo['data']['visitor']));
                 } else {
-                    error_log('User field does not exist');
+                    error_log('Visitor field does not exist');
                 }
             }
         }
@@ -153,44 +184,128 @@ function formatJapaneseDate($isoDate) {
         </div>
       <?php endif; ?>
       
-      <?php if (empty($documents) && empty($errorMessage)): ?>
+      <?php if (empty($folders) && empty($rootDocuments) && empty($errorMessage)): ?>
         <div class="no-documents bg-gray-100 border border-gray-300 text-gray-600 px-4 py-6 rounded text-center">
           <p>現在、書類がありません。</p>
         </div>
       <?php else: ?>
-        <?php if (!empty($documents)): ?>
+        <?php if (!empty($folders) || !empty($rootDocuments)): ?>
           <div class="documents-count mb-4">
-            <p class="text-sm text-gray-600">書類件数: <?php echo count($documents); ?>件</p>
+            <p class="text-sm text-gray-600">書類件数: <?php echo $totalDocuments; ?>件</p>
           </div>
           
-          <?php foreach ($documents as $index => $document): ?>
-            <div id="doc_cont_item<?php echo $index + 1; ?>" class="doc_cont_item">
-              <div class="doc_cont_detail">
-                <div class="doc_cont_detail_name">
-                  <p class="doc_ttl">書類名</p>
-                  <p class="doc_name"><?php echo htmlspecialchars($document['title'] ?? 'タイトル不明'); ?></p>
-                  <?php if (!empty($document['treatmentName'])): ?>
-                    <p class="text-xs text-gray-500 mt-1">施術: <?php echo htmlspecialchars($document['treatmentName']); ?></p>
-                  <?php endif; ?>
+          <!-- フォルダ階層表示 -->
+          <?php if (!empty($folders)): ?>
+            <?php 
+            // フォルダ階層を再帰的に表示する関数
+            function displayFolderTree($folders, $level = 0) {
+              foreach ($folders as $folder) {
+                $folderId = 'folder_' . md5($folder['folder_name'] . $level);
+                $hasSubfolders = !empty($folder['subfolders']);
+                $hasDocuments = !empty($folder['documents']);
+                ?>
+                <div class="folder-item mb-3" style="margin-left: <?php echo $level * 20; ?>px;">
+                  <div class="folder-header bg-blue-50 border border-blue-200 rounded-lg p-3 cursor-pointer hover:bg-blue-100 transition-colors" 
+                       onclick="toggleFolder('<?php echo $folderId; ?>')">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center">
+                        <svg class="w-5 h-5 text-blue-600 mr-2 folder-icon" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
+                        </svg>
+                        <span class="font-medium text-blue-900"><?php echo htmlspecialchars($folder['folder_name']); ?></span>
+                        <span class="text-xs text-gray-500 ml-2">
+                          (<?php echo ($hasDocuments ? count($folder['documents']) : 0); ?>件)
+                        </span>
+                      </div>
+                      <svg class="w-5 h-5 text-blue-600 transform transition-transform duration-200 toggle-arrow" 
+                           fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                      </svg>
+                    </div>
+                  </div>
+                  
+                  <div id="<?php echo $folderId; ?>" class="folder-content hidden mt-2">
+                    <?php if ($hasDocuments): ?>
+                      <div class="documents-list pl-6">
+                        <?php foreach ($folder['documents'] as $index => $document): ?>
+                          <div class="doc_cont_item mb-3">
+                            <div class="doc_cont_detail">
+                              <div class="doc_cont_detail_name">
+                                <p class="doc_ttl">書類名</p>
+                                <p class="doc_name"><?php echo htmlspecialchars($document['title'] ?? 'タイトル不明'); ?></p>
+                                <?php if (!empty($document['treatment_name'])): ?>
+                                  <p class="text-xs text-gray-500 mt-1">施術: <?php echo htmlspecialchars($document['treatment_name']); ?></p>
+                                <?php endif; ?>
+                              </div>
+                              <div class="doc_cont_detail_date">
+                                <p class="doc_ttl">作成日</p>
+                                <p class="doc_date"><?php echo formatJapaneseDate($document['upload_date'] ?? ''); ?></p>
+                              </div>
+                            </div>
+                            <div class="doc_link_wrap">
+                              <?php if (!empty($document['url'])): ?>
+                                <a class="doc_link" href="<?php echo htmlspecialchars($document['url']); ?>" target="_blank" rel="noopener noreferrer">
+                                  <span>プレビューを見る</span>
+                                </a>
+                              <?php else: ?>
+                                <span class="doc_link disabled" style="opacity: 0.5; cursor: not-allowed;">
+                                  <span>プレビュー不可</span>
+                                </span>
+                              <?php endif; ?>
+                            </div>
+                          </div>
+                        <?php endforeach; ?>
+                      </div>
+                    <?php endif; ?>
+                    
+                    <?php if ($hasSubfolders): ?>
+                      <?php displayFolderTree($folder['subfolders'], $level + 1); ?>
+                    <?php endif; ?>
+                  </div>
                 </div>
-                <div class="doc_cont_detail_date">
-                  <p class="doc_ttl">作成日</p>
-                  <p class="doc_date"><?php echo formatJapaneseDate($document['createdAt'] ?? ''); ?></p>
+                <?php
+              }
+            }
+            
+            // フォルダ階層を表示
+            displayFolderTree($folders);
+            ?>
+          <?php endif; ?>
+          
+          <!-- ルートに直接置かれた書類 -->
+          <?php if (!empty($rootDocuments)): ?>
+            <div class="root-documents mt-6">
+              <h3 class="text-lg font-medium text-gray-900 mb-4">その他の書類</h3>
+              <?php foreach ($rootDocuments as $index => $document): ?>
+                <div class="doc_cont_item mb-3">
+                  <div class="doc_cont_detail">
+                    <div class="doc_cont_detail_name">
+                      <p class="doc_ttl">書類名</p>
+                      <p class="doc_name"><?php echo htmlspecialchars($document['title'] ?? 'タイトル不明'); ?></p>
+                      <?php if (!empty($document['treatmentName'])): ?>
+                        <p class="text-xs text-gray-500 mt-1">施術: <?php echo htmlspecialchars($document['treatmentName']); ?></p>
+                      <?php endif; ?>
+                    </div>
+                    <div class="doc_cont_detail_date">
+                      <p class="doc_ttl">作成日</p>
+                      <p class="doc_date"><?php echo formatJapaneseDate($document['createdAt'] ?? ''); ?></p>
+                    </div>
+                  </div>
+                  <div class="doc_link_wrap">
+                    <?php if (!empty($document['url'])): ?>
+                      <a class="doc_link" href="<?php echo htmlspecialchars($document['url']); ?>" target="_blank" rel="noopener noreferrer">
+                        <span>プレビューを見る</span>
+                      </a>
+                    <?php else: ?>
+                      <span class="doc_link disabled" style="opacity: 0.5; cursor: not-allowed;">
+                        <span>プレビュー不可</span>
+                      </span>
+                    <?php endif; ?>
+                  </div>
                 </div>
-              </div>
-              <div class="doc_link_wrap">
-                <?php if (!empty($document['url'])): ?>
-                  <a class="doc_link" href="<?php echo htmlspecialchars($document['url']); ?>" target="_blank" rel="noopener noreferrer">
-                    <span>プレビューを見る</span>
-                  </a>
-                <?php else: ?>
-                  <span class="doc_link disabled" style="opacity: 0.5; cursor: not-allowed;">
-                    <span>プレビュー不可</span>
-                  </span>
-                <?php endif; ?>
-              </div>
+              <?php endforeach; ?>
             </div>
-          <?php endforeach; ?>
+          <?php endif; ?>
         <?php endif; ?>
       <?php endif; ?>
     </div>
@@ -209,14 +324,76 @@ function formatJapaneseDate($isoDate) {
         <p>Session ID: <?php echo session_id(); ?></p>
         <hr class="my-2 border-gray-600">
         <p>Visitor ID: <?php echo $visitorId ? substr($visitorId, 0, 15) . '...' : 'なし'; ?></p>
-        <p>書類件数: <?php echo count($documents); ?>件</p>
+        <p>書類件数: <?php echo $totalDocuments; ?>件</p>
         <p>エラー: <?php echo $errorMessage ?: 'なし'; ?></p>
-        <?php if (!empty($documents)): ?>
+        <?php if (!empty($folders)): ?>
         <hr class="my-2 border-gray-600">
-        <p><strong>書類データ:</strong></p>
-        <pre class="text-xs bg-gray-900 p-2 rounded overflow-auto max-h-32"><?php echo htmlspecialchars(json_encode($documents, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></pre>
+        <p><strong>フォルダデータ:</strong></p>
+        <pre class="text-xs bg-gray-900 p-2 rounded overflow-auto max-h-32"><?php echo htmlspecialchars(json_encode($folders, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></pre>
         <?php endif; ?>
     </div>
 <?php endif; ?>
+
+<script>
+// フォルダアコーディオン機能
+function toggleFolder(folderId) {
+    const folderContent = document.getElementById(folderId);
+    const folderHeader = folderContent.previousElementSibling;
+    const toggleArrow = folderHeader.querySelector('.toggle-arrow');
+    
+    if (folderContent.classList.contains('hidden')) {
+        // フォルダを開く
+        folderContent.classList.remove('hidden');
+        folderContent.style.maxHeight = folderContent.scrollHeight + 'px';
+        toggleArrow.style.transform = 'rotate(180deg)';
+        
+        // アニメーション効果
+        folderContent.style.opacity = '0';
+        folderContent.style.transform = 'translateY(-10px)';
+        
+        requestAnimationFrame(() => {
+            folderContent.style.transition = 'all 0.3s ease-in-out';
+            folderContent.style.opacity = '1';
+            folderContent.style.transform = 'translateY(0)';
+        });
+    } else {
+        // フォルダを閉じる
+        folderContent.style.transition = 'all 0.3s ease-in-out';
+        folderContent.style.opacity = '0';
+        folderContent.style.transform = 'translateY(-10px)';
+        folderContent.style.maxHeight = '0';
+        
+        setTimeout(() => {
+            folderContent.classList.add('hidden');
+            folderContent.style.removeProperty('max-height');
+            folderContent.style.removeProperty('opacity');
+            folderContent.style.removeProperty('transform');
+            folderContent.style.removeProperty('transition');
+        }, 300);
+        
+        toggleArrow.style.transform = 'rotate(0deg)';
+    }
+}
+
+// 初期化時に全てのフォルダを閉じる
+document.addEventListener('DOMContentLoaded', function() {
+    const folderContents = document.querySelectorAll('.folder-content');
+    folderContents.forEach(content => {
+        content.classList.add('hidden');
+    });
+    
+    // フォルダのホバー効果
+    const folderHeaders = document.querySelectorAll('.folder-header');
+    folderHeaders.forEach(header => {
+        header.addEventListener('mouseenter', function() {
+            this.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+        });
+        
+        header.addEventListener('mouseleave', function() {
+            this.style.boxShadow = 'none';
+        });
+    });
+});
+</script>
 </body>
 </html>

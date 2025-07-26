@@ -32,31 +32,33 @@ export function initPairBookingScreen() {
             return;
         }
 
-        // Update bookings
-        appState.bookings = [
-            {
-                patientId: patient1.id,
-                patientName: patient1.name,
-                treatment: treatment1,
-                selectedDate: date,
-                selectedTime: time,
-                pairRoomDesired: true,
-                status: "pending"
-            },
-            {
-                patientId: patient2.id,
-                patientName: patient2.name,
-                treatment: treatment2,
-                selectedDate: date,
-                selectedTime: time,
-                pairRoomDesired: true,
-                status: "pending"
-            }
-        ];
+        // ペア予約データを準備
+        const reservationData = {
+            type: 'multiple',
+            selectedDate: date,
+            selectedTime: time,
+            pairBooking: true,
+            patients: [
+                {
+                    id: patient1.id,
+                    name: patient1.name,
+                    selectedMenus: Array.isArray(treatment1) ? treatment1 : [treatment1]
+                },
+                {
+                    id: patient2.id,
+                    name: patient2.name,
+                    selectedMenus: Array.isArray(treatment2) ? treatment2 : [treatment2]
+                }
+            ]
+        };
 
-        // Save data and go to confirmation page
-        appState.saveToStorage();
-        window.location.href = 'confirmation.html';
+        // 確認モーダルを表示
+        import('../components/reservation-confirm.js').then(function(module) {
+            module.showReservationConfirmModal(reservationData, async function(data) {
+                const mainModule = await import('../main.js');
+                await mainModule.createMultipleReservations(data);
+            });
+        });
     });
 
     updatePairBookingScreen();

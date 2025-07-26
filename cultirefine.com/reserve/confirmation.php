@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<!-- 
+    CLUTIREFINEクリニック予約システム - 予約確認画面
+    エンコーディング: UTF-8
+    保存時は必ずUTF-8エンコーディングで保存してください
+-->
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>予約確認 - CLUTIREFINEクリニック</title>
+    <meta name="description" content="CLUTIREFINEクリニックの予約確認画面">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="styles.css">
+    <script>
+        // Tailwind設定のカスタマイズ
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        teal: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            700: '#0f766e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body>
+    <!-- Header -->
+    <header class="bg-teal-600 text-white p-4 shadow-md sticky top-0 z-50">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-semibold">CLUTIREFINEクリニック 予約</h1>
+            <div class="flex items-center space-x-2">
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 py-6 min-h-screen flex items-start justify-center bg-slate-50">
+        <div class="container mx-auto px-4 sm:px-6">
+            <!-- Confirmation Screen -->
+            <div class="bg-white rounded-lg border border-gray-200 shadow-sm max-w-2xl w-full mx-auto">
+                <div class="p-6 text-center">
+                    <div class="text-4xl mb-4">🛒</div>
+                    <h2 class="text-2xl font-bold text-teal-700 mb-2">予約内容の最終確認</h2>
+                    <p class="text-gray-600">以下の内容で予約を確定します。よろしいですか？</p>
+                </div>
+                <div class="px-6 pb-6 space-y-6">
+                    <div id="booking-summary" class="space-y-4"></div>
+                    
+                    <div class="text-center">
+                        <h4 class="text-lg font-semibold">合計所要時間 (目安): <span id="total-duration">0</span> 分</h4>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row justify-between items-center gap-4 pt-4 border-t border-gray-200">
+                        <button id="edit-booking-btn" class="w-full sm:w-auto border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 py-2 px-4 rounded-md flex items-center">
+                            <span class="mr-2">✏️</span> 内容を修正する
+                        </button>
+                        <button id="confirm-booking-btn" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white py-3 px-8 rounded-md text-lg font-medium flex items-center">
+                            <span class="mr-2">✅</span> この内容で予約を確定する
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-800 text-slate-400 text-center p-4 text-sm">
+        <p>&copy; <span id="current-year"></span> CLUTIREFINEクリニック. All rights reserved.</p>
+    </footer>
+
+    <script src="confirmation.js"></script>
+</body>
+</html>

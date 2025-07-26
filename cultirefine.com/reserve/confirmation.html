@@ -82,5 +82,16 @@
     </footer>
 
     <script src="confirmation.js"></script>
+    
+    <!-- 新しい予約システムの統合 -->
+    <script type="module">
+        // セッションストレージに新形式のデータがある場合は新システムを使用
+        const newReservationData = sessionStorage.getItem('reservationData');
+        if (newReservationData) {
+            import('./js/screens/single-booking-confirmation.js').then(module => {
+                module.initSingleBookingConfirmation();
+            });
+        }
+    </script>
 </body>
 </html>
