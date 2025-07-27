@@ -601,28 +601,47 @@ export async function testApiConnection() {
 
 /**
  * データマッピング用ヘルパー関数
+ * PHP側で既に変換されたデータ構造を受け取る
  */
 export function mapGasDataToAppState(gasData) {
-    return {
-        // 既存のAppStateと互換性のある形式にマッピング
-        user: {
-            id: gasData.user.id,
-            displayName: gasData.user.lineDisplayName,
-            name: gasData.user.name,
-            email: gasData.user.email,
-            phone: gasData.user.phone
-        },
+    console.log('[mapGasDataToAppState] Input data:', gasData);
+    
+    try {
+        // PHP側で既に変換されたデータ構造（user/patientInfo）を使用
+        const mappedData = {
+            user: {
+                id: gasData.user?.id || gasData.patientInfo?.id || '',
+                displayName: gasData.user?.name || gasData.user?.displayName || '',
+                name: gasData.user?.name || '',
+                email: gasData.user?.email || '',
+                phone: gasData.user?.phone || ''
+            },
+            
+            patients: [{
+                id: gasData.patientInfo?.id || gasData.user?.id || '',
+                name: gasData.patientInfo?.name || gasData.user?.name || '',
+                lastVisit: gasData.patientInfo?.lastVisitDate || gasData.ReservationHistory?.[0]?.reservedate || null,
+                isNew: gasData.patientInfo?.isNew !== undefined ? gasData.patientInfo.isNew : (!gasData.ReservationHistory || gasData.ReservationHistory.length === 0)
+            }],
+            
+            treatmentHistory: gasData.ReservationHistory || [],
+            availableTreatments: gasData.ticketInfo || [],
+            membershipInfo: {
+                companyId: gasData.membershipInfo?.companyId || null,
+                companyName: gasData.membershipInfo?.companyName || null,
+                plan: gasData.membershipInfo?.plan || null,
+                memberType: gasData.membershipInfo?.memberType || false,
+                isMember: gasData.membershipInfo?.isMember || false
+            },
+            upcomingReservations: [] // 今後の予約情報（現在は空）
+        };
         
-        patients: [{
-            id: gasData.patientInfo.id,
-            name: gasData.user.name,
-            lastVisit: gasData.patientInfo.lastVisitDate,
-            isNew: gasData.patientInfo.isNew
-        }],
+        console.log('[mapGasDataToAppState] Mapped data:', mappedData);
+        return mappedData;
         
-        treatmentHistory: gasData.treatmentHistory,
-        availableTreatments: gasData.availableTreatments,
-        membershipInfo: gasData.membershipInfo,
-        upcomingReservations: gasData.upcomingReservations
-    };
+    } catch (error) {
+        console.error('[mapGasDataToAppState] Mapping error:', error);
+        console.error('[mapGasDataToAppState] Input data structure:', JSON.stringify(gasData, null, 2));
+        throw error;
+    }
 }

@@ -560,27 +560,31 @@ function handleUpdateVisitorPublicStatus(GasApiClient $gasApi, string $lineUserI
  */
 function mapGasUserDataToJs(array $gasData): array
 {
+    // visitor構造に対応
+    $visitor = $gasData['visitor'] ?? null;
+    $company = $gasData['company'] ?? null;
     return [
-        // 基本ユーザー情報
+        // 基本ユーザー情報（visitor構造から取得）
         'user' => [
-            'id' => $gasData['user']['id'] ?? '',
-            'name' => $gasData['user']['name'] ?? '',
-            'email' => $gasData['user']['email'] ?? '',
-            'phone' => $gasData['user']['phone'] ?? '',
-            'lineDisplayName' => $gasData['user']['line_display_name'] ?? '',
-            'linePictureUrl' => $gasData['user']['line_picture_url'] ?? '',
+            'id' => $visitor['visitor_id'] ?? '',
+            'name' => $visitor['visitor_name'] ?? '',
+            'email' => $visitor['email'] ?? '',
+            'phone' => $visitor['phone'] ?? '',
+            'lineDisplayName' => $gasData['line_display_name'] ?? '',
+            'linePictureUrl' => $gasData['line_picture_url'] ?? '',
         ],
         
-        // 患者情報
+        // 患者情報（visitor構造から取得）
         'patientInfo' => [
-            'id' => $gasData['patient_info']['id'] ?? '',
-            'kana' => $gasData['patient_info']['kana'] ?? '',
-            'birthDate' => $gasData['patient_info']['birth_date'] ?? '',
-            'age' => $gasData['patient_info']['age'] ?? 0,
-            'gender' => $gasData['patient_info']['gender'] ?? '',
-            'isNew' => $gasData['patient_info']['is_new'] ?? true,
-            'lastVisitDate' => $gasData['patient_info']['last_visit_date'] ?? null,
-            'chartNumber' => $gasData['patient_info']['chart_number'] ?? '',
+            'id' => $visitor['visitor_id'] ?? '',
+            'name' => $visitor['visitor_name'] ?? '',
+            'kana' => $visitor['visitor_kana'] ?? '',
+            'birthDate' => $visitor['birth_date'] ?? '',
+            'age' => $visitor['age'] ?? 0,
+            'gender' => $visitor['gender'] ?? '',
+            'isNew' => empty($gasData['ReservationHistory']),
+            'lastVisitDate' => isset($gasData['ReservationHistory'][0]['reservedate']) ? $gasData['ReservationHistory'][0]['reservedate'] : null,
+            'chartNumber' => $visitor['chart_number'] ?? '',
         ],
 		//チケット情報
 		'ticketInfo' => array_map(function($ticket) {
@@ -604,6 +608,23 @@ function mapGasUserDataToJs(array $gasData): array
             'notes' => $doc['notes'] ?? ''
         ];
     }, $gasData['docsinfo'] ?? []),
+    /*'docsinfo' => [
+    'foldername' => array_values(array_map(function($folderName, $docs) {
+		return [
+            'name' => $docs['name'] ?? '',
+            'documents' => array_map(function($doc) {
+        return [
+            'docs_id' => $doc['docs_id'] ?? '',
+            'docs_name' => $doc['docs_name'] ?? '',
+            'docs_url' => $doc['docs_url'] ?? '',
+            'created_at' => $doc['created_at'] ?? '',
+            'treatment_name' => $doc['treatment_name'] ?? '',
+            'notes' => $doc['notes'] ?? ''
+        ];
+			},$gasData['documents'] ?? []),
+			];
+    }, $gasData['docsinfo'] ?? [])
+	],*/
 		//予約履歴情報
     'ReservationHistory' => array_map(function($history) {
         return [
@@ -623,11 +644,11 @@ function mapGasUserDataToJs(array $gasData): array
         ];
     }, $gasData['ReservationHistory'] ?? []),
         'membershipInfo' => [
-            'isMember' => $gasData['membership_info']['is_member'] ?? false,
-            'memberType' => $gasData['membership_info']['member_type'] ?? '',
-            'companyId' => $gasData['membership_info']['company_id'] ?? '',
-            'companyName' => $gasData['membership_info']['company_name'] ?? '',
-            'ticketBalance' => $gasData['membership_info']['ticket_balance'] ?? [],
+            'isMember' => !empty($company),
+            'memberType' => isset($visitor['member_type']) && $visitor['member_type'] === true ? 'main' : 'sub',
+            'companyId' => $company['company_id'] ?? '',
+            'companyName' => $company['name'] ?? '',
+            'ticketBalance' => [],
         ],
         
     ];
@@ -1313,275 +1334,5 @@ function handleCheckMedicalForceSyncStatus(): array
                 'message' => $e->getMessage()
             ]
         ];
-    }
-}
-
-/**
- * LINE通知を送信
- */
-function handleSendLineNotification(GasApiClient $gasApi, array $params): array
-{
-    try {
-        // 必須パラメータのチェック
-        if (empty($params['user_id']) || empty($params['notification_type'])) {
-            throw new Exception('user_id と notification_type は必須です', 400);
-        }
-        
-        // LINE Messaging Service初期化
-        $lineService = createLineMessagingService($gasApi);
-        
-        $userId = $params['user_id'];
-        $notificationType = $params['notification_type'];
-        $data = $params['data'] ?? [];
-        
-        // 通知タイプに応じてメッセージを送信
-        switch ($notificationType) {
-            case 'reservation_confirmation':
-                $result = $lineService->sendReservationConfirmation($userId, $data);
-                break;
-                
-            case 'ticket_balance_update':
-                $result = $lineService->sendTicketBalanceNotification($userId, $data);
-                break;
-                
-            case 'reminder_day_before':
-            case 'reminder_same_day':
-                $timing = $notificationType === 'reminder_day_before' ? 'day_before' : 'same_day';
-                $result = $lineService->sendReminderNotification($userId, $data, $timing);
-                break;
-                
-            case 'post_treatment':
-                $flexMessage = FlexMessageTemplates::createPostTreatment($data);
-                $result = $lineService->sendMessage($userId, $flexMessage, $notificationType);
-                break;
-                
-            case 'campaign_notification':
-                // カスタムメッセージまたはFlexメッセージ
-                if (isset($params['message'])) {
-                    $message = $params['message'];
-                } else {
-                    // キャンペーン用のFlexメッセージを作成（将来の拡張用）
-                    $message = [
-                        'type' => 'text',
-                        'text' => $data['message'] ?? 'キャンペーンのお知らせです'
-                    ];
-                }
-                $result = $lineService->sendMessage($userId, $message, $notificationType);
-                break;
-                
-            default:
-                throw new Exception("未対応の通知タイプです: {$notificationType}", 400);
-        }
-        
-        return $result;
-        
-    } catch (Exception $e) {
-        error_log('[Line Notification Error] ' . $e->getMessage());
-        return [
-            'success' => false,
-            'error' => [
-                'message' => $e->getMessage(),
-                'code' => $e->getCode()
-            ]
-        ];
-    }
-}
-
-/**
- * 一括LINE通知を送信
- */
-function handleSendBroadcastNotification(GasApiClient $gasApi, array $params): array
-{
-    try {
-        // 必須パラメータのチェック
-        if (empty($params['recipients']) || empty($params['notification_type'])) {
-            throw new Exception('recipients と notification_type は必須です', 400);
-        }
-        
-        // LINE Messaging Service初期化
-        $lineService = createLineMessagingService($gasApi);
-        
-        $recipients = $params['recipients'];
-        $notificationType = $params['notification_type'];
-        $data = $params['data'] ?? [];
-        
-        // メッセージを作成
-        $message = createNotificationMessage($notificationType, $data);
-        
-        // 一括送信実行
-        $result = $lineService->sendBroadcastMessage($recipients, $message, $notificationType);
-        
-        return $result;
-        
-    } catch (Exception $e) {
-        error_log('[Broadcast Notification Error] ' . $e->getMessage());
-        return [
-            'success' => false,
-            'error' => [
-                'message' => $e->getMessage(),
-                'code' => $e->getCode()
-            ]
-        ];
-    }
-}
-
-/**
- * 通知設定を取得
- */
-function handleGetNotificationSettings(GasApiClient $gasApi, array $params): array
-{
-    try {
-        $settingsManager = new NotificationSettingsManager($gasApi);
-        $notificationType = $params['type'] ?? '';
-        
-        if ($notificationType === 'timing') {
-            // タイミング設定を取得
-            return $settingsManager->getNotificationTiming();
-        } elseif ($notificationType === 'template') {
-            // テンプレート設定を取得
-            $templateType = $params['template_type'] ?? '';
-            return $settingsManager->getNotificationTemplate($templateType);
-        } else {
-            // 通常の設定を取得
-            return $settingsManager->getNotificationSettings($notificationType);
-        }
-        
-    } catch (Exception $e) {
-        error_log('[Get Notification Settings Error] ' . $e->getMessage());
-        return [
-            'success' => false,
-            'error' => [
-                'message' => $e->getMessage()
-            ]
-        ];
-    }
-}
-
-/**
- * 通知設定を更新
- */
-function handleUpdateNotificationSettings(GasApiClient $gasApi, array $params): array
-{
-    try {
-        // 必須パラメータのチェック
-        if (empty($params['notification_type']) || !isset($params['settings'])) {
-            throw new Exception('notification_type と settings は必須です', 400);
-        }
-        
-        $settingsManager = new NotificationSettingsManager($gasApi);
-        $notificationType = $params['notification_type'];
-        $settings = $params['settings'];
-        
-        $result = $settingsManager->updateNotificationSettings($notificationType, $settings);
-        
-        return $result;
-        
-    } catch (Exception $e) {
-        error_log('[Update Notification Settings Error] ' . $e->getMessage());
-        return [
-            'success' => false,
-            'error' => [
-                'message' => $e->getMessage()
-            ]
-        ];
-    }
-}
-
-/**
- * 通知テンプレート一覧を取得
- */
-function handleGetNotificationTemplates(GasApiClient $gasApi): array
-{
-    try {
-        $settingsManager = new NotificationSettingsManager($gasApi);
-        $availableTypes = $settingsManager->getAvailableNotificationTypes();
-        
-        $templates = [];
-        foreach ($availableTypes as $type => $info) {
-            $template = $settingsManager->getNotificationTemplate($type);
-            $templates[$type] = array_merge($info, $template);
-        }
-        
-        return [
-            'templates' => $templates,
-            'total_count' => count($templates)
-        ];
-        
-    } catch (Exception $e) {
-        error_log('[Get Notification Templates Error] ' . $e->getMessage());
-        return [
-            'success' => false,
-            'error' => [
-                'message' => $e->getMessage()
-            ]
-        ];
-    }
-}
-
-/**
- * LINE接続テスト
- */
-function handleTestLineConnection(GasApiClient $gasApi): array
-{
-    try {
-        $lineService = createLineMessagingService($gasApi);
-        $result = $lineService->testConnection();
-        
-        return $result;
-        
-    } catch (Exception $e) {
-        error_log('[Test Line Connection Error] ' . $e->getMessage());
-        return [
-            'success' => false,
-            'error' => [
-                'message' => $e->getMessage()
-            ]
-        ];
-    }
-}
-
-/**
- * LINE Messaging Serviceを作成
- */
-function createLineMessagingService(GasApiClient $gasApi): LineMessagingService
-{
-    $channelAccessToken = getenv('LINE_MESSAGING_CHANNEL_ACCESS_TOKEN');
-    $channelSecret = getenv('LINE_MESSAGING_CHANNEL_SECRET');
-    
-    if (empty($channelAccessToken) || empty($channelSecret)) {
-        throw new Exception('LINE Messaging API設定が不完全です', 500);
-    }
-    
-    return new LineMessagingService($channelAccessToken, $channelSecret, $gasApi);
-}
-
-/**
- * 通知タイプに応じてメッセージを作成
- */
-function createNotificationMessage(string $notificationType, array $data): array
-{
-    switch ($notificationType) {
-        case 'reservation_confirmation':
-            return FlexMessageTemplates::createReservationConfirmation($data);
-            
-        case 'ticket_balance_update':
-            return FlexMessageTemplates::createTicketBalanceUpdate($data);
-            
-        case 'reminder_day_before':
-            return FlexMessageTemplates::createReminder($data, 'day_before');
-            
-        case 'reminder_same_day':
-            return FlexMessageTemplates::createReminder($data, 'same_day');
-            
-        case 'post_treatment':
-            return FlexMessageTemplates::createPostTreatment($data);
-            
-        case 'campaign_notification':
-        default:
-            // デフォルトはテキストメッセージ
-            return [
-                'type' => 'text',
-                'text' => $data['message'] ?? 'お知らせがあります'
-            ];
     }
 }

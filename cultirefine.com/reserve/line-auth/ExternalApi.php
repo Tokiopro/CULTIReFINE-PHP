@@ -8,7 +8,7 @@ require_once 'GasApiClient.php';
  */
 class ExternalApi
 {
-    private GasApiClient $gasApi;
+    private $gasApi;
     
     public function __construct()
     {
@@ -22,7 +22,7 @@ class ExternalApi
      * @return array|null ユーザーデータ（見つからない場合null、エラー時は例外を投げる）
      * @throws Exception GAS APIエラー、ネットワークエラー等
      */
-    public function getUserData(string $lineUserId): ?array
+    public function getUserData($lineUserId)
     {
         if (defined('DEBUG_MODE') && DEBUG_MODE) {
             error_log('[ExternalApi] getUserData called with LINE User ID: ' . $lineUserId);
@@ -91,11 +91,24 @@ class ExternalApi
             if (!isset($result['data']) || !is_array($result['data'])) {
                 if (defined('DEBUG_MODE') && DEBUG_MODE) {
                     error_log('[ExternalApi] Invalid response: missing data field');
+                    error_log('[ExternalApi] Full result: ' . json_encode($result));
                 }
                 throw new Exception('GAS API returned invalid data structure');
             }
             
             $gasData = $result['data'];
+            
+            // データ構造の詳細ログ
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[ExternalApi] Processing GAS API data at ' . date('Y-m-d H:i:s'));
+                error_log('[ExternalApi] Data structure check:');
+                error_log('[ExternalApi]   - Has visitor_id (flat): ' . (isset($gasData['visitor_id']) ? 'yes' : 'no'));
+                error_log('[ExternalApi]   - Has visitor object: ' . (isset($gasData['visitor']) ? 'yes' : 'no'));
+                error_log('[ExternalApi]   - Has user object: ' . (isset($gasData['user']) ? 'yes' : 'no'));
+                if (isset($gasData['visitor'])) {
+                    error_log('[ExternalApi]   - Visitor object keys: ' . implode(', ', array_keys($gasData['visitor'])));
+                }
+            }
             
             // 新形式のレスポンスに対応（フラット構造）
             if (isset($gasData['visitor_id']) || isset($gasData['visitor_name'])) {
@@ -108,6 +121,41 @@ class ExternalApi
                 
                 // 新形式のデータをそのまま返す
                 return $gasData;
+            }
+            
+            // visitor構造を含むレスポンスに対応
+            if (isset($gasData['visitor']) && is_array($gasData['visitor'])) {
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    error_log('[ExternalApi] Detected visitor structure response from GAS API');
+                    error_log('[ExternalApi] visitor data: ' . json_encode($gasData['visitor']));
+                }
+                
+                $visitorData = $gasData['visitor'];
+                
+                // visitor構造からデータを抽出して返す
+                $userData = [
+                    'id' => $visitorData['visitor_id'] ?? null,
+                    'visitor_id' => $visitorData['visitor_id'] ?? null,
+                    'line_user_id' => $lineUserId,
+                    'name' => $visitorData['visitor_name'] ?? null,
+                    'visitor_name' => $visitorData['visitor_name'] ?? null,
+                    'email' => $visitorData['email'] ?? null,
+                    'phone' => $visitorData['phone'] ?? null,
+                    'created_at' => $visitorData['created_at'] ?? date('Y-m-d H:i:s'),
+                    'member_type' => $visitorData['member_type'] ?? 'sub',
+                    // 追加データも含める
+                    'company' => $gasData['company'] ?? null,
+                    'ticketInfo' => $gasData['ticketInfo'] ?? [],
+                    'docsinfo' => $gasData['docsinfo'] ?? [],
+                    'ReservationHistory' => $gasData['ReservationHistory'] ?? []
+                ];
+                
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    error_log('[ExternalApi] Successfully converted visitor data: ' . json_encode($userData));
+                    error_log('[ExternalApi] Returning user data with visitor_id: ' . ($userData['visitor_id'] ?? 'null'));
+                }
+                
+                return $userData;
             }
             
             // 旧形式のデータ構造の検証

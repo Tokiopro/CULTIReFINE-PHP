@@ -1,28 +1,34 @@
 <?php
-// セッションを最初に開始
-if (session_status() === PHP_SESSION_NONE) {
+// デバッグモードの設定を確認
+require_once __DIR__ . '/line-auth/config.php';
+
+// 直接session_start()を使用（index.phpと統一）
+if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
-// デバッグモードの設定を確認
-require_once __DIR__ . '/line-auth/config.php';
+// 直接セッションからデータ取得
+$lineUserId = $_SESSION['line_user_id'] ?? null;
+$displayName = $_SESSION['line_display_name'] ?? 'ゲスト';
+$pictureUrl = $_SESSION['line_picture_url'] ?? null;
 
 // セッションデバッグ情報
 $sessionDebug = [
     'session_id' => session_id(),
     'session_status' => session_status(),
-    'line_user_id' => $_SESSION['line_user_id'] ?? 'not_set',
-    'line_display_name' => $_SESSION['line_display_name'] ?? 'not_set',
+    'line_user_id' => $lineUserId ?? 'not_set',
+    'line_display_name' => $displayName ?? 'not_set',
     'session_data_count' => count($_SESSION),
-    'session_keys' => array_keys($_SESSION)
+    'session_keys' => array_keys($_SESSION),
+    'is_authenticated' => !empty($lineUserId)
 ];
 
 if (defined('DEBUG_MODE') && DEBUG_MODE) {
     error_log('[Not-Registered] Session debug: ' . json_encode($sessionDebug));
 }
 
-// LINE認証チェック（セッションエラー時は直接エラー表示）
-if (!isset($_SESSION['line_user_id'])) {
+// LINE認証チェック（直接セッション確認）
+if (empty($lineUserId)) {
     error_log('[Session Error] No LINE user ID in session at not-registered.php: ' . json_encode($sessionDebug));
     
     // 直接エラーページを表示（リダイレクトしない）
@@ -73,9 +79,8 @@ if (!isset($_SESSION['line_user_id'])) {
     exit;
 }
 
-$displayName = $_SESSION['line_display_name'] ?? 'ゲスト';
-$pictureUrl = $_SESSION['line_picture_url'] ?? null;
-$lineUserId = $_SESSION['line_user_id'];
+// 既に上部で取得済みなので再度の取得は不要
+// $displayName, $pictureUrl, $lineUserId は既に定義済み
 ?>
 <!DOCTYPE html>
 <html lang="ja">
@@ -94,6 +99,18 @@ $lineUserId = $_SESSION['line_user_id'];
     </style>
 </head>
 <body class="bg-gray-50">
+    <script>
+        // PHPセッションデータをJavaScriptに渡す（main.jsリダイレクト防止）
+        window.SESSION_USER_DATA = {
+            lineUserId: '<?php echo htmlspecialchars($lineUserId ?? ''); ?>',
+            displayName: '<?php echo htmlspecialchars($displayName ?? ''); ?>',
+            pictureUrl: '<?php echo htmlspecialchars($pictureUrl ?? ''); ?>',
+            userData: null // 未登録ユーザーなのでnull
+        };
+        
+        // デバッグ用にコンソールに出力
+        console.log('SESSION_USER_DATA set (not-registered):', window.SESSION_USER_DATA);
+    </script>
     <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <div class="max-w-lg w-full space-y-8">
             <!-- メインカード -->

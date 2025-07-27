@@ -131,6 +131,12 @@ try {
 
 <!-- Main Content -->
 <main class="flex-1 py-6 min-h-screen flex items-start justify-center bg-gray-100">
+	<?php if (isset($userInfo)): ?>
+<div style="background: #f0f0f0; padding: 10px; margin: 10px; overflow: auto;">
+    <h3>デバッグ情報</h3>
+    <pre><?php echo json_encode($userInfo, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE); ?></pre>
+</div>
+<?php endif; ?>
   <div class="container mx-auto px-0 sm:px-6">
     <div class="his_cont_wrap">
       <h2>予約履歴一覧<br>

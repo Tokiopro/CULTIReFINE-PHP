@@ -39,11 +39,32 @@ try {
     error_log('[Ticket Page] Creating GAS API client...');
     $gasApi = new GasApiClient(GAS_DEPLOYMENT_ID, GAS_API_KEY);
     
-    // ユーザー情報を取得
-    error_log('[Ticket Page] Fetching user info for LINE ID: ' . $lineUserId);
-    $userInfo = $gasApi->getUserFullInfo($lineUserId);
+    // キャッシュデータがPOSTされているか確認
+    $userInfo = null;
+    if (isset($_POST['cached_data']) && !empty($_POST['cached_data'])) {
+        error_log('[Ticket Page] Using cached data from sessionStorage');
+        $cachedData = json_decode($_POST['cached_data'], true);
+        if ($cachedData && isset($cachedData['data'])) {
+            // キャッシュデータを使用
+            $userInfo = [
+                'status' => 'success',
+                'data' => $cachedData['data']
+            ];
+        }
+    }
+    
+    // キャッシュがない場合はAPIから取得
+    if (!$userInfo) {
+        error_log('[Ticket Page] Fetching user info for LINE ID: ' . $lineUserId);
+        $userInfo = $gasApi->getUserFullInfo($lineUserId);
+    }
     
     if (isset($userInfo['status']) && $userInfo['status'] === 'success' && isset($userInfo['data'])) {
+		// 会員情報情報（新形式対応）
+        $membershipInfo = $userInfo['data']['membershipInfo'] ?? $visitor['member_type'] === true ? 'main' : 'sub' ?? null;
+		if ($membershipInfo) {
+            $memberType = $membershipInfo['memberType'] ?? 'main';
+        }
         // 会社情報（新形式対応）
         $companyData = $userInfo['data']['company'] ?? null;
         if ($companyData) {
@@ -264,29 +285,7 @@ $groupedUsed = groupReservationsByTicketType($usedReservations);
             チケット管理</h1>
         
         <!-- デスクトップ: ユーザー情報とナビゲーション -->
-        <div class="hidden md:flex items-center gap-6">
-            <div class="user-info">
-                <?php if ($pictureUrl): ?>
-                    <img src="<?php echo htmlspecialchars($pictureUrl); ?>" alt="プロフィール画像" class="profile-image">
-                <?php else: ?>
-                    <div class="profile-image bg-gray-300 flex items-center justify-center">
-                        <span class="text-gray-600 text-sm font-semibold"><?php echo mb_substr($displayName, 0, 1); ?></span>
-                    </div>
-                <?php endif; ?>
-                <span class="user-name"><?php echo htmlspecialchars($displayName); ?></span>
-            </div>
             <?php include_once '../assets/inc/navigation.php'; ?>
-        </div>
-        
-        <!-- モバイル: ユーザー情報とハンバーガーメニュー -->
-        <div class="md:hidden flex items-center gap-3">
-            <div class="user-info">
-                <?php if ($pictureUrl): ?>
-                    <img src="<?php echo htmlspecialchars($pictureUrl); ?>" alt="プロフィール画像" class="profile-image" style="width: 32px; height: 32px;">
-                <?php endif; ?>
-            </div>
-            <?php include_once '../assets/inc/navigation.php'; ?>
-        </div>
     </div>
 </header>
 
@@ -300,7 +299,7 @@ $groupedUsed = groupReservationsByTicketType($usedReservations);
           <?php echo htmlspecialchars($errorMessage); ?>
         </div>
       <?php else: ?>
-      <div id="c_name"><?php echo htmlspecialchars($companyName); ?><span></span>様</div>
+      <div id="c_name"><?php echo htmlspecialchars($companyName); ?><span><?php echo htmlspecialchars($memberType); ?></span>様</div>
       <div id="c_plan"><?php echo htmlspecialchars($companyPlan); ?></div>
       <a id="open_total">プランに含まれるチケット枚数を確認</a>
       <div class="ticket_cont_available">
@@ -318,6 +317,7 @@ $groupedUsed = groupReservationsByTicketType($usedReservations);
           <li><span><?php echo isset($ticketInfo['beauty']) ? $ticketInfo['beauty']['remaining'] : 0; ?></span>枚</li>
         </ul>
       </div>
+		<?php if($memberType === 'main'): ?>
       <div class="ticket_cont_reserve">
         <h3>予約済み枚数</h3>
         <ul id="ticket_item4">
@@ -351,6 +351,7 @@ $groupedUsed = groupReservationsByTicketType($usedReservations);
         </ul>
 		  <a id="open_used">利用詳細はこちら</a>
       </div>
+		<?php else: endif; ?>
       <?php endif; ?>
     </div>
   </div>
@@ -492,13 +493,83 @@ $groupedUsed = groupReservationsByTicketType($usedReservations);
     </div>
 </div></div>
 <!-- Footer -->
-<footer class="bg-slate-800 text-slate-400 text-center p-4 text-sm">
-  <p>&copy; <span id="current-year"></span> CLUTIREFINEクリニック. All rights reserved.</p>
-</footer>
-<script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+<?php include_once '../assets/inc/footer.php'; ?>
 	<script src="js/modal.js"></script>
+	<?php if (defined('DEBUG_MODE') && DEBUG_MODE): ?>
+    <div class="fixed bottom-4 right-4 bg-gray-800 text-white p-2 text-xs rounded max-w-sm max-h-96 overflow-y-auto">
+        <p><strong>書類一覧デバッグ情報</strong></p>
+        <p>LINE ID: <?php echo substr($lineUserId, 0, 10); ?>...</p>
+        <p>Session ID: <?php echo session_id(); ?></p>
+        <hr class="my-2 border-gray-600">
+        <p>Visitor ID: <?php echo $visitorId ? substr($visitorId, 0, 15) . '...' : 'なし'; ?></p>
+        <p>書類件数: <?php echo $reservation; ?>件</p>
+		<?php echo "<pre>";
+var_dump($reservationHistory);
+echo "</pre>";
+?>
+		<?php echo "<pre>";
+var_dump($membershipInfo);
+echo "</pre>";
+?>
+        <p>エラー: <?php echo $errorMessage ?: 'なし'; ?></p>
+        <?php if (!empty($folders)): ?>
+        <hr class="my-2 border-gray-600">
+        <p><strong>フォルダデータ:</strong></p>
+        <pre class="text-xs bg-gray-900 p-2 rounded overflow-auto max-h-32"><?php echo htmlspecialchars(json_encode($folders, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></pre>
+        <?php endif; ?>
+    </div>
+<?php endif; ?>
 <script type="text/javascript">
-	$(document).ready(function() {
+// sessionStorageキャッシュ確認
+(function() {
+    // POSTデータが既に送信されている場合はスキップ
+    <?php if (isset($_POST['cached_data'])): ?>
+    return;
+    <?php endif; ?>
+    
+    // LINE USER IDを取得
+    const lineUserId = '<?php echo htmlspecialchars($lineUserId); ?>';
+    const cacheKey = 'userFullInfo_' + lineUserId;
+    
+    try {
+        // キャッシュを確認
+        const cachedData = sessionStorage.getItem(cacheKey);
+        if (cachedData) {
+            const parsedData = JSON.parse(cachedData);
+            const { data, timestamp } = parsedData;
+            
+            // 30分以内のデータかチェック
+            const maxAge = 30 * 60 * 1000; // 30分
+            const age = Date.now() - timestamp;
+            
+            if (age < maxAge && data) {
+                console.log('[Ticket Page] Found valid cache, using cached data');
+                
+                // フォームを作成してPOST
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = window.location.href;
+                
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'cached_data';
+                input.value = JSON.stringify({ data: data });
+                
+                form.appendChild(input);
+                document.body.appendChild(form);
+                form.submit();
+                return;
+            } else {
+                console.log('[Ticket Page] Cache expired, will fetch from API');
+                sessionStorage.removeItem(cacheKey);
+            }
+        }
+    } catch (error) {
+        console.error('[Ticket Page] Error reading cache:', error);
+    }
+})();
+
+$(document).ready(function() {
     // 初期状態でddを非表示
     $('.modal_toggle_wrap dd').hide();
     $('.modal_toggle_wrap dt').on('click', function() {
@@ -513,6 +584,22 @@ $groupedUsed = groupReservationsByTicketType($usedReservations);
             $dt.addClass('open');
         }
     });
+    
+    // APIから新しいデータを取得した場合はキャッシュに保存
+    <?php if (!isset($_POST['cached_data']) && isset($userInfo['data'])): ?>
+    try {
+        const lineUserId = '<?php echo htmlspecialchars($lineUserId); ?>';
+        const cacheKey = 'userFullInfo_' + lineUserId;
+        const cacheData = {
+            data: <?php echo json_encode($userInfo['data']); ?>,
+            timestamp: Date.now()
+        };
+        sessionStorage.setItem(cacheKey, JSON.stringify(cacheData));
+        console.log('[Ticket Page] Saved API data to cache');
+    } catch (error) {
+        console.error('[Ticket Page] Error saving to cache:', error);
+    }
+    <?php endif; ?>
 });
 </script>
 </body>

@@ -337,7 +337,7 @@ button:disabled {
     }
 }
 
-/* ã‚«ãƒ¬ãƒ³ãƒ€ãƒ¼ãƒ­ãƒ¼ãƒ‡ã‚£ãƒ³ã‚°ã‚¢ãƒ‹ãƒ¡ãƒ¼ã‚·ãƒ§ãƒ³ */
+/* ¥«¥ì¥ó¥À¡¼¥í¡¼¥Ç¥£¥ó¥°¥¢¥Ë¥á¡¼¥·¥ç¥ó */
 @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
@@ -347,7 +347,7 @@ button:disabled {
     animation: spin 1s linear infinite;
 }
 
-/* ã‚«ãƒ¬ãƒ³ãƒ€ãƒ¼ç©ºãæƒ…å ±ã‚¤ãƒ³ã‚¸ã‚±ãƒ¼ã‚¿ãƒ¼ */
+/* ¥«¥ì¥ó¥À¡¼¶õ¤­¾ğÊó¥¤¥ó¥¸¥±¡¼¥¿¡¼ */
 .calendar-day {
     position: relative;
 }

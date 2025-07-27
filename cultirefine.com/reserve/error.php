@@ -1,13 +1,16 @@
 <?php
-session_start();
+// SessionManagerを使用してセッション管理
+require_once __DIR__ . '/line-auth/SessionManager.php';
+$sessionManager = SessionManager::getInstance();
+$sessionManager->startSession();
 
 // エラーメッセージを取得
 $errorMessage = $_SESSION['error_message'] ?? 'エラーが発生しました。';
 unset($_SESSION['error_message']);
 
 // LINE認証状態を確認
-$isAuthenticated = isset($_SESSION['line_user_id']);
-$displayName = $_SESSION['line_display_name'] ?? null;
+$isAuthenticated = $sessionManager->isLINEAuthenticated();
+$displayName = $sessionManager->getLINEDisplayName();
 ?>
 <!DOCTYPE html>
 <html lang="ja">

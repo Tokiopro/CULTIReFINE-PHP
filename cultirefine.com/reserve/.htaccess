@@ -1,15 +1,14 @@
 # 天満病院予約システム - .htaccess
+# エラーログを有効化
+php_flag log_errors on
+php_value error_log /home/cultirefine/www/cultirefine.com/reserve/error.log
 
 # PHP実行を有効化
-AddHandler application/x-httpd-php .php
+ AddHandler application/x-httpd-php .php
 
 # ディレクトリインデックスの設定
-DirectoryIndex index.php index.html
+# DirectoryIndex index.php index.html
 
-# HTTPSへのリダイレクト（LINE認証に必須）
-RewriteEngine On
-RewriteCond %{HTTPS} off
-RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
 # セキュリティヘッダー
 Header set X-Content-Type-Options "nosniff"
@@ -17,9 +16,9 @@ Header set X-Frame-Options "SAMEORIGIN"
 Header set X-XSS-Protection "1; mode=block"
 
 # キャッシュ制御
-<FilesMatch "\.(js|css)$">
-    Header set Cache-Control "public, max-age=86400"
-</FilesMatch>
+#<FilesMatch "\.(js|css)$">
+#    Header set Cache-Control "public, max-age=86400"
+#</FilesMatch>
 
 # エラードキュメント
 ErrorDocument 404 /reserve/error.php
@@ -32,9 +31,7 @@ ErrorDocument 500 /reserve/error.php
 </Files>
 
 # line-authディレクトリの保護
-<Directory "line-auth">
-    <Files ~ "\.(log|env)$">
-        Order allow,deny
-        Deny from all
-    </Files>
-</Directory>
+<FilesMatch "\.(log|env)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

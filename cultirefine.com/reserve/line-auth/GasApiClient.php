@@ -6,12 +6,12 @@
  */
 class GasApiClient
 {
-    private string $baseUrl;
-    private string $apiKey;
-    private int $cacheLifetime;
-    private string $cacheDir;
+    private $baseUrl;
+    private $apiKey;
+    private $cacheLifetime;
+    private $cacheDir;
     
-    public function __construct(string $deploymentId, string $apiKey, int $cacheLifetime = 300)
+    public function __construct($deploymentId, $apiKey, $cacheLifetime = 300)
     {
         $this->baseUrl = "https://script.google.com/macros/s/{$deploymentId}/exec";
         $this->apiKey = $apiKey;
@@ -20,7 +20,7 @@ class GasApiClient
         $this->ensureCacheDirectory();
     }
     
-    private function ensureCacheDirectory(): void
+    private function ensureCacheDirectory()
     {
         if (!is_dir($this->cacheDir)) {
             mkdir($this->cacheDir, 0755, true);
@@ -30,7 +30,7 @@ class GasApiClient
     /**
      * LINE IDから全ユーザー情報を一括取得
      */
-    public function getUserFullInfo(string $lineUserId): array
+    public function getUserFullInfo($lineUserId)
     {
         $cacheKey = "user_full_{$lineUserId}";
         

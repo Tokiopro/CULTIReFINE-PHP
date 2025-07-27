@@ -32,56 +32,30 @@ class SessionManager {
     }
     
     /**
-     * セッションを開始
+     * セッションを開始（簡略化版）
      */
     public function startSession() {
         if ($this->sessionStarted || session_status() === PHP_SESSION_ACTIVE) {
             return true;
         }
         
-        // HTTPS環境の確認
-        $isSecure = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ||
-                    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
-        
-        // セッションパラメータを設定（永続化のためlifetimeを長く設定）
-        $sessionParams = [
-            'lifetime' => self::SESSION_LIFETIME,
-            'path' => '/reserve/',  // reserve ディレクトリ専用
-            'domain' => '',
-            'secure' => $isSecure,
-            'httponly' => true,
-            'samesite' => 'Lax'
-        ];
-        
-        // セッション名を設定
-        session_name(self::SESSION_NAME);
-        
-        // セッションクッキーパラメータを設定
-        session_set_cookie_params($sessionParams);
-        
-        // セッションのガベージコレクション設定
-        ini_set('session.gc_maxlifetime', self::SESSION_LIFETIME);
-        ini_set('session.gc_probability', 1);
-        ini_set('session.gc_divisor', 100);
-        
-        // セッション保存ハンドラーの最適化
-        ini_set('session.serialize_handler', 'php_serialize');
-        ini_set('session.lazy_write', '1');
+        // デフォルトのPHPセッション設定を使用
+        // カスタム設定を最小限に抑える
         
         // セッションを開始
-        $result = session_start();
+        $result = @session_start();
         
         if ($result) {
             $this->sessionStarted = true;
-            $this->logger->info('セッション開始成功', [
+            $this->logger->info('セッション開始成功（簡略化版）', [
                 'session_id' => session_id(),
                 'session_name' => session_name(),
+                'session_save_path' => session_save_path(),
                 'cookie_params' => session_get_cookie_params()
             ]);
             
-            // セッションフィクセーション対策
+            // 基本的な初期化のみ
             if (!isset($_SESSION['initialized'])) {
-                session_regenerate_id(true);
                 $_SESSION['initialized'] = true;
                 $_SESSION['created_at'] = time();
             }
@@ -292,6 +266,48 @@ class SessionManager {
     }
     
     /**
+     * 未登録フラグをチェック
+     */
+    public function isUserNotRegistered() {
+        $this->startSession();
+        return isset($_SESSION['user_not_registered']) && $_SESSION['user_not_registered'] === true;
+    }
+    
+    /**
+     * 未登録フラグの設定時刻を取得
+     */
+    public function getNotRegisteredTime() {
+        $this->startSession();
+        return $_SESSION['not_registered_time'] ?? 0;
+    }
+    
+    /**
+     * 未登録フラグをクリア
+     */
+    public function clearNotRegisteredFlag() {
+        $this->startSession();
+        unset($_SESSION['user_not_registered'], $_SESSION['not_registered_time']);
+        
+        $this->logger->info('未登録フラグをクリア');
+    }
+    
+    /**
+     * LINE表示名を取得
+     */
+    public function getLINEDisplayName() {
+        $this->startSession();
+        return $_SESSION['line_display_name'] ?? 'ゲスト';
+    }
+    
+    /**
+     * LINEプロフィール画像URLを取得
+     */
+    public function getLINEPictureUrl() {
+        $this->startSession();
+        return $_SESSION['line_picture_url'] ?? null;
+    }
+    
+    /**
      * セッションエラーを取得
      */
     public function getSessionError() {
@@ -301,8 +317,9 @@ class SessionManager {
             $errors[] = 'セッションが無効化されています';
         }
         
-        if (!is_writable(session_save_path())) {
-            $errors[] = 'セッション保存パスに書き込み権限がありません: ' . session_save_path();
+        $sessionPath = session_save_path();
+        if ($sessionPath && !is_writable($sessionPath)) {
+            $errors[] = 'セッション保存パスに書き込み権限がありません: ' . $sessionPath;
         }
         
         return $errors;

@@ -14,10 +14,16 @@ class Logger
     {
         $logDir = dirname($this->logFile);
         if (!is_dir($logDir)) {
-            if (!mkdir($logDir, 0755, true)) {
+            if (!@mkdir($logDir, 0755, true)) {
                 // ログディレクトリ作成に失敗した場合、システムの一時ディレクトリを使用
                 $this->logFile = sys_get_temp_dir() . '/tenma_hospital_app.log';
             }
+        }
+        
+        // ログファイルの書き込み権限をチェック
+        if (!is_writable(dirname($this->logFile))) {
+            // 書き込み権限がない場合も一時ディレクトリを使用
+            $this->logFile = sys_get_temp_dir() . '/tenma_hospital_app.log';
         }
     }
     
@@ -43,7 +49,7 @@ class Logger
         
         $logEntry .= PHP_EOL;
         
-        file_put_contents($this->logFile, $logEntry, FILE_APPEND | LOCK_EX);
+        @file_put_contents($this->logFile, $logEntry, FILE_APPEND | LOCK_EX);
     }
     
     public function error($message, $context = array())

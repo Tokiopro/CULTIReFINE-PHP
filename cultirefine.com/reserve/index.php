@@ -1,21 +1,18 @@
 <?php
-// エラー表示を有効にして問題を特定しやすくする（一時的）
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
 // config.phpを最初に読み込み（DEBUG_MODE定義のため）
 if (!file_exists(__DIR__ . '/line-auth/config.php')) {
-    die('エラー: config.phpが見つかりません');
+    die('エラー: config.phpが見つかりません - パス: ' . __DIR__ . '/line-auth/config.php');
 }
 require_once __DIR__ . '/line-auth/config.php';
 
-// 次にSessionManagerとログ機能を読み込み
-if (!file_exists(__DIR__ . '/line-auth/SessionManager.php')) {
-    die('エラー: SessionManager.phpが見つかりません');
+// エラー表示設定（DEBUG_MODE定義後に実行）
+if (defined('DEBUG_MODE') && DEBUG_MODE) {
+    ini_set('display_errors', 1);
+    ini_set('display_startup_errors', 1);
+    error_reporting(E_ALL);
 }
-require_once __DIR__ . '/line-auth/SessionManager.php';
 
+// 必要なファイルを読み込み
 if (!file_exists(__DIR__ . '/line-auth/logger.php')) {
     die('エラー: logger.phpが見つかりません');
 }
@@ -25,27 +22,37 @@ if (!file_exists(__DIR__ . '/line-auth/url-helper.php')) {
     die('エラー: url-helper.phpが見つかりません');
 }
 require_once __DIR__ . '/line-auth/url-helper.php';
+// SessionManagerの使用を削除（500エラー対策）
+// require_once __DIR__ . '/line-auth/SessionManager.php';
 
-// SessionManagerインスタンスを取得
-$sessionManager = SessionManager::getInstance();
 $logger = new Logger();
+// $sessionManager = SessionManager::getInstance();
 
-// セッションを開始
-$sessionManager->startSession();
+// 直接session_start()を使用（callback.phpと統一）
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+// 直接セッション確認によるLINE認証状態チェック
+$isLINEAuthenticated = isset($_SESSION['line_user_id']) && !empty($_SESSION['line_user_id']);
+$hasUserData = isset($_SESSION['user_data']) && !empty($_SESSION['user_data']);
 
 // セッション状態をログに記録
 $sessionDebug = [
     'session_id' => session_id(),
     'session_status' => session_status(),
-    'has_line_user_id' => isset($_SESSION['line_user_id']),
-    'has_user_data' => isset($_SESSION['user_data']),
-    'session_keys' => array_keys($_SESSION)
+    'session_name' => session_name(),
+    'has_line_user_id' => $isLINEAuthenticated,
+    'line_user_id_value' => $_SESSION['line_user_id'] ?? 'not_set',
+    'has_user_data' => $hasUserData,
+    'session_keys' => array_keys($_SESSION),
+    'session_data_preview' => array_slice($_SESSION, 0, 5, true)
 ];
 
-$logger->info('[Index] Session Debug', $sessionDebug);
+$logger->info('[Index] Session Debug（直接セッション版）', $sessionDebug);
 
-// SessionManagerを使用したLINE認証チェック
-if (!$sessionManager->isLINEAuthenticated()) {
+// 直接セッションでのLINE認証チェック
+if (!$isLINEAuthenticated) {
     $logger->info('[Auth Check] LINE認証が必要', [
         'reason' => 'LINE認証情報がセッションにない',
         'session_debug' => $sessionDebug
@@ -56,34 +63,54 @@ if (!$sessionManager->isLINEAuthenticated()) {
     exit;
 }
 
-// セッションの有効性をチェック
-if (!$sessionManager->validateSession()) {
+// 簡単なセッション有効性チェック（24時間以内の認証）
+$isSessionValid = true;
+if (isset($_SESSION['line_auth_time'])) {
+    $elapsed = time() - $_SESSION['line_auth_time'];
+    $sessionLifetime = 86400; // 24時間
+    if ($elapsed > $sessionLifetime) {
+        $isSessionValid = false;
+        $logger->info('[Auth Check] セッションタイムアウト', [
+            'elapsed_time' => $elapsed,
+            'lifetime' => $sessionLifetime
+        ]);
+    }
+}
+
+if (!$isSessionValid) {
     $logger->info('[Auth Check] セッション無効', [
-        'reason' => 'セッション有効期限切れまたは無効',
+        'reason' => 'セッション有効期限切れ',
         'session_debug' => $sessionDebug
     ]);
     
     // セッションを破棄してLINE認証へリダイレクト
-    $sessionManager->destroySession();
+    session_destroy();
     header('Location: ' . getRedirectUrl('/reserve/line-auth/'));
     exit;
 }
 
-// SessionManagerからユーザー情報を取得
-$lineUserId = $sessionManager->getLINEUserId();
+// 直接セッションからユーザー情報を取得
+$lineUserId = $_SESSION['line_user_id'];
 $displayName = $_SESSION['line_display_name'] ?? 'ゲスト';
 $pictureUrl = $_SESSION['line_picture_url'] ?? null;
-$userData = $sessionManager->getUserData();
+$userData = $_SESSION['user_data'] ?? null;
 
-$logger->info('[Index] ユーザー情報取得完了', [
+$logger->info('[Index] LINE認証成功 - セッション情報詳細', [
     'line_user_id' => $lineUserId,
     'display_name' => $displayName,
+    'has_picture_url' => !empty($pictureUrl),
+    'has_user_data' => !empty($userData),
+    'session_id' => session_id(),
+    'session_keys_count' => count($_SESSION),
+    'session_all_keys' => array_keys($_SESSION),
+    'line_auth_time' => $_SESSION['line_auth_time'] ?? 'not_set',
+    'user_data_keys' => is_array($userData) ? array_keys($userData) : 'not_array',
     'has_user_data' => !is_null($userData)
 ]);
 
 // ユーザーデータがない場合の処理改善
 if (!$userData) {
-    // セッションに未登録フラグがある場合の処理
+    // 直接セッションで未登録フラグをチェック
     if (isset($_SESSION['user_not_registered']) && $_SESSION['user_not_registered'] === true) {
         // 未登録フラグの有効期限をチェック（24時間）
         $notRegisteredTime = $_SESSION['not_registered_time'] ?? 0;
@@ -116,114 +143,66 @@ if (!$userData && defined('DEBUG_MODE') && DEBUG_MODE) {
     ]);
 }
 
-// GAS APIクライアントを読み込み（config.phpは既に読み込み済み）
-require_once __DIR__ . '/line-auth/GasApiClient.php';
+// ユーザーデータがセッションにない場合は、LINE認証を再実行
+if (!$userData) {
+    $logger->info('[Index] ユーザーデータなし、LINE認証をやり直し', [
+        'line_user_id' => $lineUserId,
+        'reason' => 'セッションにuser_dataが存在しない'
+    ]);
+    
+    // セッションをクリアしてLINE認証からやり直し
+    session_destroy();
+    header('Location: ' . getRedirectUrl('/reserve/line-auth/'));
+    exit;
+}
 
+// 以下はuser_dataがある場合の通常処理
 $companyPatients = [];
 $companyInfo = null;
 $userRole = 'sub'; // デフォルトはサブ会員
 $errorMessage = '';
-$debugInfo = []; // デバッグ情報を格納
+$debugInfo = []; // デバッグ情報を初期化
 $currentUserVisitorId = null; // ログインユーザーのvisitor_id
 
+// GAS APIクライアントを読み込み（user_dataの詳細情報取得用）
+require_once __DIR__ . '/line-auth/GasApiClient.php';
+
 try {
-    // デバッグ: セッション情報
-    if (DEBUG_MODE) {
-        $debugInfo['session'] = [
-            'line_user_id' => $_SESSION['line_user_id'] ?? 'not_set',
-            'line_display_name' => $_SESSION['line_display_name'] ?? 'not_set',
-            'session_id' => session_id(),
-            'has_user_data' => isset($_SESSION['user_data']),
-            'user_data_keys' => isset($_SESSION['user_data']) ? array_keys($_SESSION['user_data']) : [],
-            'all_session_keys' => array_keys($_SESSION)
-        ];
-        $logger->debug('[Index] Session info', $debugInfo['session']);
-    }
+    // 既存のuser_dataを使用（callback.phpで既に取得済み）
+    $logger->info('[Index] セッションからユーザーデータを使用', [
+        'line_user_id' => $lineUserId,
+        'user_data_keys' => array_keys($userData),
+        'has_visitor_id' => isset($userData['visitor_id']) || isset($userData['id'])
+    ]);
     
     $gasApi = new GasApiClient(GAS_DEPLOYMENT_ID, GAS_API_KEY);
     
-    // デバッグ: GAS API設定
-    if (DEBUG_MODE) {
-        $debugInfo['gas_config'] = [
-            'deployment_id' => GAS_DEPLOYMENT_ID ? '設定済み' : '未設定',
-            'api_key' => GAS_API_KEY ? '設定済み' : '未設定',
-            'line_user_id' => $lineUserId
-        ];
-        $logger->debug('[Index] GAS API config', $debugInfo['gas_config']);
-    }
+    // userDataからユーザー情報を取得（callback.phpで取得済み）
+    $currentUserVisitorId = $userData['visitor_id'] ?? $userData['id'] ?? null;
     
-    // 1. ユーザー情報を取得して会社情報を確認
-    if (DEBUG_MODE) {
-        $logger->debug('[Index] Calling getUserFullInfo', ['line_user_id' => $lineUserId]);
-    }
+    $logger->info('[Index] ユーザー基本情報確認', [
+        'current_user_visitor_id' => $currentUserVisitorId,
+        'user_name' => $userData['visitor_name'] ?? $userData['name'] ?? null,
+        'member_type' => $userData['member_type'] ?? 'sub'
+    ]);
     
-    $userInfo = $gasApi->getUserFullInfo($lineUserId);
-    
-    // デバッグ: API レスポンス詳細
-    if (DEBUG_MODE) {
-        $debugInfo['gas_api_response'] = [
-            'status' => $userInfo['status'] ?? 'no_status',
-            'has_data' => isset($userInfo['data']),
-            'data_keys' => isset($userInfo['data']) ? array_keys($userInfo['data']) : [],
-            'error' => $userInfo['error'] ?? null,
-            'full_response' => $userInfo
-        ];
-        $logger->debug('[Index] GAS API Response', $debugInfo['gas_api_response']);
-    }
-    
-    // GAS APIのレスポンス形式を確認
-    // 現在の形式（visitor, company, ticketInfo）をそのまま使用
-    
-    // GAS APIの結果に基づく処理
-    if ($userInfo['status'] === 'success' && isset($userInfo['data'])) {
-        // ユーザーが見つかった場合
-        if (!$userData) {
-            $_SESSION['user_data'] = $userInfo['data'];
-            $sessionManager->saveUserData($userInfo['data']);
-            $logger->info('[Index] GAS APIからユーザーデータ取得・保存完了', [
-                'line_user_id' => $lineUserId,
-                'user_id' => $userInfo['data']['visitor']['visitor_id'] ?? 'unknown'
-            ]);
-        }
-        // 未登録フラグがあればクリア
-        if (isset($_SESSION['user_not_registered'])) {
-            unset($_SESSION['user_not_registered'], $_SESSION['not_registered_time']);
-        }
-    } else {
-        // ユーザーが見つからない場合
-        $logger->info('[Index] GAS APIでユーザー未発見、未登録ページへリダイレクト', [
-            'line_user_id' => $lineUserId,
-            'gas_status' => $userInfo['status'] ?? 'unknown',
-            'gas_error' => $userInfo['error'] ?? null
-        ]);
-        
-        // 未登録フラグを設定
-        $_SESSION['user_not_registered'] = true;
-        $_SESSION['not_registered_time'] = time();
-        
-        header('Location: ' . getRedirectUrl('/reserve/not-registered.php'));
-        exit;
-    }
-    
-    // GAS APIのレスポンス形式に対応（visitor, company, ticketInfo）
-    if (isset($userInfo['data']['visitor']) && isset($userInfo['data']['company'])) {
-        // ログインユーザーのIDを取得
-        $currentUserVisitorId = $userInfo['data']['visitor']['visitor_id'] ?? null;
-        
-        // 会社情報を取得
-        $companyData = $userInfo['data']['company'] ?? null;
+    // JavaScript側でGAS APIを呼び出すため、PHP側では呼び出さない
+    // 会社情報とメンバータイプのみ設定（callback.phpで取得済みのuserDataから）
+    if ($currentUserVisitorId) {
+        // userDataから会社情報を構築（既にcallback.phpで取得済み）
+        $companyData = $userData['company'] ?? null;
         
         if (DEBUG_MODE) {
-            $logger->debug('[Index] User and company data', [
-                'current_user_visitor_id' => $currentUserVisitorId,
-                'company_data' => $companyData
+            $logger->debug('[Index] Company data from userData', [
+                'company_data' => $companyData,
+                'userData_keys' => array_keys($userData)
             ]);
         }
         
         // 会社情報の処理
         if ($companyData && isset($companyData['company_id']) && !empty($companyData['company_id'])) {
-            // member_typeの判定（visitor.member_typeがtrueなら本会員、falseならサブ会員）
-            $isMemberType = $userInfo['data']['visitor']['member_type'] ?? false;
+            // member_typeの判定（userDataから取得）
+            $isMemberType = ($userData['member_type'] ?? false) === true;
             $memberTypeLabel = $isMemberType ? '本会員' : 'サブ会員';
             
             $companyInfo = [
@@ -234,67 +213,22 @@ try {
                 'role' => $isMemberType ? 'main' : 'sub'
             ];
             
-            $userRole = $companyInfo['role'];
-            
-            // 2. 会社に紐づく来院者一覧を取得
-            $patientsResponse = $gasApi->getPatientsByCompany($companyInfo['id'], $userRole);
-            
-            if ($patientsResponse['status'] === 'success') {
-                $rawPatients = $patientsResponse['data']['visitors'] ?? [];
-                
-                // ログインユーザーのvisitor_idと重複する来院者を除外
-                $companyPatients = [];
-                foreach ($rawPatients as $patient) {
-                    $patientVisitorId = $patient['visitor_id'] ?? null;
-                    // ログインユーザーのvisitor_idと一致しない場合のみ追加
-                    if ($patientVisitorId !== $currentUserVisitorId || $currentUserVisitorId === null) {
-                        $companyPatients[] = $patient;
-                    }
-                }
-                
-                $totalPatients = count($companyPatients);
-                
-                // デバッグログ
-                if (defined('DEBUG_MODE') && DEBUG_MODE) {
-                    error_log('Company ID: ' . $companyInfo['id']);
-                    error_log('User Role: ' . $userRole);
-                    error_log('Raw patients count: ' . count($rawPatients));
-                    error_log('Filtered patients count: ' . $totalPatients);
-                    error_log('Current user visitor_id: ' . $currentUserVisitorId);
-                    error_log('Excluded duplicates: ' . (count($rawPatients) - $totalPatients));
-                }
-            } else {
-                $errorMessage = '来院者一覧の取得に失敗しました: ' . ($patientsResponse['message'] ?? 'Unknown error');
-            }
+            // 会社関連のメンバーリストは初期状態では空（JavaScript側で取得）
+            $companyPatients = [];
         } else {
-            $errorMessage = '会社情報が見つかりません。管理者にお問い合わせください。';
+            // 会社情報がない場合（個人利用者）
+            $companyInfo = null;
         }
     } else {
-        // GAS APIレスポンスの形式をチェックして適切なエラーメッセージを生成
-        $hasVisitorInfo = isset($userInfo['data']['visitor']);
-        $hasCompanyInfo = isset($userInfo['data']['company']);
-        
-        if ($hasVisitorInfo && !$hasCompanyInfo) {
-            $errorMessage = '来院者情報は取得できましたが、会社情報が見つかりません。';
-        } elseif (!$hasVisitorInfo && $hasCompanyInfo) {
-            $errorMessage = '会社情報は取得できましたが、来院者情報が見つかりません。';
-        } elseif (isset($userInfo['status']) && $userInfo['status'] === 'error') {
-            $errorMessage = 'GAS APIエラー: ' . ($userInfo['error']['message'] ?? $userInfo['message'] ?? 'Unknown error');
-        } else {
-            $errorMessage = 'ユーザー情報の取得に失敗しました: レスポンス形式が不正です';
-        }
+        // visitor_idがない場合のエラーメッセージ
+        $errorMessage = 'ユーザー情報の取得に失敗しました。visitor_idが見つかりません。';
         
         // デバッグ: 失敗詳細
         if (DEBUG_MODE) {
-            $debugInfo['failure_details'] = [
-                'has_visitor_info' => $hasVisitorInfo,
-                'has_company_info' => $hasCompanyInfo,
-                'response_keys' => isset($userInfo['data']) ? array_keys($userInfo['data']) : array_keys($userInfo),
-                'visitor_data' => $userInfo['data']['visitor'] ?? null,
-                'company_data' => $userInfo['data']['company'] ?? null,
-                'full_user_info' => $userInfo
-            ];
-            $logger->debug('[Index] Failure details', $debugInfo['failure_details']);
+            $logger->debug('[Index] No visitor_id found', [
+                'user_data' => $userData,
+                'line_user_id' => $lineUserId
+            ]);
         }
     }
 } catch (Exception $e) {
@@ -2017,6 +1951,27 @@ try {
                 console.log('🔧 高度デバッグパネルを作成中...');
                 createAdvancedDebugPanel();
             }, 2000);
+        }
+    </script>
+    
+    <!-- セッションデータをJavaScriptに渡す -->
+    <script>
+        window.SESSION_USER_DATA = {
+            lineUserId: <?php echo json_encode($lineUserId); ?>,
+            displayName: <?php echo json_encode($displayName); ?>,
+            pictureUrl: <?php echo json_encode($pictureUrl); ?>,
+            userData: <?php echo json_encode($userData); ?>,
+            debugMode: <?php echo json_encode(defined('DEBUG_MODE') && DEBUG_MODE); ?>,
+            debugInfo: <?php echo json_encode($debugInfo ?? []); ?>
+        };
+        
+        // デバッグ情報
+        if (window.SESSION_USER_DATA.debugMode) {
+            console.log('=== SESSION USER DATA SET ===');
+            console.log('Line User ID:', window.SESSION_USER_DATA.lineUserId);
+            console.log('Display Name:', window.SESSION_USER_DATA.displayName);
+            console.log('Has User Data:', !!window.SESSION_USER_DATA.userData);
+            console.log('User Data:', window.SESSION_USER_DATA.userData);
         }
     </script>
     

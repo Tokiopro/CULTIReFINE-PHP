@@ -197,6 +197,29 @@ document.addEventListener('DOMContentLoaded', function() {
             pictureUrl: window.SESSION_USER_DATA.pictureUrl
         });
         
+        // キャッシュキーを作成（ユーザーIDと日付を組み合わせ）
+        const cacheKey = 'userFullInfo_' + window.SESSION_USER_DATA.lineUserId;
+        const cacheExpiry = 30 * 60 * 1000; // 30分
+        
+        // キャッシュを確認
+        const cachedData = getCachedUserData(cacheKey, cacheExpiry);
+        
+        if (cachedData) {
+            console.log('[Main] Using cached user data');
+            try {
+                const mappedData = mapGasDataToAppState(cachedData);
+                Object.assign(appState, mappedData);
+                updatePatientsList();
+                console.log('Cached user data loaded successfully');
+                hideLoadingOverlay();
+                return;
+            } catch (error) {
+                console.error('Error using cached data:', error);
+                // キャッシュが破損している場合は削除
+                sessionStorage.removeItem(cacheKey);
+            }
+        }
+        
         // Fetch full user information from API with timeout
         const loadingTimeout = setTimeout(() => {
             console.warn('API呼び出しがタイムアウトしました。基本画面を表示します。');
@@ -220,12 +243,36 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // 正常な場合のみデータをマップ
             try {
-                mapGasDataToAppState(data);
+                // データ構造を確認
+                console.log('[Main] getUserFullInfo response:', data);
+                
+                // データが正しい構造を持っているか確認
+                if (!data || typeof data !== 'object') {
+                    throw new Error('無効なデータ形式です');
+                }
+                
+                // マッピング実行（data.dataを渡す）
+                const mappedData = mapGasDataToAppState(data.data);
+                
+                // AppStateに適用
+                Object.assign(appState, mappedData);
+                
+                // キャッシュに保存
+                setCachedUserData(cacheKey, data.data);
+                
+                // UI更新
                 updatePatientsList();
                 console.log('User data loaded successfully');
             } catch (mappingError) {
                 console.error('Error mapping user data:', mappingError);
-                showErrorMessage('データの処理中にエラーが発生しました。');
+                console.error('Data structure:', data);
+                
+                // より詳細なエラーメッセージ
+                let errorMessage = 'データの処理中にエラーが発生しました。';
+                if (mappingError.message) {
+                    errorMessage += ' (' + mappingError.message + ')';
+                }
+                showErrorMessage(errorMessage);
             } finally {
                 hideLoadingOverlay();
             }
@@ -262,7 +309,15 @@ document.addEventListener('DOMContentLoaded', function() {
             lineUserId: sessionStorage.getItem('lineUserId')
         });
         
+        // 未登録ユーザーページの場合はリダイレクトしない
+        if (window.location.pathname.includes('not-registered.php')) {
+            console.log('Not registered page detected, skipping redirect');
+            hideLoadingOverlay();
+            return;
+        }
+        
         // Redirect to login
+        console.log('Redirecting to login page...');
         window.location.href = '/reserve/line-auth/';
     }
     
@@ -437,6 +492,45 @@ function parseFailureReason(errorMessage) {
     
     // その他のエラーはそのまま返す
     return errorMessage;
+}
+
+/**
+ * キャッシュからユーザーデータを取得
+ */
+function getCachedUserData(cacheKey, maxAge) {
+    try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (!cached) return null;
+        
+        const { data, timestamp } = JSON.parse(cached);
+        const age = Date.now() - timestamp;
+        
+        if (age > maxAge) {
+            sessionStorage.removeItem(cacheKey);
+            return null;
+        }
+        
+        return data;
+    } catch (error) {
+        console.error('Cache read error:', error);
+        return null;
+    }
+}
+
+/**
+ * ユーザーデータをキャッシュに保存
+ */
+function setCachedUserData(cacheKey, data) {
+    try {
+        const cacheData = {
+            data: data,
+            timestamp: Date.now()
+        };
+        sessionStorage.setItem(cacheKey, JSON.stringify(cacheData));
+    } catch (error) {
+        console.error('Cache write error:', error);
+        // キャッシュ書き込みに失敗してもアプリは継続
+    }
 }
 
 /**

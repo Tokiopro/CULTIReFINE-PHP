@@ -120,79 +120,17 @@ export function updatePatientsList() {
     
     container.innerHTML = '';
 
-    // ログインユーザーを最初に追加
-    if (window.APP_CONFIG && window.APP_CONFIG.displayName) {
-        var currentUser = {
-            id: 'current-user',
-            name: window.APP_CONFIG.displayName,
-            kana: '',
-            gender: '',
-            isPublic: true,
-            lastVisit: null,
-            isNew: false,
-            isVisible: true,
-            isCurrentUser: true
-        };
-        
-        // ログインユーザーが既に来院者リストにいないか確認
-        // visitor_idがある場合はvisitor_idで、ない場合は名前で重複チェック
-        var userExists = appState.allPatients.some(function(patient) {
-            if (window.APP_CONFIG && window.APP_CONFIG.currentUserVisitorId && patient.id) {
-                return patient.id === window.APP_CONFIG.currentUserVisitorId;
-            }
-            return patient.name === currentUser.name;
-        });
-        
-        if (!userExists) {
-            // ログインユーザーのカードを表示
-            var userElement = createElement('div', 
-                'patient-item flex items-center space-x-3 p-3 border rounded-md cursor-pointer transition-all border-gray-200 hover:bg-slate-50'
-            );
-            
-            var isSelected = appState.selectedPatientsForBooking.some(function(p) { return p.id === currentUser.id; });
-            if (isSelected) {
-                userElement.classList.add('selected', 'bg-teal-50', 'border-teal-500');
-                userElement.classList.remove('border-gray-200', 'hover:bg-slate-50');
-            }
-            
-            var isDisabled = appState.isPairBookingMode && 
-                              appState.selectedPatientsForBooking.length >= 2 && 
-                              !isSelected;
-            
-            userElement.innerHTML = 
-                '<input type="checkbox" class="patient-checkbox" ' +
-                (isSelected ? 'checked' : '') + ' ' +
-                (isDisabled ? 'disabled' : '') +
-                ' data-patient-id="' + currentUser.id + '">' +
-                '<div class="flex-1 cursor-pointer">' +
-                    '<div class="flex items-center justify-between">' +
-                        '<div>' +
-                            '<span class="font-medium">' + currentUser.name + ' (ご本人)</span>' +
-                            '<span class="text-xs text-teal-600 ml-2">ログイン中のユーザー</span>' +
-                        '</div>' +
-                    '</div>' +
-                '</div>';
-            
-            userElement.addEventListener('click', function() {
-                var disabled = appState.isPairBookingMode && 
-                              appState.selectedPatientsForBooking.length >= 2 && 
-                              !appState.selectedPatientsForBooking.some(function(p) { return p.id === currentUser.id; });
-                if (disabled) {
-                    alert("ペア予約では2名まで選択できます。");
-                } else {
-                    togglePatientSelection(currentUser.id);
-                }
-            });
-            
-            container.appendChild(userElement);
-            
-            // 区切り線を追加
-            if (appState.allPatients.length > 0) {
-                var divider = document.createElement('hr');
-                divider.className = 'my-3 border-gray-200';
-                container.appendChild(divider);
-            }
-        }
+    // 権限に応じた説明を表示
+    if (window.APP_CONFIG && window.APP_CONFIG.userRole === 'sub') {
+        var roleNotice = document.createElement('div');
+        roleNotice.className = 'bg-blue-50 border border-blue-200 text-blue-700 px-3 py-2 rounded mb-3 text-sm';
+        roleNotice.innerHTML = '<strong>サブ会員</strong>: 公開設定された来院者のみ表示されています。';
+        container.appendChild(roleNotice);
+    } else if (window.APP_CONFIG && window.APP_CONFIG.userRole === 'main') {
+        var roleNotice = document.createElement('div');
+        roleNotice.className = 'bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded mb-3 text-sm';
+        roleNotice.innerHTML = '<strong>本会員</strong>: 会社の全ての来院者を表示しています。';
+        container.appendChild(roleNotice);
     }
 
     if (appState.allPatients.length === 0) {
@@ -233,25 +171,15 @@ export function updatePatientsList() {
         var toggleButton = '';
         if (window.APP_CONFIG && window.APP_CONFIG.userRole === 'main') {
             var toggleId = 'toggle-' + patient.id;
-            var loadingId = 'loading-' + patient.id;
             toggleButton = 
                 '<div class="ml-2 flex items-center">' +
                     '<span class="text-xs text-gray-500 mr-1">公開:</span>' +
-                    '<div class="relative">' +
-                        '<label class="toggle-switch" for="' + toggleId + '">' +
-                            '<input type="checkbox" id="' + toggleId + '" class="toggle-checkbox" ' +
-                            (patient.isPublic ? 'checked' : '') + ' ' +
-                            'data-visitor-id="' + patient.id + '">' +
-                            '<span class="toggle-slider"></span>' +
-                        '</label>' +
-                        '<span id="' + loadingId + '" class="hidden text-xs text-blue-600 ml-2 flex items-center">' +
-                            '<svg class="animate-spin h-3 w-3 mr-1 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">' +
-                                '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
-                                '<path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>' +
-                            '</svg>' +
-                            '処理中...' +
-                        '</span>' +
-                    '</div>' +
+                    '<label class="toggle-switch" for="' + toggleId + '">' +
+                        '<input type="checkbox" id="' + toggleId + '" class="toggle-checkbox" ' +
+                        (patient.isPublic ? 'checked' : '') + ' ' +
+                        'data-visitor-id="' + patient.id + '">' +
+                        '<span class="toggle-slider"></span>' +
+                    '</label>' +
                 '</div>';
         }
         
@@ -273,14 +201,8 @@ export function updatePatientsList() {
                 '</div>' +
             '</div>';
 
-        // 親要素のクリックイベントを設定（トグルボタンがクリックされた場合はスキップ）
         patientElement.addEventListener('click', function(patientId) {
-            return function(e) {
-                // トグルボタンまたはその内部要素がクリックされた場合はスキップ
-                if (e.target.closest('.toggle-switch')) {
-                    return;
-                }
-                
+            return function() {
                 var disabled = appState.isPairBookingMode && 
                               appState.selectedPatientsForBooking.length >= 2 && 
                               !appState.selectedPatientsForBooking.some(function(p) { return p.id === patientId; });
@@ -298,14 +220,10 @@ export function updatePatientsList() {
         if (window.APP_CONFIG && window.APP_CONFIG.userRole === 'main') {
             var toggleCheckbox = patientElement.querySelector('.toggle-checkbox');
             if (toggleCheckbox) {
-                toggleCheckbox.addEventListener('click', function(e) {
-                    e.stopPropagation(); // 親要素のクリックイベントを防ぐ
-                });
-                
                 toggleCheckbox.addEventListener('change', function(e) {
+                    e.stopPropagation(); // 親要素のクリックイベントを防ぐ
                     var visitorId = this.getAttribute('data-visitor-id');
                     var isPublic = this.checked;
-                    console.log('Toggle changed:', visitorId, isPublic); // デバッグ用
                     updateVisitorPublicStatus(visitorId, isPublic);
                 });
             }
@@ -314,25 +232,7 @@ export function updatePatientsList() {
 }
 
 export function togglePatientSelection(patientId) {
-    var patient;
-    
-    // ログインユーザーの場合
-    if (patientId === 'current-user') {
-        patient = {
-            id: 'current-user',
-            name: window.APP_CONFIG.displayName,
-            kana: '',
-            gender: '',
-            isPublic: true,
-            lastVisit: null,
-            isNew: false,
-            isVisible: true,
-            isCurrentUser: true
-        };
-    } else {
-        patient = appState.allPatients.find(function(p) { return p.id === patientId; });
-    }
-    
+    var patient = appState.allPatients.find(function(p) { return p.id === patientId; });
     var isSelected = appState.selectedPatientsForBooking.some(function(p) { return p.id === patientId; });
 
     if (isSelected) {
@@ -370,14 +270,8 @@ async function updateVisitorPublicStatus(visitorId, isPublic) {
     try {
         // UI上でローディング状態を示す
         var toggleElement = document.querySelector('[data-visitor-id="' + visitorId + '"]');
-        var loadingElement = document.getElementById('loading-' + visitorId);
-        
         if (toggleElement) {
             toggleElement.disabled = true;
-        }
-        
-        if (loadingElement) {
-            loadingElement.classList.remove('hidden');
         }
         
         // APIを呼び出し
@@ -442,14 +336,8 @@ async function updateVisitorPublicStatus(visitorId, isPublic) {
     } finally {
         // ローディング状態を解除
         var toggleElement = document.querySelector('[data-visitor-id="' + visitorId + '"]');
-        var loadingElement = document.getElementById('loading-' + visitorId);
-        
         if (toggleElement) {
             toggleElement.disabled = false;
-        }
-        
-        if (loadingElement) {
-            loadingElement.classList.add('hidden');
         }
     }
 }

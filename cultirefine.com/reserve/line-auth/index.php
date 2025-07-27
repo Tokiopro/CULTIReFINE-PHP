@@ -1,22 +1,27 @@
 <?php
-// セッションを最初に開始
-if (session_status() === PHP_SESSION_NONE) {
+require_once 'config.php';
+require_once 'LineAuth.php';
+require_once 'logger.php';
+
+$logger = new Logger();
+
+// 直接session_start()を使用（シンプル化）
+if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
-require_once 'config.php';
-require_once 'LineAuth.php';
-
 // デバッグログ
-if (defined('DEBUG_MODE') && DEBUG_MODE) {
-    error_log('[LINE Auth] Starting OAuth flow, session_id: ' . session_id());
-    error_log('[LINE Auth] Session status: ' . session_status());
-    error_log('[LINE Auth] Session data keys: ' . implode(', ', array_keys($_SESSION)));
-}
+$logger->info('[LINE Auth] OAuth開始（直接セッション版）', [
+    'session_id' => session_id(),
+    'session_status' => session_status(),
+    'session_name' => session_name(),
+    'session_save_path' => session_save_path(),
+    'session_data_keys' => array_keys($_SESSION),
+    'direct_session_used' => true
+]);
 
 $lineAuth = new LineAuth();
 
-// リッチメニューからのアクセスを処理
 // state パラメータを生成してセッションに保存
 $state = bin2hex(random_bytes(16));
 $_SESSION['oauth_state'] = $state;
@@ -24,15 +29,16 @@ $_SESSION['oauth_state'] = $state;
 // LINE認証URLを生成
 $authUrl = $lineAuth->getAuthorizationUrl($state);
 
-// デバッグログ
-if (defined('DEBUG_MODE') && DEBUG_MODE) {
-    error_log('[LINE Auth] OAuth state saved: ' . $state);
-    error_log('[LINE Auth] Session ID before redirect: ' . session_id());
-    error_log('[LINE Auth] Redirecting to LINE Auth URL');
-}
-
-// セッションを明示的に保存
-session_write_close();
+// 詳細デバッグログ
+$logger->info('[LINE Auth] OAuth state生成・保存（詳細）', [
+    'generated_state' => $state,
+    'session_id' => session_id(),
+    'session_oauth_state_set' => isset($_SESSION['oauth_state']),
+    'session_oauth_state_value' => $_SESSION['oauth_state'] ?? 'not_set',
+    'session_all_keys' => array_keys($_SESSION),
+    'auth_url' => $authUrl,
+    'action' => 'redirect_to_line'
+]);
 
 // LINE認証ページへリダイレクト
 header('Location: ' . $authUrl);
