@@ -239,19 +239,30 @@ class ReservationService {
       
       const startTime = new Date().getTime();
       const allReservations = [];
-      const limit = 500;
+      const limit = 200; // バッチサイズを削減してタイムアウトを回避
       let offset = 0;
       let hasMore = true;
       
+      // 処理時間計測用
+      const timeLog = {
+        apiCalls: 0,
+        apiTime: 0,
+        dataTransform: 0,
+        sheetWrite: 0
+      };
+      
       // 既存の予約IDを取得（重複チェック用）
+      const existingIdsStartTime = new Date().getTime();
       const existingIds = this._getExistingReservationIds();
+      const existingIdsTime = new Date().getTime() - existingIdsStartTime;
+      Logger.log(`既存ID取得時間: ${existingIdsTime}ms (${existingIds.size}件)`);
       
       while (hasMore) {
         const currentTime = new Date().getTime();
         const elapsedTime = currentTime - startTime;
         
-        // 4分で打ち切り（余裕を持たせる）
-        if (elapsedTime > 240000) {
+        // 5分で打ち切り（余裕を持たせる）
+        if (elapsedTime > 300000) {
           Logger.log('実行時間制限に近づいたため同期を終了');
           break;
         }
@@ -264,7 +275,13 @@ class ReservationService {
           offset: offset
         };
         
+        // API呼び出し時間を計測
+        const apiStartTime = new Date().getTime();
         const response = this.apiClient.getReservations(requestParams);
+        const apiEndTime = new Date().getTime();
+        timeLog.apiCalls++;
+        timeLog.apiTime += (apiEndTime - apiStartTime);
+        Logger.log(`API呼び出し時間: ${apiEndTime - apiStartTime}ms`);
         
         if (!response.success || !response.data) {
           throw new Error('予約情報の取得に失敗しました');
@@ -278,6 +295,9 @@ class ReservationService {
         if (reservations.length === 0) {
           hasMore = false;
         } else {
+          // データ変換時間を計測
+          const transformStartTime = new Date().getTime();
+          
           // 新規または更新された予約のみを追加
           const newReservations = reservations.filter(r => {
             const id = r.id || r.reservation_id;
@@ -286,6 +306,10 @@ class ReservationService {
           
           allReservations.push(...newReservations);
           offset += limit;
+          
+          const transformEndTime = new Date().getTime();
+          timeLog.dataTransform += (transformEndTime - transformStartTime);
+          Logger.log(`データフィルタリング時間: ${transformEndTime - transformStartTime}ms (新規: ${newReservations.length}件)`); 
           
           if (allReservations.length >= totalCount || reservations.length < limit) {
             hasMore = false;
@@ -296,23 +320,41 @@ class ReservationService {
         if (hasMore) {
           Utilities.sleep(50); // 待機時間を短縮
         }
+        
+        // 処理済み件数をログ出力
+        if (offset % 1000 === 0 && offset > 0) {
+          Logger.log(`処理進捗: ${offset}件処理済み`);
+        }
       }
       
       Logger.log(`新規/更新予約: ${allReservations.length}件`);
       
       // 差分のみをスプレッドシートに追加
       if (allReservations.length > 0) {
+        const sheetStartTime = new Date().getTime();
         this._appendReservationsToSheet(allReservations);
+        const sheetEndTime = new Date().getTime();
+        timeLog.sheetWrite = sheetEndTime - sheetStartTime;
+        Logger.log(`スプレッドシート書き込み時間: ${timeLog.sheetWrite}ms`);
       }
       
       const endTime = new Date().getTime();
       const executionTime = (endTime - startTime) / 1000;
       
+      // 詳細な処理時間をログ出力
+      Logger.log('=== 処理時間の内訳 ===');
+      Logger.log(`API呼び出し: ${timeLog.apiCalls}回, 合計${timeLog.apiTime}ms`);
+      Logger.log(`データ変換: ${timeLog.dataTransform}ms`);
+      Logger.log(`スプレッドシート書き込み: ${timeLog.sheetWrite}ms`);
+      Logger.log(`その他の処理: ${(endTime - startTime) - timeLog.apiTime - timeLog.dataTransform - timeLog.sheetWrite}ms`);
+      Logger.log(`合計実行時間: ${executionTime}秒`);
+      
       return {
         success: true,
         totalSynced: allReservations.length,
         executionTime: executionTime,
-        dateRange: `${params.date_from} - ${params.date_to}`
+        dateRange: `${params.date_from} - ${params.date_to}`,
+        timeBreakdown: timeLog
       };
       
     }, '最適化版予約同期');
@@ -326,12 +368,15 @@ class ReservationService {
     Logger.log('=== 日次増分同期開始 ===');
     
     const today = new Date();
-    const sevenDaysLater = new Date();
-    sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+    const threeDaysLater = new Date(); // 7日から3日に短縮してタイムアウト回避
+    threeDaysLater.setDate(threeDaysLater.getDate() + 3);
+    
+    Logger.log(`同期範囲: ${Utils.formatDate(today)} ～ ${Utils.formatDate(threeDaysLater)}`);
     
     return this.syncReservationsOptimized({
       date_from: Utils.formatDate(today),
-      date_to: Utils.formatDate(sevenDaysLater)
+      date_to: Utils.formatDate(threeDaysLater),
+      skipCompanyInfo: true // 会社情報取得をスキップ
     });
   }
   
@@ -868,7 +913,7 @@ class ReservationService {
   }
   
   /**
-   * 既存の予約IDセットを取得
+   * 既存の予約IDセットを取得（最適化版）
    */
   _getExistingReservationIds() {
     const sheet = this.spreadsheetManager.getSheet(this.sheetName);
@@ -876,6 +921,7 @@ class ReservationService {
       return new Set();
     }
     
+    // 最初の列（reservation_id）のみを取得してメモリ効率を改善
     const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
     return new Set(data.map(row => row[0]).filter(id => id));
   }
@@ -891,16 +937,33 @@ class ReservationService {
       this._createReservationHeaders(sheet);
     }
     
-    // 予約データを行形式に変換（簡略版）
-    const rows = reservations.map(reservation => this._reservationToRowOptimized(reservation));
+    // 小さいバッチサイズで処理してタイムアウトを回避
+    const batchSize = 100; // バッチサイズを削減
+    let processedCount = 0;
     
-    // バッチで追加
-    if (rows.length > 0) {
-      const startRow = sheet.getLastRow() + 1;
-      sheet.getRange(startRow, 1, rows.length, rows[0].length).setValues(rows);
+    for (let i = 0; i < reservations.length; i += batchSize) {
+      const batch = reservations.slice(i, Math.min(i + batchSize, reservations.length));
+      const startTime = new Date().getTime();
+      
+      // 予約データを行形式に変換（簡略版）
+      const rows = batch.map(reservation => this._reservationToRowOptimized(reservation));
+      
+      if (rows.length > 0) {
+        const startRow = sheet.getLastRow() + 1;
+        sheet.getRange(startRow, 1, rows.length, rows[0].length).setValues(rows);
+        processedCount += rows.length;
+      }
+      
+      const endTime = new Date().getTime();
+      Logger.log(`バッチ${Math.floor(i / batchSize) + 1}: ${rows.length}件書き込み (${endTime - startTime}ms)`);
+      
+      // 次のバッチまで少し待機
+      if (i + batchSize < reservations.length) {
+        Utilities.sleep(10);
+      }
     }
     
-    Logger.log(`${rows.length}件の予約情報を追加しました`);
+    Logger.log(`合計${processedCount}件の予約情報を追加しました`);
   }
   
   /**
@@ -933,15 +996,29 @@ class ReservationService {
     }
     
     let staffName = reservation.staff_name || '';
-    if (!staffName && reservation.operations && reservation.operations.length > 0) {
-      if (reservation.operations[0].nominated_staff) {
-        staffName = reservation.operations[0].nominated_staff.name || '';
+    let staffId = '';
+    let roomId = '';
+    let roomName = '';
+    
+    if (reservation.operations && reservation.operations.length > 0) {
+      const operation = reservation.operations[0];
+      if (operation.nominated_staff) {
+        staffName = operation.nominated_staff.name || '';
+        staffId = operation.nominated_staff.id || '';
+      }
+      // 部屋情報を取得
+      if (operation.room) {
+        roomId = operation.room.id || '';
+        roomName = operation.room.name || '';
+      } else if (operation.room_id) {
+        roomId = operation.room_id;
+        roomName = operation.room_name || '';
       }
     }
     
     const memo = reservation.memo || reservation.note || '';
     
-    // 簡略化された列構成（会社情報を省略）
+    // 簡略化された列構成（会社情報は省略して高速化）
     return [
       reservationId,                             // A列: reservation_id
       visitorId,                                 // B列: patient_id (予約者のvisitor_id)
@@ -962,8 +1039,8 @@ class ReservationService {
       '',                                        // Q列: 会社名（空欄）
       '',                                        // R列: 会員種別（空欄）
       '',                                        // S列: 公開設定（空欄）
-      '',                                        // T列: 部屋ID（空欄）
-      ''                                         // U列: 部屋名（空欄）
+      roomId,                                    // T列: 部屋ID
+      roomName                                   // U列: 部屋名
     ];
   }
   

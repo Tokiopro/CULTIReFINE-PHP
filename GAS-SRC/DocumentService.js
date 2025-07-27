@@ -16,6 +16,23 @@ class DocumentService {
       throw new Error('書類管理シートが見つかりません');
     }
     
+    // 書類フォルダ定義シートを取得
+    const folderSheet = this.spreadsheet.getSheetByName(Config.getSheetNames().documentFolders);
+    if (!folderSheet) {
+      throw new Error('書類フォルダ定義シートが見つかりません');
+    }
+    
+    // フォルダIDとフォルダ名のマッピングを作成
+    const folderData = folderSheet.getDataRange().getValues();
+    this.folderMap = {};
+    for (let i = 1; i < folderData.length; i++) {
+      const folderId = folderData[i][0];
+      const folderName = folderData[i][1];
+      if (folderId && folderName) {
+        this.folderMap[folderId] = folderName;
+      }
+    }
+    
     const data = this.sheet.getDataRange().getValues();
     if (data.length <= 1) return []; // ヘッダーのみの場合
     
@@ -30,9 +47,9 @@ class DocumentService {
       const row = data[i];
       // シートの列構造: フォルダID(0), 書類ID(1), 書類タイトル(2), 書類URL(3), 対象患者ID(4), 対象患者名(5), 対象施術名(6), 登録日時(7), 更新日時(8), 備考(9)
       const document = {
-        folderId: row[0],
+        folderName: this.folderMap[row[0]] || '',
         documentId: row[1],
-        title: row[2],
+        title: row[2], 
         url: row[3],
         visitorId: row[4],
         visitorName: row[5],

@@ -991,7 +991,10 @@ function formatTicketInfoForJson(tickets) {
  */
 function formatDocumentInfoForJson(documents) {
   try {
-    return documents.map(doc => {
+    // フォルダ名でグループ化したオブジェクトを作成
+    const documentsByFolder = {};
+    
+    documents.forEach(doc => {
       // URLの生成（優先順位: 1.既存URL 2.Google Drive URL 3.APIエンドポイント）
       let docsUrl = doc.url;
       if (!docsUrl && doc.documentId) {
@@ -1004,31 +1007,38 @@ function formatDocumentInfoForJson(documents) {
         }
       }
       
-      // ドキュメント名の決定
-      const docsName = doc.title || doc.documentName || doc.name || "書類";
-      
-      // 基本情報
+      // ドキュメント情報の作成
       const documentInfo = {
-        docs_id: doc.documentId || doc.id || `docs${String(Math.random()).substring(2, 5)}`,
-        docs_name: docsName,
-        docs_url: docsUrl || '#'
+        docs_id: doc.documentId || doc.id || `DOC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        docs_name: doc.title || doc.documentName || doc.name || "書類",
+        docs_url: docsUrl || '#',
+        created_at: doc.createdAt ? formatDateString(doc.createdAt) : null,
+        treatment_name: doc.treatmentName || null,
+        notes: doc.notes || null
       };
-      
-      // 追加情報（必要に応じて含める）
-      if (doc.createdAt) {
-        documentInfo.created_at = formatDateString(doc.createdAt);
+
+      // フォルダ名の決定（空の場合は「その他書類」）
+      const folderName = doc.folderName || 'その他書類';
+
+      // フォルダごとの配列に追加
+      if (!documentsByFolder[folderName]) {
+        documentsByFolder[folderName] = {
+          name: folderName,
+          documents: []
+        };
       }
-      if (doc.treatmentName) {
-        documentInfo.treatment_name = doc.treatmentName;
-      }
-      if (doc.notes) {
-        documentInfo.notes = doc.notes;
-      }
-      return documentInfo;
+      documentsByFolder[folderName].documents.push(documentInfo);
     });
+
+    // オブジェクトを配列に変換
+    const result = Object.values(documentsByFolder);
+    
+    Logger.log(`formatDocumentInfoForJson result: ${JSON.stringify(result)}`);
+    return { foldername: result };
+
   } catch (error) {
     Logger.log(`formatDocumentInfoForJson Error: ${error.toString()}`);
-    return [];
+    return { foldername: [] };
   }
 }
 
@@ -3390,6 +3400,10 @@ function filterMenusByUsageHistory(allMenus, menuUsage) {
   return filteredMenus;
 }
 
+function test_document() {
+  getPatientDocuments('45e9a511-ba78-4b21-9535-9154d5740846');
+}
+
 /**
  * 患者の書類一覧を取得
  * @param {string} visitorId - 患者ID
@@ -3410,8 +3424,14 @@ function getPatientDocuments(visitorId) {
     const folders = documentManager.getFoldersByPatient(visitorId);
     Logger.log(`取得したフォルダ数: ${folders.length}`);
     
-    // 3. 書類をフォルダ別に整理
-    const documentsByFolder = {};
+    // 3. フォルダIDからフォルダ名へのマッピングを作成
+    const folderIdToName = {};
+    folders.forEach(folder => {
+      folderIdToName[folder.folderId] = folder.folderName;
+    });
+    
+    // 4. 書類をフォルダ名別に整理
+    const documentsByFolderName = {};
     const rootDocuments = [];
     
     documents.forEach(doc => {
@@ -3426,29 +3446,21 @@ function getPatientDocuments(visitorId) {
         status: doc.status || '有効'
       };
       
-      if (doc.folderId) {
-        if (!documentsByFolder[doc.folderId]) {
-          documentsByFolder[doc.folderId] = [];
+      if (doc.folderId && folderIdToName[doc.folderId]) {
+        const folderName = folderIdToName[doc.folderId];
+        if (!documentsByFolderName[folderName]) {
+          documentsByFolderName[folderName] = [];
         }
-        documentsByFolder[doc.folderId].push(formattedDoc);
+        documentsByFolderName[folderName].push(formattedDoc);
       } else {
         rootDocuments.push(formattedDoc);
       }
     });
     
-    // 4. フォルダ情報を階層構造で整形
-    const formatFolders = (allFolders, parentId = null) => {
-      return allFolders
-        .filter(f => f.parentFolderId === parentId)
-        .map(folder => ({
-          folder_id: folder.folderId,
-          folder_name: folder.folderName,
-          documents: documentsByFolder[folder.folderId] || [],
-          subfolders: formatFolders(allFolders, folder.folderId)
-        }));
-    };
-    
-    const formattedFolders = formatFolders(folders);
+    // フォルダに属さない書類がある場合は「その他書類」として追加
+    if (rootDocuments.length > 0) {
+      documentsByFolderName['その他書類'] = rootDocuments;
+    }
     
     // 5. 患者名を取得（オプション）
     let patientName = '';
@@ -3468,14 +3480,13 @@ function getPatientDocuments(visitorId) {
       data: {
         patient_id: visitorId,
         patient_name: patientName,
-        folders: formattedFolders,
-        root_documents: rootDocuments,
+        ...documentsByFolderName,
         total_count: documents.length
       },
       timestamp: new Date().toISOString()
     };
     
-    Logger.log('getPatientDocuments完了');
+    Logger.log(response);
     return response;
     
   } catch (error) {
@@ -3493,6 +3504,7 @@ function getPatientDocuments(visitorId) {
     };
   }
 }
+
 
 /**
  * 書類URLを生成

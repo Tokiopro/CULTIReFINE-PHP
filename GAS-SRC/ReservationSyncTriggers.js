@@ -50,11 +50,17 @@ function setupReservationSyncTriggers() {
  */
 function runDailyReservationSync() {
   Logger.log('=== 日次予約同期トリガー実行 ===');
+  const triggerStartTime = new Date().getTime();
+  
   try {
     const reservationService = new ReservationService();
     const result = reservationService.dailyIncrementalSync();
     
+    const triggerEndTime = new Date().getTime();
+    const totalExecutionTime = (triggerEndTime - triggerStartTime) / 1000;
+    
     Logger.log(`日次同期完了: ${JSON.stringify(result)}`);
+    Logger.log(`トリガー合計実行時間: ${totalExecutionTime}秒`);
     
     if (!result.success) {
       throw new Error(result.message || '同期に失敗しました');
@@ -62,6 +68,11 @@ function runDailyReservationSync() {
     
     // 同期メトリクスを記録
     logSyncMetrics('daily', result);
+    
+    // 実行時間が長い場合は警告
+    if (totalExecutionTime > 240) { // 4分以上
+      Logger.log(`警告: 実行時間が長すぎます (${totalExecutionTime}秒)`);
+    }
     
   } catch (error) {
     Logger.log(`日次同期エラー: ${error.toString()}`);

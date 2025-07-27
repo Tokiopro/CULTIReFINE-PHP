@@ -139,6 +139,10 @@ class Config {
     return 'yyyy-MM-dd HH:mm:ss';
   }
   
+  static getPHPSyncEndpoint() {
+    // PHP側の同期エンドポイント（GAS専用）
+    return 'https://cultirefine.com/reserve/gas-sync-endpoint.php';
+  }
   
   static getAdminEmail() {
     // 管理者メールアドレス（同期エラー通知用）
