@@ -10,11 +10,27 @@ import { formatDateKey } from '../data/treatment-data.js';
 import { loadPatientMenus } from '../components/patient-menu-loader.js';
 
 export function initMenuCalendarScreen() {
+    console.log('initMenuCalendarScreen called');
+    
     var backBtn = document.getElementById('back-to-patients-btn');
     var nextBtn = document.getElementById('next-menu-calendar-btn');
     var pairRoomSwitch = document.getElementById('pair-room-switch');
 
-    if (!backBtn || !nextBtn || !pairRoomSwitch) return;
+    // 必須要素のチェック（pairRoomSwitchは除外）
+    if (!backBtn || !nextBtn) {
+        console.warn('Required menu calendar screen elements not found:', {
+            backBtn: !!backBtn,
+            nextBtn: !!nextBtn,
+            pairRoomSwitch: !!pairRoomSwitch
+        });
+        return;
+    }
+    
+    console.log('Menu calendar screen initialization continuing with:', {
+        backBtn: true,
+        nextBtn: true,
+        pairRoomSwitch: !!pairRoomSwitch
+    });
 
     backBtn.addEventListener('click', function() {
         if (appState.currentPatientIndexForBooking > 0) {
@@ -71,26 +87,51 @@ export function initMenuCalendarScreen() {
         }
     });
 
-    pairRoomSwitch.addEventListener('change', function(e) {
-        var currentPatient = appState.selectedPatientsForBooking[appState.currentPatientIndexForBooking];
-        appState.pairRoomDesired[currentPatient.id] = e.target.checked;
-        // Re-check time slots when pair room preference changes
-        var date = appState.selectedDates[currentPatient.id];
-        if (date) {
-            checkAndUpdateTimeSlots(currentPatient.id, date);
-        }
-    });
+    // pairRoomSwitchは存在する場合のみイベントリスナーを登録
+    if (pairRoomSwitch) {
+        pairRoomSwitch.addEventListener('change', function(e) {
+            var currentPatient = appState.selectedPatientsForBooking[appState.currentPatientIndexForBooking];
+            appState.pairRoomDesired[currentPatient.id] = e.target.checked;
+            // Re-check time slots when pair room preference changes
+            var date = appState.selectedDates[currentPatient.id];
+            if (date) {
+                checkAndUpdateTimeSlots(currentPatient.id, date);
+            }
+        });
+    } else {
+        console.log('pairRoomSwitch not found, skipping pair room functionality');
+    }
 
+    console.log('Calling updateMenuCalendarScreen from initMenuCalendarScreen');
     updateMenuCalendarScreen();
 }
 
 export async function updateMenuCalendarScreen() {
+    console.log('updateMenuCalendarScreen called');
+    console.log('Selected patients:', appState.selectedPatientsForBooking);
+    console.log('Current patient index:', appState.currentPatientIndexForBooking);
+    
     var currentPatient = appState.selectedPatientsForBooking[appState.currentPatientIndexForBooking];
+    
+    if (!currentPatient) {
+        console.error('No current patient found at index:', appState.currentPatientIndexForBooking);
+        return;
+    }
+    
+    console.log('Current patient:', currentPatient);
+    
     var description = document.getElementById('menu-calendar-description');
     var backButtonText = document.getElementById('back-button-text');
     var nextButtonText = document.getElementById('next-button-text');
 
-    if (!description || !backButtonText || !nextButtonText) return;
+    if (!description || !backButtonText || !nextButtonText) {
+        console.error('Required UI elements not found:', {
+            description: !!description,
+            backButtonText: !!backButtonText,
+            nextButtonText: !!nextButtonText
+        });
+        return;
+    }
 
     description.innerHTML = 
         '<span>👤</span> ' + currentPatient.name + '様 ' +
@@ -105,7 +146,13 @@ export async function updateMenuCalendarScreen() {
         : "予約内容の確認へ";
 
     // 患者別メニューを取得して表示
-    await displayPatientMenus(currentPatient.id);
+    // current-userの場合は実際のvisitor_idを使用
+    const actualPatientId = currentPatient.id === 'current-user' 
+        ? (window.APP_CONFIG?.currentUserVisitorId || currentPatient.id)
+        : currentPatient.id;
+    
+    console.log('Menu-calendar: Getting menus for patient:', currentPatient.name, 'ID:', actualPatientId);
+    await displayPatientMenus(actualPatientId);
     
     // Initialize calendar - always create a fresh instance for each patient
     calendars['calendar'] = new Calendar('calendar', function(date) {
@@ -294,6 +341,13 @@ async function displayPatientMenus(patientId) {
     const container = document.getElementById('treatment-categories');
     if (!container) return;
     
+    // current-userの場合は実際のvisitor_idを使用
+    const actualPatientId = patientId === 'current-user' 
+        ? (window.APP_CONFIG?.currentUserVisitorId || patientId)
+        : patientId;
+    
+    console.log('displayPatientMenus: patientId =', patientId, ', actualPatientId =', actualPatientId);
+    
     // ローディング表示
     container.innerHTML = '<div class="text-center py-4">メニューを読み込んでいます...</div>';
     
@@ -332,8 +386,8 @@ async function displayPatientMenus(patientId) {
     // 会社IDを取得
     const companyId = appState.membershipInfo?.companyId || window.APP_CONFIG?.companyInfo?.companyId || null;
     
-    // 患者別メニューをロード
-    await loadPatientMenus('treatment-categories', patientId, companyId, onMenuSelect);
+    // 患者別メニューをロード（実際のpatientIdを使用）
+    await loadPatientMenus('treatment-categories', actualPatientId, companyId, onMenuSelect);
     
     // 選択済みメニューをハイライト
     highlightSelectedMenus(patientId);

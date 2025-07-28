@@ -118,8 +118,13 @@ function updateBulkBookingScreen() {
         container.appendChild(patientDiv);
         
         // Create treatment accordion for this patient
-        console.log('Creating treatment accordion for patient', patient.id, 'in container', treatmentsId);
-        createTreatmentAccordion(treatmentsId, patient.id);
+        // current-userの場合は実際のvisitor_idを使用
+        const actualPatientId = patient.id === 'current-user' 
+            ? (window.APP_CONFIG?.currentUserVisitorId || patient.id)
+            : patient.id;
+        
+        console.log('Creating treatment accordion for patient', patient.id, 'actualId:', actualPatientId, 'in container', treatmentsId);
+        createTreatmentAccordion(treatmentsId, actualPatientId);
     }
 
     // Initialize bulk calendar

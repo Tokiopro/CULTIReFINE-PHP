@@ -58,10 +58,37 @@ function doPostPhpIntegration(e, requestData) {
  * @return {boolean} 認証成功/失敗
  */
 function validatePhpApiKeyPost(requestData) {
+  // デバッグ: 受信データ確認
+  Logger.log('=== API Key Validation Debug ===');
+  Logger.log('Request data keys: ' + Object.keys(requestData).join(', '));
+  Logger.log('Authorization header: ' + (requestData.authorization || 'NOT_FOUND'));
+  Logger.log('API Key from request: ' + (requestData.api_key || 'NOT_FOUND'));
+  
   const authHeader = requestData.authorization;
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     Logger.log('PHP API Auth Error: Bearerトークンが見つかりません');
+    Logger.log('Available auth methods: ' + JSON.stringify({
+      authorization: requestData.authorization,
+      api_key: requestData.api_key
+    }));
+    
+    // api_key パラメータでの認証も試す
+    if (requestData.api_key) {
+      Logger.log('Trying api_key parameter authentication...');
+      const scriptProperties = PropertiesService.getScriptProperties();
+      const validTokens = (scriptProperties.getProperty('PHP_API_KEYS') || '').split(',').filter(t => t.trim());
+      
+      Logger.log('Valid tokens configured: ' + validTokens.length);
+      Logger.log('Valid tokens: ' + JSON.stringify(validTokens));
+      Logger.log('Request api_key: ' + requestData.api_key);
+      
+      const isValid = validTokens.includes(requestData.api_key);
+      Logger.log('API key validation result: ' + isValid);
+      
+      return isValid;
+    }
+    
     return false;
   }
   
@@ -69,7 +96,13 @@ function validatePhpApiKeyPost(requestData) {
   const scriptProperties = PropertiesService.getScriptProperties();
   const validTokens = (scriptProperties.getProperty('PHP_API_KEYS') || '').split(',').filter(t => t.trim());
   
+  Logger.log('Bearer token: ' + token);
+  Logger.log('Valid tokens configured: ' + validTokens.length);
+  Logger.log('Valid tokens: ' + JSON.stringify(validTokens));
+  
   const isValid = validTokens.includes(token);
+  Logger.log('Bearer token validation result: ' + isValid);
+  
   if (!isValid) {
     Logger.log('PHP API Auth Error: 無効なAPIキー');
   }
@@ -401,7 +434,7 @@ function routePhpApiRequest(e) {
       };
     }
     
-    return getCompanyVisitorsList(companyId);
+    return getCompanyVisitors(companyId);
   }
   
   // /api/documents - 書類一覧取得
@@ -740,8 +773,28 @@ function getUserFullInfoByLineIdFormatted(lineUserId) {
       reservationHistory = [];
     }
     
-    // 6. 指定された形式でレスポンスを構築
-    Logger.log(`ステップ6: レスポンス構築開始`);
+    // 6. 会社別来院者リストを取得
+    Logger.log(`ステップ6: 会社別来院者取得開始`);
+    let companyVisitors = [];
+    if (companyData && companyData.companyId) {
+      try {
+        Logger.log(`会社別来院者取得開始 - companyId: ${companyData.companyId}`);
+        const companyVisitorService = new CompanyVisitorService();
+        const visitors = companyVisitorService.getCompanyVisitors(companyData.companyId);
+        Logger.log(`会社別来院者取得結果: ${JSON.stringify(visitors)}`);
+        companyVisitors = visitors || [];
+        Logger.log(`会社別来院者取得完了 - 件数: ${companyVisitors.length}`);
+      } catch (companyVisitorError) {
+        Logger.log(`会社別来院者取得エラー: ${companyVisitorError.toString()}`);
+        // エラーでも空配列で続行
+        companyVisitors = [];
+      }
+    } else {
+      Logger.log(`会社情報がないため、会社別来院者取得をスキップ`);
+    }
+    
+    // 7. 指定された形式でレスポンスを構築
+    Logger.log(`ステップ7: レスポンス構築開始`);
     
     // member_typeを真偽値に変換
     const memberType = companyData?.memberType === '本会員' ? true : false;
@@ -755,7 +808,8 @@ function getUserFullInfoByLineIdFormatted(lineUserId) {
       company: companyInfo,
       ticketInfo: ticketInfo,
       docsinfo: docsinfo,
-      ReservationHistory: reservationHistory
+      ReservationHistory: reservationHistory,
+      companyVisitors: companyVisitors
     };
     
     Logger.log(`最終レスポンス: ${JSON.stringify(response)}`);
@@ -3001,9 +3055,9 @@ function getAppliedRestrictions(constraints) {
  * @param {string} companyId - 会社ID
  * @return {Object} 来院者一覧レスポンス
  */
-function getCompanyVisitorsList(companyId) {
+function getCompanyVisitors(companyId) {
   try {
-    Logger.log(`getCompanyVisitorsList開始: companyId=${companyId}`);
+    Logger.log(`getCompanyVisitors開始: companyId=${companyId}`);
     
     // CompanyVisitorServiceを使用して来院者一覧を取得
     const companyVisitorService = new CompanyVisitorService();
@@ -3044,11 +3098,11 @@ function getCompanyVisitorsList(companyId) {
       timestamp: new Date().toISOString()
     };
     
-    Logger.log('getCompanyVisitorsList完了: ' + JSON.stringify(response));
+    Logger.log('getCompanyVisitors完了: ' + JSON.stringify(response));
     return response;
     
   } catch (error) {
-    Logger.log('getCompanyVisitorsList Error: ' + error.toString());
+    Logger.log('getCompanyVisitors Error: ' + error.toString());
     return {
       status: 'error',
       error: {
@@ -3690,3 +3744,4 @@ function getLineNotificationStatus(notificationId) {
     };
   }
 }
+

@@ -62,13 +62,52 @@ async function apiCall(action, params = {}, method = 'GET', data = null) {
         
         const result = await response.json();
         
+        // DEBUG_MODEの場合、デバッグ情報をコンソールに出力
+        if (window.DEBUG_MODE && result.debug) {
+            console.group(`[DEBUG] API Response - ${action}`);
+            console.log('Status:', result.success ? 'SUCCESS' : 'ERROR');
+            console.log('Debug Info:', result.debug);
+            if (result.debug.environment) {
+                console.log('Environment Variables:', result.debug.environment);
+            }
+            if (result.debug.session_data) {
+                console.log('Session Data:', result.debug.session_data);
+            }
+            if (result.debug.trace) {
+                console.log('Stack Trace:', result.debug.trace);
+            }
+            console.groupEnd();
+        }
+        
         if (!result.success) {
+            // DEBUG_MODEの場合、エラーの詳細をコンソールに出力
+            if (window.DEBUG_MODE) {
+                console.error('[DEBUG] API Error Details:', {
+                    action: action,
+                    error: result.error,
+                    debug: result.debug || 'No debug info available'
+                });
+            }
             throw new Error(result.error?.message || 'APIエラーが発生しました');
         }
         
         return result.data;
     } catch (error) {
         console.error('API Call Error:', error);
+        
+        // DEBUG_MODEの場合、詳細なエラー情報を出力
+        if (window.DEBUG_MODE) {
+            console.group('[DEBUG] API Call Exception');
+            console.error('Error Type:', error.name);
+            console.error('Error Message:', error.message);
+            console.error('Stack:', error.stack);
+            console.error('Request Details:', {
+                url: url.toString(),
+                method: method,
+                data: data
+            });
+            console.groupEnd();
+        }
         
         // タイムアウトエラーの場合
         if (error.name === 'TimeoutError') {
@@ -101,6 +140,23 @@ export async function getUserFullInfo() {
 }
 
 /**
+ * 会社別来院者一覧取得
+ */
+export async function getCompanyVisitors(companyId) {
+    console.log('[GAS API] Getting company visitors for company:', companyId);
+    
+    try {
+        const params = companyId ? { company_id: companyId } : {};
+        const data = await apiCall('getCompanyVisitors', params);
+        console.log('[GAS API] Company visitors received:', data);
+        return { success: true, data: data };
+    } catch (error) {
+        console.error('[GAS API] Error getting company visitors:', error);
+        return { success: false, message: error.message };
+    }
+}
+
+/**
  * 患者追加（Medical Force API & GAS API 連携）
  * フロントエンドからHTMLフォームデータを送信し、PHP側でMedical Force APIとGAS APIの両方に登録
  */
@@ -108,18 +164,50 @@ export async function mockAddPatient(patientData) {
     console.log('[GAS API] Adding patient with Medical Force integration:', patientData);
     
     try {
-        // 必須フィールドのチェック
-        if (!patientData.name || !patientData.kana || !patientData.gender) {
-            throw new Error('必須フィールドが不足しています');
+        // 新しい形式のデータから従来の形式へ変換
+        let processedData = {};
+        
+        // 姓名の結合処理
+        if (patientData.last_name && patientData.first_name) {
+            processedData.name = patientData.last_name + ' ' + patientData.first_name;
+        } else if (patientData.name) {
+            // 旧形式の場合はそのまま使用
+            processedData.name = patientData.name;
         }
         
-        // PHP側でMedical Force API → GAS APIの2段階処理を実行
-        // フロントエンドからは基本情報のみを送信
+        // カナの結合処理
+        if (patientData.last_name_kana && patientData.first_name_kana) {
+            processedData.kana = patientData.last_name_kana + ' ' + patientData.first_name_kana;
+        } else if (patientData.kana) {
+            // 旧形式の場合はそのまま使用
+            processedData.kana = patientData.kana;
+        }
+        
+        // 性別
+        processedData.gender = patientData.gender;
+        
+        // 必須フィールドのチェック（新形式）
+        if (!patientData.last_name || !patientData.first_name || !patientData.gender) {
+            console.error('Missing required fields:', {
+                last_name: patientData.last_name,
+                first_name: patientData.first_name,
+                gender: patientData.gender
+            });
+            throw new Error('姓、名、性別は必須項目です');
+        }
+        
+        // PHP側に送信するデータは新形式のまま
         const visitorData = {
-            name: patientData.name,
-            kana: patientData.kana,
+            last_name: patientData.last_name,
+            first_name: patientData.first_name,
             gender: patientData.gender
         };
+        
+        // カナが両方入力されている場合のみ追加
+        if (patientData.last_name_kana && patientData.first_name_kana) {
+            visitorData.last_name_kana = patientData.last_name_kana;
+            visitorData.first_name_kana = patientData.first_name_kana;
+        }
         
         // オプションフィールドの追加
         if (patientData.birthday) {
@@ -138,8 +226,8 @@ export async function mockAddPatient(patientData) {
         // レスポンスデータを既存のフォーマットに変換
         const newPatient = {
             id: result.data.visitor_id || 'temp-' + Date.now(), // Medical ForceのIDを使用
-            name: result.data.name,
-            kana: result.data.kana,
+            name: processedData.name || result.data.name, // 結合された名前を使用
+            kana: processedData.kana || result.data.kana || '', // 結合されたカナを使用
             gender: result.data.gender,
             isNew: true,
             lastVisit: null,
@@ -242,6 +330,18 @@ export async function getAvailableSlots(visitorId, menuIds, startDate, dateRange
     // menuIds が配列でない場合は配列に変換（後方互換性）
     const menuIdArray = Array.isArray(menuIds) ? menuIds : [menuIds];
     
+    // DEBUG_MODEの場合、詳細なリクエスト情報を出力
+    if (window.DEBUG_MODE) {
+        console.group('[DEBUG] getAvailableSlots Request Details');
+        console.log('Visitor ID:', visitorId);
+        console.log('Menu IDs (original):', menuIds);
+        console.log('Menu IDs (array):', menuIdArray);
+        console.log('Start Date:', startDate);
+        console.log('Date Range:', dateRange);
+        console.log('Options:', options);
+        console.groupEnd();
+    }
+    
     try {
         const params = {
             path: `api/patients/${visitorId}/available-slots`,
@@ -255,9 +355,20 @@ export async function getAvailableSlots(visitorId, menuIds, startDate, dateRange
             total_duration: options.totalDuration || 0 // 合計施術時間
         };
         
+        // DEBUG_MODEの場合、送信するパラメータを出力
+        if (window.DEBUG_MODE) {
+            console.log('[DEBUG] API Request Params:', params);
+        }
+        
         // api-bridge.php経由でGAS APIを呼び出す
         const url = new URL(API_BASE_URL);
         url.searchParams.set('action', 'getAvailableSlots');
+        
+        // DEBUG_MODEの場合、リクエストURLを出力
+        if (window.DEBUG_MODE) {
+            console.log('[DEBUG] Request URL:', url.toString());
+            console.log('[DEBUG] Request Body:', JSON.stringify({ params: params }));
+        }
         
         const response = await fetch(url.toString(), {
             method: 'POST',
@@ -270,11 +381,40 @@ export async function getAvailableSlots(visitorId, menuIds, startDate, dateRange
             })
         });
         
+        // DEBUG_MODEの場合、レスポンスのステータスを出力
+        if (window.DEBUG_MODE) {
+            console.log('[DEBUG] Response Status:', response.status);
+            console.log('[DEBUG] Response OK:', response.ok);
+            console.log('[DEBUG] Response Headers:', Object.fromEntries(response.headers));
+        }
+        
         if (!response.ok) {
+            // DEBUG_MODEの場合、エラーレスポンスの詳細を出力
+            if (window.DEBUG_MODE) {
+                console.error('[DEBUG] HTTP Error Response');
+                try {
+                    const errorText = await response.text();
+                    console.error('[DEBUG] Error Response Body:', errorText);
+                } catch (e) {
+                    console.error('[DEBUG] Could not read error response body');
+                }
+            }
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
         const result = await response.json();
+        
+        // DEBUG_MODEの場合、レスポンスの内容を出力
+        if (window.DEBUG_MODE) {
+            console.group('[DEBUG] getAvailableSlots Response');
+            console.log('Success:', result.success || false);
+            console.log('Status:', result.status);
+            console.log('Data:', result.data);
+            if (result.debug) {
+                console.log('Debug Info:', result.debug);
+            }
+            console.groupEnd();
+        }
         
         if (result.status === 'error') {
             throw new Error(result.error?.message || '空き情報の取得に失敗しました');
@@ -289,6 +429,16 @@ export async function getAvailableSlots(visitorId, menuIds, startDate, dateRange
         
     } catch (error) {
         console.error('[GAS API] Error getting available slots:', error);
+        
+        // DEBUG_MODEの場合、エラーの詳細を出力
+        if (window.DEBUG_MODE) {
+            console.group('[DEBUG] getAvailableSlots Error Details');
+            console.error('Error Type:', error.name);
+            console.error('Error Message:', error.message);
+            console.error('Error Stack:', error.stack);
+            console.groupEnd();
+        }
+        
         return {
             success: false,
             message: error.message || '空き情報の取得に失敗しました',
@@ -600,6 +750,29 @@ export async function testApiConnection() {
 }
 
 /**
+ * GAS API設定検証
+ */
+export async function validateGasConfiguration() {
+    console.log('[GAS API] Validating GAS configuration');
+    
+    try {
+        const data = await apiCall('validateGasConfiguration');
+        console.log('[GAS API] Configuration validation result:', data);
+        return {
+            success: true,
+            data: data,
+            message: data.overall_status ? "GAS設定は正常です" : "GAS設定に問題があります"
+        };
+    } catch (error) {
+        console.error('[GAS API] Configuration validation failed:', error);
+        return {
+            success: false,
+            message: "GAS設定検証失敗: " + error.message
+        };
+    }
+}
+
+/**
  * データマッピング用ヘルパー関数
  * PHP側で既に変換されたデータ構造を受け取る
  */
@@ -633,10 +806,14 @@ export function mapGasDataToAppState(gasData) {
                 memberType: gasData.membershipInfo?.memberType || false,
                 isMember: gasData.membershipInfo?.isMember || false
             },
-            upcomingReservations: [] // 今後の予約情報（現在は空）
+            upcomingReservations: [], // 今後の予約情報（現在は空）
+            
+            // 会社別来院者リスト
+            allPatients: gasData.companyVisitors || []
         };
         
         console.log('[mapGasDataToAppState] Mapped data:', mappedData);
+        console.log('[mapGasDataToAppState] Company visitors count:', mappedData.allPatients.length);
         return mappedData;
         
     } catch (error) {

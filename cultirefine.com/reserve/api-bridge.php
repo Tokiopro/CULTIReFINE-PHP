@@ -160,6 +160,10 @@ try {
             $result = handleTestLineConnection($gasApi);
             break;
             
+        case 'validateGasConfiguration':
+            $result = handleValidateGasConfiguration($gasApi);
+            break;
+            
         default:
             throw new Exception('不正なアクションです', 400);
     }
@@ -187,8 +191,46 @@ try {
         $errorResponse['debug'] = [
             'file' => $e->getFile(),
             'line' => $e->getLine(),
-            'trace' => $e->getTraceAsString()
+            'trace' => $e->getTraceAsString(),
+            'action' => $action ?? 'unknown',
+            'request_method' => $_SERVER['REQUEST_METHOD'],
+            'get_params' => $_GET,
+            'post_data' => getJsonInput(),
+            'session_data' => [
+                'line_user_id' => $_SESSION['line_user_id'] ?? 'not_set',
+                'company_info' => $_SESSION['company_info'] ?? 'not_set'
+            ],
+            'environment' => [
+                'DEBUG_MODE' => DEBUG_MODE,
+                'MOCK_MODE' => MOCK_MODE,
+                'MOCK_MEDICAL_FORCE' => MOCK_MEDICAL_FORCE,
+                'CLINIC_ID' => getenv('CLINIC_ID') ?: 'NOT_SET',
+                'MEDICAL_FORCE_API_URL' => MEDICAL_FORCE_API_URL,
+                'MEDICAL_FORCE_CLIENT_ID' => !empty(MEDICAL_FORCE_CLIENT_ID) ? 'SET (' . strlen(MEDICAL_FORCE_CLIENT_ID) . ' chars)' : 'NOT_SET',
+                'MEDICAL_FORCE_CLIENT_SECRET' => !empty(MEDICAL_FORCE_CLIENT_SECRET) ? 'SET' : 'NOT_SET'
+            ]
         ];
+        
+        // コンソール用の詳細エラーログ
+        error_log('[API_BRIDGE_ERROR] ==================== DEBUG START ====================');
+        error_log('[API_BRIDGE_ERROR] Action: ' . ($action ?? 'unknown'));
+        error_log('[API_BRIDGE_ERROR] Error Message: ' . $e->getMessage());
+        error_log('[API_BRIDGE_ERROR] Error Code: ' . $statusCode);
+        error_log('[API_BRIDGE_ERROR] File: ' . $e->getFile() . ':' . $e->getLine());
+        error_log('[API_BRIDGE_ERROR] Request Method: ' . $_SERVER['REQUEST_METHOD']);
+        error_log('[API_BRIDGE_ERROR] GET Params: ' . json_encode($_GET));
+        error_log('[API_BRIDGE_ERROR] POST Data: ' . json_encode(getJsonInput()));
+        error_log('[API_BRIDGE_ERROR] Session Data: ' . json_encode([
+            'line_user_id' => $_SESSION['line_user_id'] ?? 'not_set',
+            'company_info' => $_SESSION['company_info'] ?? 'not_set'
+        ]));
+        error_log('[API_BRIDGE_ERROR] Environment Variables:');
+        error_log('[API_BRIDGE_ERROR]   - CLINIC_ID: ' . (getenv('CLINIC_ID') ?: 'NOT_SET'));
+        error_log('[API_BRIDGE_ERROR]   - MEDICAL_FORCE_CLIENT_ID: ' . (!empty(MEDICAL_FORCE_CLIENT_ID) ? 'SET' : 'NOT_SET'));
+        error_log('[API_BRIDGE_ERROR]   - MEDICAL_FORCE_CLIENT_SECRET: ' . (!empty(MEDICAL_FORCE_CLIENT_SECRET) ? 'SET' : 'NOT_SET'));
+        error_log('[API_BRIDGE_ERROR] Stack Trace:');
+        error_log($e->getTraceAsString());
+        error_log('[API_BRIDGE_ERROR] ==================== DEBUG END ====================');
     }
     
     $logger->error('API Bridge Error', [
@@ -211,7 +253,24 @@ function handleGetUserFullInfo(GasApiClient $gasApi, string $lineUserId): array
         throw new Exception($result['error']['message'], 404);
     }
     
-    return mapGasUserDataToJs($result['data']);
+    $mappedData = mapGasUserDataToJs($result['data']);
+    
+    // 会社情報をセッションに保存
+    if (isset($mappedData['membershipInfo']) && !empty($mappedData['membershipInfo']['companyId'])) {
+        $_SESSION['company_info'] = [
+            'company_id' => $mappedData['membershipInfo']['companyId'],
+            'company_name' => $mappedData['membershipInfo']['companyName'],
+            'member_type' => $mappedData['membershipInfo']['memberType']
+        ];
+        $_SESSION['user_role'] = $mappedData['membershipInfo']['memberType'] === 'main' ? 'main' : 'sub';
+        
+        // デバッグログ
+        if (DEBUG_MODE) {
+            error_log('[handleGetUserFullInfo] Company info saved to session: ' . json_encode($_SESSION['company_info']));
+        }
+    }
+    
+    return $mappedData;
 }
 
 /**
@@ -288,6 +347,11 @@ function handleTestConnection(GasApiClient $gasApi): array
 function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $visitorData): array
 {
     try {
+        // デバッグ: フロントエンドから受信したデータ
+        if (DEBUG_MODE) {
+            error_log('[handleCreateVisitor] Received data from frontend: ' . json_encode($visitorData));
+        }
+        
         // Step 1: フロントエンドからの基本データを検証
         $required = ['last_name', 'first_name', 'gender'];
         foreach ($required as $field) {
@@ -377,19 +441,24 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
             error_log('[handleCreateVisitor] Membership info: ' . json_encode($membershipInfo));
         }
         
-        // GAS API用のデータを準備
+        // GAS API用のデータを準備（必須フィールドを統一）
         $gasApiData = [
-            'path' => 'api/visitors',
+            'path' => '/api/visitors', // 先頭スラッシュ追加
             'api_key' => GAS_API_KEY,
             'visitor_id' => $visitorId, // Medical Forceから受け取ったID
             'last_name' => $lastName,
             'first_name' => $firstName,
-            'last_name_kana' => $lastNameKana,
-            'first_name_kana' => $firstNameKana,
+            'last_name_kana' => !empty($lastNameKana) ? $lastNameKana : '', // 必須なので空文字で送信
+            'first_name_kana' => !empty($firstNameKana) ? $firstNameKana : '', // 必須なので空文字で送信
             'gender' => $gender,
-            'publicity_status' => 'private', // デフォルトは非公開
+            'publicity_status' => 'private', // 必須フィールド
             'notes' => 'Medical Force経由で登録'
         ];
+        
+        // デバッグ: GAS APIに送信するデータを確認
+        if (DEBUG_MODE) {
+            error_log('[handleCreateVisitor] GAS API data: ' . json_encode($gasApiData));
+        }
         
         // オプションフィールドの追加
         if (!empty($visitorData['email'])) {
@@ -435,12 +504,40 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
             // GAS API登録に失敗した場合、Medical Forceでの作成は成功しているため
             // ロールバックが必要な場合は考慮する（現時点では警告ログのみ）
             error_log("警告: Medical Force作成成功、GAS API登録失敗: visitor_id={$visitorId}");
+            error_log("GAS API Error Details: " . json_encode($result));
             
-            // エラーメッセージをより分かりやすく
-            if (strpos($errorMessage, 'DUPLICATE_EMAIL') !== false) {
+            // より詳細なエラー分析とユーザーフレンドリーなメッセージ
+            if (strpos($errorMessage, 'APIキーが無効') !== false || 
+                strpos($errorMessage, 'Invalid API key') !== false ||
+                strpos($errorMessage, 'INVALID_API_KEY') !== false ||
+                strpos($errorMessage, 'Unauthorized') !== false) {
+                
+                // 詳細なAPIキー問題の診断
+                $apiKeyDiagnosis = [
+                    'configured_api_key_length' => strlen(GAS_API_KEY),
+                    'configured_deployment_id' => GAS_DEPLOYMENT_ID,
+                    'sent_api_key' => $gasApiData['api_key'] ?? 'not_sent'
+                ];
+                
+                error_log("API Key診断情報: " . json_encode($apiKeyDiagnosis));
+                
+                throw new Exception('GAS API設定エラー: APIキーが無効または未設定です。管理者にGAS側のPHP_API_KEYSスクリプトプロパティ設定を確認するよう連絡してください。', 500);
+                
+            } else if (strpos($errorMessage, '必須パラメータが不足') !== false || 
+                       strpos($errorMessage, 'INVALID_REQUEST') !== false) {
+                
+                error_log("必須パラメータエラー - 送信データ: " . json_encode($gasApiData));
+                throw new Exception('データ形式エラー: 必須フィールドが不足しています。' . $errorMessage, 400);
+                
+            } else if (strpos($errorMessage, 'DUPLICATE_EMAIL') !== false) {
                 throw new Exception('このメールアドレスは既に登録されています（GAS API）', 400);
             } else if (strpos($errorMessage, 'INVALID_COMPANY') !== false) {
                 throw new Exception('指定された会社が見つかりません（GAS API）', 400);
+            } else if (strpos($errorMessage, 'JSON_DECODE_ERROR') !== false) {
+                throw new Exception('データ処理エラーが発生しました。管理者にお問い合わせください。（GAS API通信エラー）', 500);
+            } else if (strpos($errorMessage, 'CURL_ERROR') !== false || 
+                       strpos($errorMessage, 'HTTP_ERROR') !== false) {
+                throw new Exception('外部サービスとの通信に失敗しました。しばらく時間をおいて再度お試しください。', 500);
             } else {
                 throw new Exception("GAS API登録エラー: {$errorMessage}", 500);
             }
@@ -484,24 +581,43 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
  */
 function handleGetCompanyVisitors(GasApiClient $gasApi, string $lineUserId, array $params): array
 {
-    // ユーザー情報を取得して会社情報と権限を確認
-    $userInfo = $gasApi->getUserFullInfo($lineUserId);
-    if ($userInfo['status'] !== 'success') {
-        throw new Exception('ユーザー情報の取得に失敗しました', 500);
+    // セッションから既に取得済みの会社情報を使用
+    if (!isset($_SESSION['company_info']) || !isset($_SESSION['user_role'])) {
+        // セッションにない場合のみ取得
+        $userInfo = $gasApi->getUserFullInfo($lineUserId);
+        if ($userInfo['status'] !== 'success') {
+            throw new Exception('ユーザー情報の取得に失敗しました', 500);
+        }
+        
+        $companyInfo = $userInfo['data']['membership_info'] ?? null;
+        if (!$companyInfo || empty($companyInfo['company_id'])) {
+            // デバッグ用：取得したデータの構造を確認
+            if (DEBUG_MODE) {
+                error_log('[handleGetCompanyVisitors] User info data keys: ' . implode(', ', array_keys($userInfo['data'] ?? [])));
+                error_log('[handleGetCompanyVisitors] Membership info: ' . json_encode($companyInfo));
+            }
+            throw new Exception('会社情報が見つかりません', 400);
+        }
+        
+        // セッションに保存
+        $_SESSION['company_info'] = $companyInfo;
+        $_SESSION['user_role'] = $companyInfo['member_type'] === 'main' ? 'main' : 'sub';
     }
     
-    $companyInfo = $userInfo['data']['membership_info'] ?? null;
-    if (!$companyInfo || empty($companyInfo['company_id'])) {
-        throw new Exception('会社情報が見つかりません', 400);
-    }
+    $companyId = $_SESSION['company_info']['company_id'];
+    $userRole = $_SESSION['user_role'];
     
-    $userRole = $companyInfo['member_type'] === 'main' ? 'main' : 'sub';
+    // デバッグログ追加
+    error_log('[handleGetCompanyVisitors] Company ID: ' . $companyId . ', Role: ' . $userRole);
     
-    $result = $gasApi->getPatientsByCompany($companyInfo['company_id'], $userRole);
+    $result = $gasApi->getPatientsByCompany($companyId, $userRole);
     
     if ($result['status'] === 'error') {
         throw new Exception($result['error']['message'], 500);
     }
+    
+    // デバッグログ：返されたデータを確認
+    error_log('[handleGetCompanyVisitors] Result data count: ' . count($result['data'] ?? []));
     
     return $result['data'];
 }
@@ -651,6 +767,30 @@ function mapGasUserDataToJs(array $gasData): array
             'ticketBalance' => [],
         ],
         
+        // 会社別来院者情報（GAS APIが返す場合）
+        'companyVisitors' => isset($gasData['companyVisitors']) ? array_values(array_filter(
+            array_map(function($visitor) {
+                return [
+                    'id' => $visitor['visitorId'] ?? $visitor['visitor_id'] ?? '',
+                    'visitor_id' => $visitor['visitorId'] ?? $visitor['visitor_id'] ?? '',
+                    'name' => $visitor['visitorName'] ?? $visitor['visitor_name'] ?? $visitor['name'] ?? '',
+                    'kana' => $visitor['visitorKana'] ?? $visitor['visitor_kana'] ?? $visitor['kana'] ?? '',
+                    'gender' => $visitor['gender'] ?? '',
+                    'is_public' => $visitor['isPublic'] ?? $visitor['is_public'] ?? true,
+                    'last_visit' => $visitor['lastVisitDate'] ?? $visitor['last_visit_date'] ?? null,
+                    'is_new' => $visitor['isNew'] ?? $visitor['is_new'] ?? false,
+                    'company_id' => $visitor['companyId'] ?? $visitor['company_id'] ?? '',
+                    'member_type' => $visitor['memberType'] ?? $visitor['member_type'] ?? false
+                ];
+            }, $gasData['companyVisitors']),
+            function($mappedVisitor) use ($gasData) {
+                // 現在のユーザーIDを取得
+                $currentUserId = $gasData['visitor']['visitor_id'] ?? '';
+                // 現在のユーザーを除外（visitor_idで比較）
+                return $mappedVisitor['visitor_id'] !== $currentUserId;
+            }
+        )) : [],
+        
     ];
 }
 
@@ -693,208 +833,242 @@ function handleGetPatientMenus(GasApiClient $gasApi, array $params): array
  */
 function handleGetAvailableSlots(GasApiClient $gasApi, array $params): array
 {
+    if (defined('DEBUG_MODE') && DEBUG_MODE) {
+        error_log('[DEBUG_AVAILABLE_SLOTS] ========== START handleGetAvailableSlots ==========');
+        error_log('[DEBUG_AVAILABLE_SLOTS] Input params: ' . json_encode($params));
+        error_log('[DEBUG_AVAILABLE_SLOTS] Params type: ' . gettype($params));
+        error_log('[DEBUG_AVAILABLE_SLOTS] Params keys: ' . implode(', ', array_keys($params)));
+    }
+    
     // POSTリクエストのパラメータを取得
     $requestParams = $params['params'] ?? $params;
+    if (defined('DEBUG_MODE') && DEBUG_MODE) {
+        error_log('[DEBUG_AVAILABLE_SLOTS] Request params after extraction: ' . json_encode($requestParams));
+        error_log('[DEBUG_AVAILABLE_SLOTS] Request params type: ' . gettype($requestParams));
+        if (is_array($requestParams)) {
+            error_log('[DEBUG_AVAILABLE_SLOTS] Request params keys: ' . implode(', ', array_keys($requestParams)));
+        }
+    }
     
     // パスからvisitorIdを抽出
     if (isset($requestParams['path']) && preg_match('/api\/patients\/([^\/]+)\/available-slots/', $requestParams['path'], $matches)) {
         $visitorId = $matches[1];
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[DEBUG_AVAILABLE_SLOTS] Visitor ID extracted from path: ' . $visitorId);
+        }
     } else {
         $visitorId = $requestParams['visitor_id'] ?? '';
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[DEBUG_AVAILABLE_SLOTS] Visitor ID from parameter: ' . $visitorId);
+            error_log('[DEBUG_AVAILABLE_SLOTS] Path parameter: ' . ($requestParams['path'] ?? 'NOT SET'));
+        }
     }
     
     if (empty($visitorId)) {
+        error_log('[ERROR_AVAILABLE_SLOTS] Missing required parameter: visitor_id');
+        error_log('[ERROR_AVAILABLE_SLOTS] Request params: ' . json_encode($requestParams));
         throw new Exception('visitor_idが必要です', 400);
     }
     
     if (empty($requestParams['date'])) {
+        error_log('[ERROR_AVAILABLE_SLOTS] Missing required parameter: date');
+        error_log('[ERROR_AVAILABLE_SLOTS] Request params: ' . json_encode($requestParams));
         throw new Exception('dateが必要です', 400);
     }
     
     // 複数メニューか単一メニューかを判定
     $menuIds = $requestParams['menu_ids'] ?? [];
+    if (defined('DEBUG_MODE') && DEBUG_MODE) {
+        error_log('[DEBUG_AVAILABLE_SLOTS] menu_ids from request: ' . json_encode($menuIds));
+        error_log('[DEBUG_AVAILABLE_SLOTS] menu_ids type: ' . gettype($menuIds));
+    }
+    
     if (empty($menuIds) && !empty($requestParams['menu_id'])) {
         $menuIds = [$requestParams['menu_id']];
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[DEBUG_AVAILABLE_SLOTS] Using single menu_id, converted to array: ' . json_encode($menuIds));
+        }
     }
     
     if (empty($menuIds)) {
+        error_log('[ERROR_AVAILABLE_SLOTS] Missing required parameter: menu_id or menu_ids');
+        error_log('[ERROR_AVAILABLE_SLOTS] Request params: ' . json_encode($requestParams));
         throw new Exception('menu_idまたはmenu_idsが必要です', 400);
     }
     
-    // 複数メニューの場合
-    if (count($menuIds) > 1) {
-        return handleMultipleMenuAvailability($gasApi, $visitorId, $requestParams);
+    if (defined('DEBUG_MODE') && DEBUG_MODE) {
+        error_log('[DEBUG_AVAILABLE_SLOTS] Final menuIds: ' . json_encode($menuIds));
+        error_log('[DEBUG_AVAILABLE_SLOTS] Total duration: ' . ($requestParams['total_duration'] ?? '0'));
+        error_log('[DEBUG_AVAILABLE_SLOTS] Date: ' . $requestParams['date']);
+        error_log('[DEBUG_AVAILABLE_SLOTS] Date range: ' . ($requestParams['date_range'] ?? '7'));
+        error_log('[DEBUG_AVAILABLE_SLOTS] Calling handleMenuAvailability...');
     }
     
-    // 単一メニューの場合はMedical Force APIを直接呼び出し
-    return handleSingleMenuAvailability($menuIds[0], $requestParams);
+    try {
+        $result = handleMenuAvailability($menuIds, $requestParams);
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[DEBUG_AVAILABLE_SLOTS] handleMenuAvailability completed successfully');
+            error_log('[DEBUG_AVAILABLE_SLOTS] Result keys: ' . implode(', ', array_keys($result)));
+            error_log('[DEBUG_AVAILABLE_SLOTS] ========== END handleGetAvailableSlots ==========');
+        }
+        
+        return $result;
+    } catch (Exception $e) {
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[ERROR_AVAILABLE_SLOTS] Exception in handleMenuAvailability: ' . $e->getMessage());
+            error_log('[ERROR_AVAILABLE_SLOTS] Exception code: ' . $e->getCode());
+            error_log('[ERROR_AVAILABLE_SLOTS] Exception file: ' . $e->getFile() . ':' . $e->getLine());
+            error_log('[ERROR_AVAILABLE_SLOTS] ========== END handleGetAvailableSlots (ERROR) ==========');
+        }
+        throw $e;
+    }
 }
 
 /**
- * 単一メニューの空き情報取得（Medical Force API直接呼び出し）
+ * メニューの空き情報取得（Medical Force API直接呼び出し）
+ * 単一・複数メニュー両対応
  */
-function handleSingleMenuAvailability(string $menuId, array $params): array
+function handleMenuAvailability($menuIds, array $params): array
 {
     try {
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[DEBUG_MENU_AVAILABILITY] ========== START handleMenuAvailability ==========');
+            error_log('[DEBUG_MENU_AVAILABILITY] Menu IDs: ' . json_encode($menuIds));
+            error_log('[DEBUG_MENU_AVAILABILITY] Params: ' . json_encode($params));
+            
+            // 環境変数の確認
+            error_log('[DEBUG_MENU_AVAILABILITY] Environment Configuration:');
+            error_log('[DEBUG_MENU_AVAILABILITY]   - MEDICAL_FORCE_API_URL: ' . (defined('MEDICAL_FORCE_API_URL') ? MEDICAL_FORCE_API_URL : 'NOT_DEFINED'));
+            error_log('[DEBUG_MENU_AVAILABILITY]   - MEDICAL_FORCE_API_KEY: ' . (defined('MEDICAL_FORCE_API_KEY') ? 'DEFINED (' . strlen(MEDICAL_FORCE_API_KEY) . ' chars)' : 'NOT_DEFINED'));
+            error_log('[DEBUG_MENU_AVAILABILITY]   - MEDICAL_FORCE_CLIENT_ID: ' . (defined('MEDICAL_FORCE_CLIENT_ID') ? 'DEFINED (' . strlen(MEDICAL_FORCE_CLIENT_ID) . ' chars)' : 'NOT_DEFINED'));
+            error_log('[DEBUG_MENU_AVAILABILITY]   - MEDICAL_FORCE_CLIENT_SECRET: ' . (defined('MEDICAL_FORCE_CLIENT_SECRET') ? 'DEFINED' : 'NOT_DEFINED'));
+            error_log('[DEBUG_MENU_AVAILABILITY]   - MOCK_MEDICAL_FORCE: ' . (defined('MOCK_MEDICAL_FORCE') ? (MOCK_MEDICAL_FORCE ? 'TRUE' : 'FALSE') : 'NOT_DEFINED'));
+            
+            // getenv() を使った環境変数の確認
+            error_log('[DEBUG_MENU_AVAILABILITY] Environment Variables (getenv):');
+            error_log('[DEBUG_MENU_AVAILABILITY]   - CLINIC_ID (getenv): ' . (getenv('CLINIC_ID') ?: 'NOT SET'));
+            error_log('[DEBUG_MENU_AVAILABILITY]   - MEDICAL_FORCE_API_URL (getenv): ' . (getenv('MEDICAL_FORCE_API_URL') ?: 'NOT SET'));
+            error_log('[DEBUG_MENU_AVAILABILITY]   - MEDICAL_FORCE_CLIENT_ID (getenv): ' . (getenv('MEDICAL_FORCE_CLIENT_ID') ? 'SET' : 'NOT SET'));
+            
+            error_log('[DEBUG_MENU_AVAILABILITY] Initializing Medical Force API client...');
+        }
+        
         // Medical Force APIクライアントを初期化
+        $clinicId = getenv('CLINIC_ID') ?: '';
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[DEBUG_MENU_AVAILABILITY] CLINIC_ID value: "' . $clinicId . '"');
+            error_log('[DEBUG_MENU_AVAILABILITY] CLINIC_ID length: ' . strlen($clinicId));
+            error_log('[DEBUG_MENU_AVAILABILITY] CLINIC_ID empty check: ' . (empty($clinicId) ? 'EMPTY' : 'NOT EMPTY'));
+            
+            error_log('[DEBUG_MENU_AVAILABILITY] Creating Medical Force API client with parameters:');
+            error_log('[DEBUG_MENU_AVAILABILITY]   - API URL: ' . MEDICAL_FORCE_API_URL);
+            error_log('[DEBUG_MENU_AVAILABILITY]   - API Key length: ' . strlen(MEDICAL_FORCE_API_KEY ?? ''));
+            error_log('[DEBUG_MENU_AVAILABILITY]   - Client ID length: ' . strlen(MEDICAL_FORCE_CLIENT_ID ?? ''));
+            error_log('[DEBUG_MENU_AVAILABILITY]   - Client Secret set: ' . (!empty(MEDICAL_FORCE_CLIENT_SECRET) ? 'YES' : 'NO'));
+            error_log('[DEBUG_MENU_AVAILABILITY]   - Clinic ID: "' . $clinicId . '"');
+        }
+        
         $medicalForceApi = new MedicalForceApiClient(
             MEDICAL_FORCE_API_URL,
             MEDICAL_FORCE_API_KEY ?? '',
             MEDICAL_FORCE_CLIENT_ID ?? '',
             MEDICAL_FORCE_CLIENT_SECRET ?? '',
-            getenv('CLINIC_ID') ?: ''
+            $clinicId
         );
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[DEBUG_MENU_AVAILABILITY] Medical Force API client initialized successfully');
+        }
         
         // 日付範囲を計算
         $startDate = $params['date'];
         $dateRange = $params['date_range'] ?? 7;
         $endDate = date('Y-m-d', strtotime($startDate . ' +' . ($dateRange - 1) . ' days'));
         
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[DEBUG_MENU_AVAILABILITY] Date calculation:');
+            error_log('[DEBUG_MENU_AVAILABILITY]   - Start date: ' . $startDate);
+            error_log('[DEBUG_MENU_AVAILABILITY]   - Date range: ' . $dateRange . ' days');
+            error_log('[DEBUG_MENU_AVAILABILITY]   - End date: ' . $endDate);
+        }
+        
+        // メニューIDが配列でない場合は配列に変換
+        if (!is_array($menuIds)) {
+            $menuIds = [$menuIds];
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[DEBUG_MENU_AVAILABILITY] Menu IDs converted to array: ' . json_encode($menuIds));
+            }
+        }
+        
         // Medical Force API用のリクエストボディを構築
+        // 複数メニューの場合は配列で送信
+        $menus = array_map(function($menuId) {
+            return [
+                'menu_id' => $menuId
+                // staff_ids は空配列（オプション）
+            ];
+        }, $menuIds);
+        
         $requestBody = [
             'epoch_from_keydate' => $startDate,
             'epoch_to_keydate' => $endDate,
             'time_spacing' => '5', // 5分間隔
-            'menus' => [[
-                'menu_id' => $menuId
-                // staff_ids は空配列（オプション）
-            ]]
+            'menus' => $menus
         ];
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[DEBUG_MENU_AVAILABILITY] Medical Force API request body:');
+            error_log('[DEBUG_MENU_AVAILABILITY]   ' . json_encode($requestBody, JSON_PRETTY_PRINT));
+            error_log('[DEBUG_MENU_AVAILABILITY] Calling Medical Force API getVacancies...');
+        }
         
         // Medical Force APIを呼び出し
         $vacancies = $medicalForceApi->getVacancies($requestBody);
         
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[DEBUG_MENU_AVAILABILITY] Medical Force API getVacancies completed successfully');
+            error_log('[DEBUG_MENU_AVAILABILITY] Vacancies response type: ' . gettype($vacancies));
+            error_log('[DEBUG_MENU_AVAILABILITY] Vacancies response (first 500 chars): ' . substr(json_encode($vacancies), 0, 500));
+        }
+        
         // レスポンス形式を統一
-        return [
+        $response = [
             'available_slots' => $vacancies,
             'source' => 'medical_force',
-            'menu_count' => 1,
-            'menu_ids' => [$menuId]
+            'menu_count' => count($menuIds),
+            'menu_ids' => $menuIds,
+            'total_duration' => $params['total_duration'] ?? 0
         ];
         
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[DEBUG_MENU_AVAILABILITY] Final response structure:');
+            error_log('[DEBUG_MENU_AVAILABILITY]   - source: ' . $response['source']);
+            error_log('[DEBUG_MENU_AVAILABILITY]   - menu_count: ' . $response['menu_count']);
+            error_log('[DEBUG_MENU_AVAILABILITY]   - menu_ids: ' . json_encode($response['menu_ids']));
+            error_log('[DEBUG_MENU_AVAILABILITY]   - total_duration: ' . $response['total_duration']);
+            error_log('[DEBUG_MENU_AVAILABILITY] ========== END handleMenuAvailability ==========');
+        }
+        
+        return $response;
+        
     } catch (Exception $e) {
-        error_log('[Single Menu Availability Error] ' . $e->getMessage());
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[ERROR_MENU_AVAILABILITY] ========== ERROR in handleMenuAvailability ==========');
+            error_log('[ERROR_MENU_AVAILABILITY] Exception Message: ' . $e->getMessage());
+            error_log('[ERROR_MENU_AVAILABILITY] Exception Code: ' . $e->getCode());
+            error_log('[ERROR_MENU_AVAILABILITY] Exception File: ' . $e->getFile() . ':' . $e->getLine());
+            error_log('[ERROR_MENU_AVAILABILITY] Stack Trace:');
+            error_log($e->getTraceAsString());
+            error_log('[ERROR_MENU_AVAILABILITY] ========== END ERROR ==========');
+        }
+        
         throw new Exception('空き情報の取得に失敗しました: ' . $e->getMessage(), 500);
     }
 }
 
-/**
- * 複数メニューの空き情報取得（予約履歴から計算）
- */
-function handleMultipleMenuAvailability(GasApiClient $gasApi, string $visitorId, array $params): array
-{
-    try {
-        // 日付範囲を計算
-        $startDate = $params['date'];
-        $dateRange = $params['date_range'] ?? 7;
-        $totalDuration = $params['total_duration'] ?? 0;
-        $menuIds = $params['menu_ids'];
-        
-        if ($totalDuration <= 0) {
-            throw new Exception('複数メニューの場合はtotal_durationが必要です', 400);
-        }
-        
-        // GAS APIから予約履歴を取得
-        $endDate = date('Y-m-d', strtotime($startDate . ' +' . ($dateRange - 1) . ' days'));
-        $reservationResult = $gasApi->getReservationsByDateRange($startDate, $endDate);
-        
-        if ($reservationResult['status'] === 'error') {
-            throw new Exception($reservationResult['error']['message'], 500);
-        }
-        
-        $reservations = $reservationResult['data'] ?? [];
-        
-        // 5分毎のタイムスロットを生成して空き判定
-        $availableSlots = calculateMultipleMenuAvailableSlots(
-            $startDate,
-            $dateRange,
-            $totalDuration,
-            $reservations
-        );
-        
-        return [
-            'available_slots' => $availableSlots,
-            'source' => 'calculated',
-            'menu_count' => count($menuIds),
-            'menu_ids' => $menuIds,
-            'total_duration' => $totalDuration
-        ];
-        
-    } catch (Exception $e) {
-        error_log('[Multiple Menu Availability Error] ' . $e->getMessage());
-        throw new Exception('複数メニューの空き情報取得に失敗しました: ' . $e->getMessage(), 500);
-    }
-}
 
-/**
- * 複数メニュー用の空き時間計算
- */
-function calculateMultipleMenuAvailableSlots(string $startDate, int $dateRange, int $totalDuration, array $reservations): array
-{
-    $availableSlots = [];
-    
-    // 営業時間設定（環境変数から取得、デフォルト値設定）
-    $openTime = getenv('CLINIC_OPEN_TIME') ?: '09:00';
-    $closeTime = getenv('CLINIC_CLOSE_TIME') ?: '18:00';
-    
-    for ($i = 0; $i < $dateRange; $i++) {
-        $currentDate = date('Y-m-d', strtotime($startDate . ' +' . $i . ' days'));
-        
-        // 土日をスキップ（オプション）
-        $dayOfWeek = date('w', strtotime($currentDate));
-        if ($dayOfWeek == 0 || $dayOfWeek == 6) { // 日曜日または土曜日
-            continue;
-        }
-        
-        $availableSlots[$currentDate] = [];
-        
-        // 5分刻みのタイムスロットを生成
-        $startTime = strtotime($currentDate . ' ' . $openTime);
-        $endTime = strtotime($currentDate . ' ' . $closeTime);
-        $slotDuration = 5 * 60; // 5分間
-        
-        for ($time = $startTime; $time < $endTime; $time += $slotDuration) {
-            $timeSlot = date('H:i', $time);
-            
-            // この時間から合計施術時間分の連続した空きがあるかチェック
-            if (isTimeSlotAvailable($currentDate, $timeSlot, $totalDuration, $reservations)) {
-                $availableSlots[$currentDate][$timeSlot] = 'ok';
-            } else {
-                $availableSlots[$currentDate][$timeSlot] = 'ng';
-            }
-        }
-    }
-    
-    return $availableSlots;
-}
-
-/**
- * 指定時間から必要時間分の空きがあるかチェック
- */
-function isTimeSlotAvailable(string $date, string $startTime, int $durationMinutes, array $reservations): bool
-{
-    $startDateTime = strtotime($date . ' ' . $startTime);
-    $endDateTime = $startDateTime + ($durationMinutes * 60);
-    
-    // 該当日の予約をフィルタ
-    $dayReservations = array_filter($reservations, function($reservation) use ($date) {
-        return isset($reservation['reservation_date']) && $reservation['reservation_date'] === $date;
-    });
-    
-    // 各予約と時間的な重複がないかチェック
-    foreach ($dayReservations as $reservation) {
-        $reservationStart = strtotime($date . ' ' . $reservation['reservation_time']);
-        $reservationDuration = ($reservation['duration_minutes'] ?? 60) * 60;
-        $reservationEnd = $reservationStart + $reservationDuration;
-        
-        // 重複チェック
-        if (($startDateTime < $reservationEnd) && ($endDateTime > $reservationStart)) {
-            return false; // 重複あり
-        }
-    }
-    
-    return true; // 空きあり
-}
 
 /**
  * 予約作成（単一・複数対応）
@@ -1217,6 +1391,26 @@ function handleDebugSession(): array
             'mock_medical_force' => defined('MOCK_MEDICAL_FORCE') ? MOCK_MEDICAL_FORCE : false
         ]
     ];
+}
+
+/**
+ * GAS設定検証
+ */
+function handleValidateGasConfiguration(GasApiClient $gasApi): array
+{
+    try {
+        return $gasApi->validateConfiguration();
+    } catch (Exception $e) {
+        error_log('[GAS Configuration Validation Error] ' . $e->getMessage());
+        return [
+            'timestamp' => date('Y-m-d H:i:s'),
+            'overall_status' => false,
+            'error' => [
+                'message' => $e->getMessage(),
+                'code' => $e->getCode()
+            ]
+        ];
+    }
 }
 
 /**

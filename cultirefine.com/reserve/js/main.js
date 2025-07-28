@@ -182,6 +182,10 @@ document.addEventListener('DOMContentLoaded', function() {
     initPatientSelectionScreen();
     initAddPatientModal();
     
+    // Initialize menu-calendar screen (単一患者予約画面)
+    // 画面遷移時だけでなく、初期化時にも呼び出す
+    initMenuCalendarScreen();
+    
     
     // Set LINE user from PHP session data
     if (window.SESSION_USER_DATA) {
@@ -265,6 +269,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 // UI更新
                 updatePatientsList();
                 console.log('GAS APIからユーザーデータを正常に読み込みました');
+                
+                // 会社別来院者がない場合は別途取得
+                if (appState.membershipInfo?.companyId && (!appState.allPatients || appState.allPatients.length === 0)) {
+                    console.log('[Main] 会社別来院者を別途取得します');
+                    import('./data/gas-api.js').then(({ getCompanyVisitors }) => {
+                        getCompanyVisitors(appState.membershipInfo.companyId).then(result => {
+                            if (result.success && result.data) {
+                                console.log('[Main] 会社別来院者取得成功:', result.data);
+                                // appStateに会社別来院者を設定
+                                appState.allPatients = result.data.visitors || result.data || [];
+                                // UIを更新
+                                updatePatientsList();
+                            }
+                        }).catch(error => {
+                            console.error('[Main] 会社別来院者取得エラー:', error);
+                        });
+                    });
+                }
+                
                 showAlert('success', 'success', '読み込み完了', 'ユーザー情報を読み込みました');
                 setTimeout(() => hideAlert('success'), 3000);
             } catch (mappingError) {

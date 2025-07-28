@@ -45,8 +45,17 @@ class MedicalForceApiClient
         if (!empty($this->clientId) && !empty($this->clientSecret)) {
             if (defined('DEBUG_MODE') && DEBUG_MODE) {
                 error_log('[Medical Force OAuth] Using OAuth 2.0 authentication');
+                error_log('[Medical Force OAuth] Client ID configured: ' . substr($this->clientId, 0, 10) . '...');
+                error_log('[Medical Force OAuth] Base URL: ' . $this->baseUrl);
             }
-            return $this->obtainOAuthToken();
+            
+            try {
+                return $this->obtainOAuthToken();
+            } catch (Exception $e) {
+                error_log('[Medical Force OAuth] Failed to obtain OAuth token: ' . $e->getMessage());
+                error_log('[Medical Force OAuth] Error code: ' . $e->getCode());
+                throw new Exception('OAuth認証に失敗しました: ' . $e->getMessage(), $e->getCode());
+            }
         }
         
         // フォールバック: 従来のAPIキー認証
@@ -126,6 +135,7 @@ class MedicalForceApiClient
             error_log('[Medical Force OAuth] Token URL: ' . $tokenUrl);
             error_log('[Medical Force OAuth] Client ID: ' . $this->clientId);
             error_log('[Medical Force OAuth] Post Data: ' . json_encode($postData));
+            error_log('[Medical Force OAuth] Using Basic Auth with credentials');
         }
         
         $curl = curl_init();
@@ -138,8 +148,11 @@ class MedicalForceApiClient
         
         // デバッグ情報をログ出力
         if (defined('DEBUG_MODE') && DEBUG_MODE) {
-            error_log('[Medical Force OAuth] HTTP Code: ' . $httpCode);
-            error_log('[Medical Force OAuth] Response: ' . substr($response, 0, 500));
+            error_log('[Medical Force OAuth] Response HTTP Code: ' . $httpCode);
+            error_log('[Medical Force OAuth] Response Body: ' . substr($response, 0, 500));
+            if ($error) {
+                error_log('[Medical Force OAuth] cURL Error: ' . $error);
+            }
         }
         
         if ($error) {
@@ -340,6 +353,13 @@ class MedicalForceApiClient
         // clinic_idヘッダーを追加（Medical Force API仕様）
         if (!empty($this->clinicId)) {
             $headers[] = 'clinic_id: ' . $this->clinicId;
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[Medical Force API] Adding clinic_id header: ' . $this->clinicId);
+            }
+        } else {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[Medical Force API] WARNING: clinic_id is empty or not set');
+            }
         }
         
         $options = [
@@ -364,21 +384,40 @@ class MedicalForceApiClient
         curl_close($curl);
         
         if ($error) {
+            error_log('[Medical Force API] cURL Error occurred: ' . $error);
             throw new Exception("cURL Error: {$error}", 500);
+        }
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[Medical Force API] Response received, HTTP Code: ' . $httpCode);
+            error_log('[Medical Force API] Response body (first 500 chars): ' . substr($response, 0, 500));
         }
         
         $decodedResponse = json_decode($response, true);
         
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new Exception("Invalid JSON response: {$response}", 500);
+            error_log('[Medical Force API] JSON decode error: ' . json_last_error_msg());
+            error_log('[Medical Force API] Raw response: ' . $response);
+            throw new Exception("Invalid JSON response: " . json_last_error_msg(), 500);
         }
         
         // HTTPエラーコードをチェック
         if ($httpCode >= 400) {
-            throw new Exception(
-                $decodedResponse['message'] ?? "HTTP Error {$httpCode}",
-                $httpCode
-            );
+            $errorMessage = $decodedResponse['message'] ?? "HTTP Error {$httpCode}";
+            error_log('[Medical Force API] HTTP Error ' . $httpCode . ': ' . $errorMessage);
+            
+            if ($httpCode === 401) {
+                error_log('[Medical Force API] 401 Unauthorized - OAuth token may be invalid or expired');
+                throw new Exception("認証エラー: " . $errorMessage, 401);
+            } elseif ($httpCode === 403) {
+                error_log('[Medical Force API] 403 Forbidden - Check clinic_id and permissions');
+                throw new Exception("権限エラー: " . $errorMessage, 403);
+            } elseif ($httpCode === 404) {
+                error_log('[Medical Force API] 404 Not Found - Check endpoint: ' . $endpoint);
+                throw new Exception("エンドポイントが見つかりません: " . $errorMessage, 404);
+            } else {
+                throw new Exception($errorMessage, $httpCode);
+            }
         }
         
         return $decodedResponse;
@@ -529,7 +568,7 @@ class MedicalForceApiClient
         }
         
         try {
-            $response = $this->makeApiRequest('POST', '/developer/vacancies', $requestBody);
+            $response = $this->makeRequest('POST', '/developer/vacancies', $requestBody);
             
             if (defined('DEBUG_MODE') && DEBUG_MODE) {
                 error_log('[Medical Force API] Vacancies response: ' . json_encode($response));
@@ -592,7 +631,7 @@ class MedicalForceApiClient
                 'is_online' => false
             ], $reservationData);
             
-            $response = $this->makeApiRequest('POST', '/developer/reservations', $requestData);
+            $response = $this->makeRequest('POST', '/developer/reservations', $requestData);
             
             if (defined('DEBUG_MODE') && DEBUG_MODE) {
                 error_log('[Medical Force API] Reservation created successfully: ' . json_encode($response));

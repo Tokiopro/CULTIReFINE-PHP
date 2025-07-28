@@ -10,15 +10,17 @@ export function initAddPatientModal() {
     var closeBtn = document.getElementById('modal-close-btn');
     var cancelBtn = document.getElementById('cancel-add-patient-btn');
     var confirmBtn = document.getElementById('confirm-add-patient-btn');
-    var nameInput = document.getElementById('new-patient-name');
-    var kanaInput = document.getElementById('new-patient-kana');
+    var lastNameInput = document.getElementById('new-patient-last-name');
+    var firstNameInput = document.getElementById('new-patient-first-name');
+    var lastNameKanaInput = document.getElementById('new-patient-last-name-kana');
+    var firstNameKanaInput = document.getElementById('new-patient-first-name-kana');
     var birthdayInput = document.getElementById('new-patient-birthday');
     var errorDiv = document.getElementById('patient-modal-error');
     var errorText = document.getElementById('patient-modal-error-text');
     var confirmBtnText = document.getElementById('confirm-btn-text');
     var confirmBtnSpinner = document.getElementById('confirm-btn-spinner');
 
-    if (!modal || !closeBtn || !cancelBtn || !confirmBtn || !nameInput || !kanaInput) return;
+    if (!modal || !closeBtn || !cancelBtn || !confirmBtn || !lastNameInput || !firstNameInput || !lastNameKanaInput || !firstNameKanaInput) return;
 
     function closeModal() {
         hideModal('add-patient-modal');
@@ -27,8 +29,10 @@ export function initAddPatientModal() {
     }
 
     function clearForm() {
-        nameInput.value = '';
-        kanaInput.value = '';
+        lastNameInput.value = '';
+        firstNameInput.value = '';
+        lastNameKanaInput.value = '';
+        firstNameKanaInput.value = '';
         birthdayInput.value = '';
         document.querySelectorAll('input[name="gender"]').forEach(radio => radio.checked = false);
     }
@@ -54,36 +58,58 @@ export function initAddPatientModal() {
     }
 
     function validateForm() {
-        var name = nameInput.value.trim();
-        var kana = kanaInput.value.trim();
+        var lastName = lastNameInput.value.trim();
+        var firstName = firstNameInput.value.trim();
+        var lastNameKana = lastNameKanaInput.value.trim();
+        var firstNameKana = firstNameKanaInput.value.trim();
         var gender = document.querySelector('input[name="gender"]:checked')?.value;
         var birthday = birthdayInput.value;
 
-        // 必須フィールドチェック
-        if (!name) {
-            return { valid: false, message: '氏名を入力してください。' };
+        // 必須フィールドチェック（カナは任意）
+        if (!lastName) {
+            return { valid: false, message: '姓を入力してください。' };
         }
-        if (!kana) {
-            return { valid: false, message: 'カナを入力してください。' };
+        if (!firstName) {
+            return { valid: false, message: '名を入力してください。' };
         }
         if (!gender) {
             return { valid: false, message: '性別を選択してください。' };
         }
 
         // 氏名の検証
-        if (name.length > 30) {
-            return { valid: false, message: '氏名は30文字以内で入力してください。' };
+        if (lastName.length > 15) {
+            return { valid: false, message: '姓は15文字以内で入力してください。' };
+        }
+        if (firstName.length > 15) {
+            return { valid: false, message: '名は15文字以内で入力してください。' };
         }
 
-        // カナの検証
-        if (kana.length > 60) {
-            return { valid: false, message: 'カナは60文字以内で入力してください。' };
-        }
-        
-        // 全角カタカナチェック
-        var katakanaRegex = /^[ァ-ヶー\s　]+$/;
-        if (!katakanaRegex.test(kana)) {
-            return { valid: false, message: 'カナは全角カタカナで入力してください。' };
+        // カナの検証（入力されている場合のみ）
+        if (lastNameKana || firstNameKana) {
+            // 片方だけ入力されている場合のチェック
+            if (lastNameKana && !firstNameKana) {
+                return { valid: false, message: 'セイを入力した場合は、メイも入力してください。' };
+            }
+            if (!lastNameKana && firstNameKana) {
+                return { valid: false, message: 'メイを入力した場合は、セイも入力してください。' };
+            }
+            
+            // 長さチェック
+            if (lastNameKana.length > 30) {
+                return { valid: false, message: 'セイは30文字以内で入力してください。' };
+            }
+            if (firstNameKana.length > 30) {
+                return { valid: false, message: 'メイは30文字以内で入力してください。' };
+            }
+            
+            // 全角カタカナチェック
+            var katakanaRegex = /^[ァ-ヶー]+$/;
+            if (!katakanaRegex.test(lastNameKana)) {
+                return { valid: false, message: 'セイは全角カタカナで入力してください。' };
+            }
+            if (!katakanaRegex.test(firstNameKana)) {
+                return { valid: false, message: 'メイは全角カタカナで入力してください。' };
+            }
         }
 
         // 生年月日の検証（任意）
@@ -119,29 +145,25 @@ export function initAddPatientModal() {
         setLoading(true);
         
         try {
-            var name = nameInput.value.trim();
-            var kana = kanaInput.value.trim();
+            var lastName = lastNameInput.value.trim();
+            var firstName = firstNameInput.value.trim();
+            var lastNameKana = lastNameKanaInput.value.trim();
+            var firstNameKana = firstNameKanaInput.value.trim();
             var gender = document.querySelector('input[name="gender"]:checked').value;
             var birthday = birthdayInput.value;
 
-            // 氏名を姓名に分割（スペースで分割、なければ最初の文字を姓とする）
-            var nameParts = name.split(/[\s　]+/); // 半角・全角スペースで分割
-            var lastName = nameParts[0] || '';
-            var firstName = nameParts[1] || '';
-            
-            // カナも同様に分割
-            var kanaParts = kana.split(/[\s　]+/);
-            var lastNameKana = kanaParts[0] || '';
-            var firstNameKana = kanaParts[1] || '';
-
-            // PHP側のAPI形式に合わせて分割形式で送信
+            // PHP側のAPI形式に合わせて送信
             var patientData = {
                 last_name: lastName,
-                first_name: firstName || '未設定', // 名前がない場合はデフォルト値
-                last_name_kana: lastNameKana,
-                first_name_kana: firstNameKana || 'ミセッテイ', // カナがない場合はデフォルト値
+                first_name: firstName,
                 gender: gender
             };
+            
+            // カナが入力されている場合のみ追加
+            if (lastNameKana && firstNameKana) {
+                patientData.last_name_kana = lastNameKana;
+                patientData.first_name_kana = firstNameKana;
+            }
 
             if (birthday) {
                 patientData.birthday = birthday;
@@ -172,7 +194,19 @@ export function initAddPatientModal() {
                 
             } else {
                 // より詳細なエラーメッセージを表示
-                const errorMessage = result.message || '来院者の登録に失敗しました。';
+                let errorMessage = '来院者の登録に失敗しました。';
+                
+                if (result.error && result.error.message) {
+                    errorMessage = result.error.message;
+                } else if (result.message) {
+                    errorMessage = result.message;
+                }
+                
+                // 具体的なフィールドエラーがある場合
+                if (result.error && result.error.details) {
+                    errorMessage += '\n詳細: ' + result.error.details;
+                }
+                
                 console.error('Patient registration failed:', result);
                 showError(errorMessage);
             }

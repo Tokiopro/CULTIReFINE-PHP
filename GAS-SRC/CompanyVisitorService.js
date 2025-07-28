@@ -61,9 +61,9 @@ class CompanyVisitorService {
       if (data[i][0] === companyId) {
         console.log(`行${i+1}のデータ:`, data[i]);
         
-        // positionフィールドの値を正規化
-        const position = data[i][8];
-        console.log(`生の役職データ (data[${i}][8]):`, {
+        // positionフィールドの値を正規化（役職は7番目のインデックス）
+        const position = data[i][7];
+        console.log(`生の役職データ (data[${i}][7]):`, {
           value: position,
           type: typeof position,
           length: position ? String(position).length : 0,
@@ -74,29 +74,29 @@ class CompanyVisitorService {
         console.log(`正規化後の役職: "${normalizedPosition}"`);
         
         // Dateオブジェクトを文字列に変換
-        const createdAt = data[i][9];
-        const updatedAt = data[i][10];
+        const createdAt = data[i][8];  // 登録日時
+        const updatedAt = data[i][9];   // 更新日時
         
         const visitor = {
-          companyId: data[i][0],
-          companyName: data[i][1],
-          visitorId: data[i][2],
-          visitorName: data[i][3],
-          gender: data[i][4] || '',
-          lineId: data[i][5] || '',
-          memberType: data[i][6] || 'サブ会員',
-          isPublic: data[i][7],
-          position: normalizedPosition,
+          companyId: data[i][0],        // 会社ID
+          companyName: data[i][1],      // 会社名
+          visitorId: data[i][2],        // visitor_id
+          visitorName: data[i][3],      // 氏名
+          lineId: data[i][4] || '',     // LINE_ID（5番目の列）
+          memberType: data[i][5] || 'サブ会員',  // 会員種別
+          isPublic: data[i][6],         // 公開設定
+          position: normalizedPosition,  // 役職（正規化済み）
+          gender: '',                    // genderは会社別来院者管理シートには存在しないため空文字
           createdAt: createdAt instanceof Date ? createdAt.toISOString() : createdAt,
           updatedAt: updatedAt instanceof Date ? updatedAt.toISOString() : updatedAt,
-          // LINE連携情報を追加（L列〜R列）
-          expireTime: data[i][11] || '',
-          isUsed: data[i][12] || false,
-          lineDisplayName: data[i][13] || '',
-          linkedAt: data[i][14] || '',
-          url: data[i][15] || '',
-          linkStatus: data[i][16] || '',
-          linkUrl: data[i][17] || ''
+          // LINE連携情報を追加（10番目以降の列）
+          expireTime: data[i][10] || '',      // 有効期限
+          isUsed: data[i][11] || false,       // 使用済み
+          lineDisplayName: data[i][12] || '', // LINE表示名
+          linkedAt: data[i][13] || '',        // 紐付け日時
+          url: data[i][14] || '',             // URL
+          linkStatus: data[i][15] || '',      // 連携ステータス
+          linkUrl: data[i][16] || ''          // LINE連携用URLリンク
         };
         
         visitors.push(visitor);

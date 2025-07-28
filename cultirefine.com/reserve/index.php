@@ -213,8 +213,50 @@ try {
                 'role' => $isMemberType ? 'main' : 'sub'
             ];
             
-            // 会社関連のメンバーリストは初期状態では空（JavaScript側で取得）
-            $companyPatients = [];
+            // 会社関連のメンバーリストをGAS APIから取得
+            try {
+                $logger->info('[Index] 会社別来院者を取得開始', [
+                    'company_id' => $companyData['company_id'],
+                    'user_role' => $companyInfo['role']
+                ]);
+                
+                $companyVisitorsResult = $gasApi->getPatientsByCompany(
+                    $companyData['company_id'], 
+                    $companyInfo['role']
+                );
+                
+                if ($companyVisitorsResult['status'] === 'success' && isset($companyVisitorsResult['data']['visitors'])) {
+                    $companyPatients = $companyVisitorsResult['data']['visitors'];
+                    
+                    $logger->info('[Index] 会社別来院者取得成功', [
+                        'company_id' => $companyData['company_id'],
+                        'total_count' => count($companyPatients),
+                        'user_role' => $companyInfo['role']
+                    ]);
+                    
+                    if (DEBUG_MODE) {
+                        $logger->debug('[Index] 来院者リスト詳細', [
+                            'first_5_visitors' => array_slice($companyPatients, 0, 5)
+                        ]);
+                    }
+                } else {
+                    $logger->warning('[Index] 会社別来院者取得失敗', [
+                        'company_id' => $companyData['company_id'],
+                        'result' => $companyVisitorsResult
+                    ]);
+                    $companyPatients = [];
+                }
+            } catch (Exception $e) {
+                $logger->error('[Index] 会社別来院者取得エラー', [
+                    'company_id' => $companyData['company_id'],
+                    'error' => $e->getMessage()
+                ]);
+                $companyPatients = [];
+                // エラーメッセージに追加
+                if (!$errorMessage) {
+                    $errorMessage = '会社メンバーの取得に失敗しました。';
+                }
+            }
         } else {
             // 会社情報がない場合（個人利用者）
             $companyInfo = null;
@@ -601,21 +643,35 @@ try {
                 <button class="text-gray-400 hover:text-gray-600 text-2xl leading-none w-8 h-8 flex items-center justify-center" id="modal-close-btn">&times;</button>
             </div>
             <div class="p-6 space-y-4">
-                <!-- 氏名 -->
+                <!-- 氏名（姓・名） -->
                 <div>
-                    <label for="new-patient-name" class="block text-sm font-medium text-gray-700 mb-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
                         氏名 <span class="text-red-500">*</span>
                     </label>
-                    <input type="text" id="new-patient-name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="例: 鈴木 一郎（姓名をスペースで区切って入力）" maxlength="30" required>
-                    <p class="text-xs text-gray-500 mt-1">30字以内で入力してください。</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <input type="text" id="new-patient-last-name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="姓" maxlength="15" required>
+                        </div>
+                        <div>
+                            <input type="text" id="new-patient-first-name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="名" maxlength="15" required>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">姓と名を別々に入力してください。</p>
                 </div>
                 
-                <!-- カナ -->
+                <!-- カナ（セイ・メイ） -->
                 <div>
-                    <label for="new-patient-kana" class="block text-sm font-medium text-gray-700 mb-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
                         カナ <span class="text-red-500">*</span>
                     </label>
-                    <input type="text" id="new-patient-kana" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="例: スズキ イチロウ（セイメイをスペースで区切って入力）" maxlength="60" required>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <input type="text" id="new-patient-last-name-kana" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="セイ" maxlength="30" required>
+                        </div>
+                        <div>
+                            <input type="text" id="new-patient-first-name-kana" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="メイ" maxlength="30" required>
+                        </div>
+                    </div>
                     <p class="text-xs text-gray-500 mt-1">全角カタカナで入力してください。</p>
                 </div>
                 
@@ -754,21 +810,21 @@ try {
     </script>
 
     <!-- JavaScriptモジュール -->
-    <script type="module" src="./js/core/polyfills.js"></script>
-    <script type="module" src="./js/core/storage-manager.js"></script>
-    <script type="module" src="./js/core/app-state.js"></script>
-    <script type="module" src="./js/core/ui-helpers.js"></script>
-    <script type="module" src="./js/data/treatment-data.js"></script>
-    <script type="module" src="./js/data/mock-api.js"></script>
-    <script type="module" src="./js/data/gas-api.js"></script>
-    <script type="module" src="./js/components/calendar.js"></script>
-    <script type="module" src="./js/components/treatment-accordion.js"></script>
-    <script type="module" src="./js/components/modal.js"></script>
-    <script type="module" src="./js/components/reservation-confirm.js"></script>
-    <script type="module" src="./js/screens/patient-selection.js"></script>
-    <script type="module" src="./js/screens/menu-calendar.js"></script>
-    <script type="module" src="./js/screens/pair-booking.js"></script>
-    <script type="module" src="./js/screens/bulk-booking.js"></script>
+    <script type="module" src="./js/core/polyfills.js?v=20250128"></script>
+    <script type="module" src="./js/core/storage-manager.js?v=20250128"></script>
+    <script type="module" src="./js/core/app-state.js?v=20250128"></script>
+    <script type="module" src="./js/core/ui-helpers.js?v=20250128"></script>
+    <script type="module" src="./js/data/treatment-data.js?v=20250128"></script>
+    <script type="module" src="./js/data/mock-api.js?v=20250128"></script>
+    <script type="module" src="./js/data/gas-api.js?v=20250128"></script>
+    <script type="module" src="./js/components/calendar.js?v=20250128"></script>
+    <script type="module" src="./js/components/treatment-accordion.js?v=20250128"></script>
+    <script type="module" src="./js/components/modal.js?v=20250128"></script>
+    <script type="module" src="./js/components/reservation-confirm.js?v=20250128"></script>
+    <script type="module" src="./js/screens/patient-selection.js?v=20250128"></script>
+    <script type="module" src="./js/screens/menu-calendar.js?v=20250128"></script>
+    <script type="module" src="./js/screens/pair-booking.js?v=20250128"></script>
+    <script type="module" src="./js/screens/bulk-booking.js?v=20250128"></script>
     
     <!-- デバッグ情報表示スクリプト -->
     <script>
@@ -1975,6 +2031,6 @@ try {
         }
     </script>
     
-    <script type="module" src="./js/main.js"></script>
+    <script type="module" src="./js/main.js?v=20250128"></script>
 </body>
 </html>

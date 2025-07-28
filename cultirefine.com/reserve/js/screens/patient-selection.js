@@ -13,31 +13,47 @@ export function initPatientSelectionScreen() {
 
     if (!pairModeSwitch || !proceedBtn || !addPatientBtn || !description) return;
 
-    // PHPから取得したデータを利用（新しいGAS API形式）
-    if (window.APP_CONFIG && window.APP_CONFIG.companyPatients) {
-        appState.allPatients = window.APP_CONFIG.companyPatients.map(function(visitor) {
-            return {
-                id: visitor.visitor_id,
-                name: visitor.name,
-                kana: visitor.kana,
-                gender: visitor.gender,
-                isPublic: visitor.is_public,
-                lastVisit: visitor.last_visit || null,
-                isNew: visitor.is_new || false,
-                isVisible: visitor.is_public !== false, // 公開設定がfalseでない限りtrue
-                companyId: visitor.company_id
-            };
-        });
-        
-        console.log('Loaded ' + appState.allPatients.length + ' visitors from PHP');
+    // appStateから会社別来院者データを取得（GAS API経由）
+    // appState.allPatientsは既にgas-api.jsのmapGasDataToAppStateで設定されている
+    if (appState.allPatients && appState.allPatients.length > 0) {
+        console.log('Loaded ' + appState.allPatients.length + ' visitors from appState (GAS API)');
         
         // 権限チェック：サブ会員の場合は公開設定がfalseの患者を除外
-        if (window.APP_CONFIG.userRole === 'sub') {
+        if (appState.membershipInfo && appState.membershipInfo.memberType === 'sub') {
             appState.allPatients = appState.allPatients.filter(function(patient) {
                 // is_publicがtrueまたは明示的に設定されていない場合のみ表示
-                return patient.isPublic === true || (patient.isPublic !== false && typeof patient.isPublic === 'undefined');
+                return patient.is_public === true || (patient.is_public !== false && typeof patient.is_public === 'undefined');
             });
             console.log('Filtered to ' + appState.allPatients.length + ' visible patients for sub member');
+        }
+    } else {
+        // フォールバック：PHPから取得したデータを利用（旧方式）
+        if (window.APP_CONFIG && window.APP_CONFIG.companyPatients) {
+            appState.allPatients = window.APP_CONFIG.companyPatients.map(function(visitor) {
+                return {
+                    id: visitor.visitor_id,
+                    name: visitor.name,
+                    kana: visitor.kana,
+                    gender: visitor.gender,
+                    is_public: visitor.is_public,
+                    lastVisit: visitor.last_visit || null,
+                    isNew: visitor.is_new || false,
+                    isVisible: visitor.is_public !== false, // 公開設定がfalseでない限りtrue
+                    companyId: visitor.company_id,
+                    member_type: visitor.member_type
+                };
+            });
+            
+            console.log('Loaded ' + appState.allPatients.length + ' visitors from PHP (fallback)');
+            
+            // 権限チェック：サブ会員の場合は公開設定がfalseの患者を除外
+            if (window.APP_CONFIG.userRole === 'sub') {
+                appState.allPatients = appState.allPatients.filter(function(patient) {
+                    // is_publicがtrueまたは明示的に設定されていない場合のみ表示
+                    return patient.is_public === true || (patient.is_public !== false && typeof patient.is_public === 'undefined');
+                });
+                console.log('Filtered to ' + appState.allPatients.length + ' visible patients for sub member');
+            }
         }
     }
 
@@ -210,7 +226,7 @@ export function updatePatientsList() {
         var patient = appState.allPatients[i];
         
         // サブ会員の場合、非公開の来院者はスキップ
-        if (window.APP_CONFIG && window.APP_CONFIG.userRole === 'sub' && patient.isPublic === false) {
+        if (window.APP_CONFIG && window.APP_CONFIG.userRole === 'sub' && patient.is_public === false) {
             continue;
         }
         
@@ -228,6 +244,7 @@ export function updatePatientsList() {
         var newText = patient.isNew ? '<span class="text-xs text-green-600 ml-2">(新規)</span>' : '';
         var visibilityText = window.APP_CONFIG && window.APP_CONFIG.userRole === 'main' && !patient.isVisible ? 
             '<span class="text-xs text-red-600 ml-2">(非公開)</span>' : '';
+        var memberTypeText = patient.member_type === 'sub' ? '<span class="text-xs text-blue-600 ml-2">(サブ会員)</span>' : '';
         
         // 本会員の場合、公開設定トグルボタンを追加
         var toggleButton = '';
@@ -240,7 +257,7 @@ export function updatePatientsList() {
                     '<div class="relative">' +
                         '<label class="toggle-switch" for="' + toggleId + '">' +
                             '<input type="checkbox" id="' + toggleId + '" class="toggle-checkbox" ' +
-                            (patient.isPublic ? 'checked' : '') + ' ' +
+                            (patient.is_public ? 'checked' : '') + ' ' +
                             'data-visitor-id="' + patient.id + '">' +
                             '<span class="toggle-slider"></span>' +
                         '</label>' +
@@ -268,6 +285,7 @@ export function updatePatientsList() {
                         (lastVisitText ? '<span class="text-xs text-gray-500 ml-2">' + lastVisitText + '</span>' : '') +
                         newText +
                         visibilityText +
+                        memberTypeText +
                     '</div>' +
                     toggleButton +
                 '</div>' +
