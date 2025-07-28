@@ -186,7 +186,7 @@ export async function mockAddPatient(patientData) {
         // 性別
         processedData.gender = patientData.gender;
         
-        // 必須フィールドのチェック（新形式）
+        // 必須フィールドのチェック（簡素化：姓、名、性別のみ）
         if (!patientData.last_name || !patientData.first_name || !patientData.gender) {
             console.error('Missing required fields:', {
                 last_name: patientData.last_name,
@@ -194,6 +194,12 @@ export async function mockAddPatient(patientData) {
                 gender: patientData.gender
             });
             throw new Error('姓、名、性別は必須項目です');
+        }
+        
+        // カナフィールドはオプション（両方入力されている場合のみ送信）
+        if ((patientData.last_name_kana && !patientData.first_name_kana) ||
+            (!patientData.last_name_kana && patientData.first_name_kana)) {
+            throw new Error('カナを入力する場合は、姓・名の両方を入力してください');
         }
         
         // PHP側に送信するデータは新形式のまま
@@ -461,9 +467,14 @@ export async function mockCheckSlotAvailability(treatmentId, dateKey, pairRoomDe
             time_spacing: timeSpacing
         });
         
+        console.log('[GAS API] Slot availability response:', data);
+        
+        const availableTimes = data.available_times || [];
+        console.log('[GAS API] Available times:', availableTimes);
+        
         return {
             success: true,
-            availableTimes: data.available_times || [],
+            availableTimes: availableTimes,
             message: data.message || "空き時間を取得しました"
         };
         

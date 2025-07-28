@@ -226,10 +226,14 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
+        // 初期ローディング状態を設定
+        window.isLoadingCompanyVisitors = false;
+        
         // Fetch full user information from API with timeout
         const loadingTimeout = setTimeout(() => {
             console.warn('API呼び出しがタイムアウトしました。基本画面を表示します。');
             // タイムアウト時も画面を表示
+            window.isLoadingCompanyVisitors = false;
             appState.setScreen('patient-selection');
             hideLoadingOverlay();
             showErrorMessage('データの読み込みに時間がかかっています。一部機能が利用できない場合があります。');
@@ -241,6 +245,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!data || !data.success) {
                 console.warn('API returned invalid data:', data);
                 // データが無効でも画面は表示
+                window.isLoadingCompanyVisitors = false;
                 appState.setScreen('patient-selection');
                 hideLoadingOverlay();
                 showErrorMessage('ユーザーデータの読み込みに失敗しました。一部機能が制限される可能性があります。');
@@ -273,17 +278,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 会社別来院者がない場合は別途取得
                 if (appState.membershipInfo?.companyId && (!appState.allPatients || appState.allPatients.length === 0)) {
                     console.log('[Main] 会社別来院者を別途取得します');
+                    
+                    // ローディング状態を設定
+                    window.isLoadingCompanyVisitors = true;
+                    updatePatientsList(); // ローディング表示のためにUIを更新
+                    
                     import('./data/gas-api.js').then(({ getCompanyVisitors }) => {
                         getCompanyVisitors(appState.membershipInfo.companyId).then(result => {
                             if (result.success && result.data) {
                                 console.log('[Main] 会社別来院者取得成功:', result.data);
                                 // appStateに会社別来院者を設定
                                 appState.allPatients = result.data.visitors || result.data || [];
-                                // UIを更新
-                                updatePatientsList();
+                            } else {
+                                console.warn('[Main] 会社別来院者取得失敗:', result.message);
+                                appState.allPatients = [];
                             }
                         }).catch(error => {
                             console.error('[Main] 会社別来院者取得エラー:', error);
+                            appState.allPatients = [];
+                        }).finally(() => {
+                            // ローディング状態を解除してUIを更新
+                            window.isLoadingCompanyVisitors = false;
+                            updatePatientsList();
                         });
                     });
                 }
@@ -301,6 +317,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 showErrorMessage(errorMessage);
             } finally {
+                window.isLoadingCompanyVisitors = false;
                 hideLoadingOverlay();
             }
         }).catch(function(error) {
@@ -308,6 +325,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Failed to load user data:', error);
             
             // エラー時でも基本画面は表示
+            window.isLoadingCompanyVisitors = false;
             appState.setScreen('patient-selection');
             hideLoadingOverlay();
             

@@ -158,13 +158,20 @@ export async function updateMenuCalendarScreen() {
     calendars['calendar'] = new Calendar('calendar', function(date) {
         selectDate(currentPatient.id, date);
     }, {
-        showAvailability: true
+        showAvailability: true,
+        onMonthChange: function(newDate) {
+            // 月が変更された時に空き情報を再取得
+            var selectedMenus = appState.selectedTreatments[currentPatient.id] || [];
+            if (selectedMenus.length > 0) {
+                loadCalendarAvailability(currentPatient.id, selectedMenus);
+            }
+        }
     });
     
     // 選択されたメニューがある場合は空き情報を取得
     var selectedMenus = appState.selectedTreatments[currentPatient.id] || [];
     if (selectedMenus.length > 0) {
-        await loadCalendarAvailability(currentPatient.id, selectedMenus[0].id);
+        await loadCalendarAvailability(currentPatient.id, selectedMenus);
     }
     
     // Restore selections
@@ -234,28 +241,45 @@ export function selectTreatmentProgrammatically(patientId, treatment) {
 }
 
 export function selectDate(patientId, date) {
-    console.log('selectDate called for patient:', patientId, 'date:', date);
+    console.log('[SelectDate] Called for patient:', patientId, 'date:', date);
     appState.selectedDates[patientId] = date;
     appState.selectedTimes[patientId] = null; // Reset time selection
     
+    // 日付が選択されたことを明示的に表示
+    const dateString = date ? date.toISOString().split('T')[0] : 'no date';
+    console.log('[SelectDate] Date saved as:', dateString, 'for patient:', patientId);
+    
     checkAndUpdateTimeSlots(patientId, date).then(function() {
+        console.log('[SelectDate] Time slots updated, updating button state');
         updateNextButtonState();
+    }).catch(function(error) {
+        console.error('[SelectDate] Error updating time slots:', error);
     });
 }
 
 export function checkAndUpdateTimeSlots(patientId, date) {
+    console.log('[CheckTimeSlots] Called for patient:', patientId, 'date:', date);
+    
     // 複数メニュー対応
     var selectedMenus = appState.selectedTreatments[patientId] || [];
     var pairRoom = appState.pairRoomDesired[patientId] || false;
     
+    console.log('[CheckTimeSlots] Selected menus:', selectedMenus.length, 'pairRoom:', pairRoom);
+    
     if (selectedMenus.length === 0 || !date) {
+        console.log('[CheckTimeSlots] Missing menus or date, returning early');
         return Promise.resolve();
     }
 
     var dateKey = formatDateKey(date);
+    console.log('[CheckTimeSlots] Date key:', dateKey);
+    
     // 最初のメニューで空き確認（5分間隔）
     const firstMenu = selectedMenus[0];
+    console.log('[CheckTimeSlots] Checking availability for menu:', firstMenu.name || firstMenu.id);
+    
     return mockCheckSlotAvailability(firstMenu.id, dateKey, pairRoom, 5).then(function(slotsResult) {
+        console.log('[CheckTimeSlots] Slots result:', slotsResult);
         // Show availability message
         if (slotsResult.message) {
             var alertType = slotsResult.availableTimes.length > 0 ? 'info' : 'warning';
@@ -268,8 +292,12 @@ export function checkAndUpdateTimeSlots(patientId, date) {
 
         // Update time slots
         var timeSlotsContainer = document.getElementById('time-slots');
-        if (!timeSlotsContainer) return;
+        if (!timeSlotsContainer) {
+            console.error('[CheckTimeSlots] time-slots container not found!');
+            return;
+        }
         
+        console.log('[CheckTimeSlots] Updating time slots container, available times:', slotsResult.availableTimes.length);
         timeSlotsContainer.innerHTML = '';
         
         if (slotsResult.availableTimes.length > 0) {
@@ -317,9 +345,13 @@ export function checkAndUpdateTimeSlots(patientId, date) {
                 }
             }
             timeSlotsContainer.classList.remove('hidden');
+            console.log('[CheckTimeSlots] Time slots container shown with', slotsResult.availableTimes.length, 'time slots');
         } else {
             timeSlotsContainer.classList.add('hidden');
+            console.log('[CheckTimeSlots] No available times, hiding time slots container');
         }
+    }).catch(function(error) {
+        console.error('[CheckTimeSlots] Error in slot availability check:', error);
     });
 }
 
@@ -560,7 +592,7 @@ async function loadCalendarAvailability(patientId, selectedMenus) {
     calendar.setLoading(true);
     
     try {
-        // 現在の月の初日から30日分の空き情報を取得
+        // カレンダーの現在表示されている月の初日から30日分の空き情報を取得
         const currentDate = calendar.currentDate;
         const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
         const dateKey = calendar.formatDateKey(startDate);

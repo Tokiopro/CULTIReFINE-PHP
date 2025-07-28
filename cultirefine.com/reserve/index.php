@@ -807,6 +807,15 @@ try {
             debugMode: <?php echo DEBUG_MODE ? 'true' : 'false'; ?>,
             debugInfo: <?php echo json_encode($debugInfo); ?>
         };
+        
+        // DEBUG_MODEをPHPから取得してwindowオブジェクトに設定
+        window.DEBUG_MODE = <?php echo (defined('DEBUG_MODE') && DEBUG_MODE) ? 'true' : 'false'; ?>;
+        
+        // DEBUG_MODEの状態をコンソールに出力
+        if (window.DEBUG_MODE) {
+            console.log('[DEBUG] DEBUG_MODE is enabled (from PHP environment)');
+            console.log('[DEBUG] PHP DEBUG_MODE value:', <?php echo defined('DEBUG_MODE') ? (DEBUG_MODE ? 'true' : 'false') : 'undefined'; ?>);
+        }
     </script>
 
     <!-- JavaScriptモジュール -->

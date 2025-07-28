@@ -352,7 +352,7 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
             error_log('[handleCreateVisitor] Received data from frontend: ' . json_encode($visitorData));
         }
         
-        // Step 1: フロントエンドからの基本データを検証
+        // Step 1: フロントエンドからの基本データを検証（簡素化：姓、名、性別のみ）
         $required = ['last_name', 'first_name', 'gender'];
         foreach ($required as $field) {
             if (empty($visitorData[$field])) {
@@ -368,7 +368,27 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
             throw new Exception("名のカナが入力されている場合、姓のカナも入力してください", 400);
         }
         
-        // Step 2: Medical Force APIで来院者を作成（OAuth 2.0対応）
+        // Step 2: 先にユーザー情報を取得して会社情報を準備
+        $userInfo = $gasApi->getUserFullInfo($lineUserId);
+        
+        // GAS APIの標準形式レスポンスをチェック
+        if ($userInfo['status'] !== 'success') {
+            if (DEBUG_MODE) {
+                error_log('[handleCreateVisitor] GAS API failed: ' . json_encode($userInfo));
+            }
+            throw new Exception('ユーザー情報の取得に失敗しました（GAS API）', 500);
+        }
+        
+        $membershipInfo = $userInfo['data']['membership_info'] ?? null;
+        $companyId = $membershipInfo['company_id'] ?? '';
+        $companyName = $membershipInfo['company_name'] ?? '';
+        $memberType = $membershipInfo['member_type'] ?? 'sub';
+        
+        if (DEBUG_MODE) {
+            error_log('[handleCreateVisitor] Company info - ID: ' . $companyId . ', Name: ' . $companyName . ', Type: ' . $memberType);
+        }
+        
+        // Step 3: Medical Force APIで来院者を作成（OAuth 2.0対応）
         $medicalForceApi = new MedicalForceApiClient(
             MEDICAL_FORCE_API_URL, 
             MEDICAL_FORCE_API_KEY,
@@ -408,12 +428,16 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
         
         $visitorId = $medicalForceResult['visitor_id'];
         
-        // Step 3: Medical Forceから取得したIDを使ってGAS APIに登録
-        // 個別入力された姓名を取得
+        if (DEBUG_MODE) {
+            error_log('[handleCreateVisitor] Medical Force visitor created with ID: ' . $visitorId);
+        }
+        
+        // Step 4: 完全な会社別来院者データを作成してGASに送信（ユーザー提案のアーキテクチャ）
         $lastName = trim($visitorData['last_name']);
         $firstName = trim($visitorData['first_name']);
         $lastNameKana = trim($visitorData['last_name_kana'] ?? '');
         $firstNameKana = trim($visitorData['first_name_kana'] ?? '');
+        $fullName = $lastName . ' ' . $firstName;
         
         // 性別の変換（フロントエンドの形式からAPI形式へ）
         $genderMap = [
@@ -424,64 +448,57 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
         ];
         $gender = $genderMap[strtoupper($visitorData['gender'] ?? '')] ?? 'other';
         
-        // ユーザー情報を取得して会社情報を設定
-        $userInfo = $gasApi->getUserFullInfo($lineUserId);
+        // 現在の日時（JST）
+        $currentDateTime = (new DateTime('now', new DateTimeZone('Asia/Tokyo')))->format('Y-m-d H:i:s');
         
-        // GAS APIの標準形式レスポンスをチェック
-        if ($userInfo['status'] !== 'success') {
-            if (DEBUG_MODE) {
-                error_log('[handleCreateVisitor] GAS API failed: ' . json_encode($userInfo));
-            }
-            throw new Exception('ユーザー情報の取得に失敗しました（GAS API）', 500);
-        }
-        
-        $membershipInfo = $userInfo['data']['membership_info'] ?? null;
-        
-        if (DEBUG_MODE) {
-            error_log('[handleCreateVisitor] Membership info: ' . json_encode($membershipInfo));
-        }
-        
-        // GAS API用のデータを準備（必須フィールドを統一）
-        $gasApiData = [
-            'path' => '/api/visitors', // 先頭スラッシュ追加
+        // 会社別来院者情報の完全なデータ構造を準備（ユーザー提供のヘッダーに対応）
+        $companyVisitorData = [
+            'path' => '/api/visitors',
             'api_key' => GAS_API_KEY,
             'visitor_id' => $visitorId, // Medical Forceから受け取ったID
-            'last_name' => $lastName,
-            'first_name' => $firstName,
-            'last_name_kana' => !empty($lastNameKana) ? $lastNameKana : '', // 必須なので空文字で送信
-            'first_name_kana' => !empty($firstNameKana) ? $firstNameKana : '', // 必須なので空文字で送信
-            'gender' => $gender,
-            'publicity_status' => 'private', // 必須フィールド
-            'notes' => 'Medical Force経由で登録'
+            'company_id' => $companyId, // 会社ID
+            'company_name' => $companyName, // 会社名
+            'full_name' => $fullName, // 氏名（結合済み）
+            'line_id' => $lineUserId, // LINE_ID
+            'member_type' => $memberType === 'main' ? 'メイン会員' : 'サブ会員', // 会員種別
+            'publicity_status' => '非公開', // 公開設定（デフォルトは非公開）
+            'position' => '', // 役職（空文字）
+            'registration_date' => $currentDateTime, // 登録日時
+            'updated_date' => $currentDateTime, // 更新日時
+            'expiry_date' => '', // 有効期限（空文字）
+            'is_used' => 'false', // 使用済み（初期値はfalse）
+            'line_display_name' => $userInfo['data']['user']['name'] ?? '', // LINE表示名
+            'link_date' => $currentDateTime, // 紐付け日時
+            'url' => '', // URL（空文字）
+            'connection_status' => 'active', // 連携ステータス
+            'line_connection_url' => '', // LINE連携用URLリンク（空文字）
+            'status' => 'active', // ステータス
+            'created_date' => $currentDateTime, // 作成日時
+            'link_url' => '', // リンクURL（空文字）
+            'notes' => 'Medical Force経由で登録 - 簡素化フロー'
         ];
-        
-        // デバッグ: GAS APIに送信するデータを確認
-        if (DEBUG_MODE) {
-            error_log('[handleCreateVisitor] GAS API data: ' . json_encode($gasApiData));
-        }
         
         // オプションフィールドの追加
         if (!empty($visitorData['email'])) {
-            $gasApiData['email'] = $visitorData['email'];
+            $companyVisitorData['email'] = $visitorData['email'];
         }
         if (!empty($visitorData['phone'])) {
-            $gasApiData['phone'] = $visitorData['phone'];
+            $companyVisitorData['phone'] = $visitorData['phone'];
         }
         if (!empty($visitorData['birthday'])) {
             if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $visitorData['birthday'])) {
                 throw new Exception('誕生日はYYYY-MM-DD形式で入力してください', 400);
             }
-            $gasApiData['birth_date'] = $visitorData['birthday'];
+            $companyVisitorData['birth_date'] = $visitorData['birthday'];
         }
         
-        // 会社情報がある場合は追加
-        if ($membershipInfo && !empty($membershipInfo['company_id'])) {
-            $gasApiData['company_id'] = $membershipInfo['company_id'];
-            $gasApiData['member_type'] = $membershipInfo['member_type'] ?? 'sub'; // デフォルトはサブ会員
+        // デバッグ: GAS APIに送信する完全なデータを確認
+        if (DEBUG_MODE) {
+            error_log('[handleCreateVisitor] Complete company visitor data for GAS API: ' . json_encode($companyVisitorData));
         }
         
-        // Step 4: GAS APIに登録
-        $result = $gasApi->createVisitorToSheet($gasApiData);
+        // Step 5: 完全な会社別来院者データをGAS APIに送信（ユーザー提案のアーキテクチャ）
+        $result = $gasApi->createVisitorToSheet($companyVisitorData);
         
         // レスポンス形式の統一処理
         $hasError = false;
@@ -516,7 +533,7 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
                 $apiKeyDiagnosis = [
                     'configured_api_key_length' => strlen(GAS_API_KEY),
                     'configured_deployment_id' => GAS_DEPLOYMENT_ID,
-                    'sent_api_key' => $gasApiData['api_key'] ?? 'not_sent'
+                    'sent_api_key' => $companyVisitorData['api_key'] ?? 'not_sent'
                 ];
                 
                 error_log("API Key診断情報: " . json_encode($apiKeyDiagnosis));
@@ -526,7 +543,7 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
             } else if (strpos($errorMessage, '必須パラメータが不足') !== false || 
                        strpos($errorMessage, 'INVALID_REQUEST') !== false) {
                 
-                error_log("必須パラメータエラー - 送信データ: " . json_encode($gasApiData));
+                error_log("必須パラメータエラー - 送信データ: " . json_encode($companyVisitorData));
                 throw new Exception('データ形式エラー: 必須フィールドが不足しています。' . $errorMessage, 400);
                 
             } else if (strpos($errorMessage, 'DUPLICATE_EMAIL') !== false) {
