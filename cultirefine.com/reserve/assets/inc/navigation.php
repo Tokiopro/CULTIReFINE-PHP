@@ -1,67 +1,14 @@
-<?php
-// ハンバーガーメニューのナビゲーション
-$currentPath = $_SERVER['REQUEST_URI'];
-$baseUrl = '/reserve';
-?>
-<nav class="hidden md:flex space-x-6">
-    <a href="<?php echo $baseUrl; ?>" class="text-white hover:text-gray-200 transition-colors">
-        📋 予約フォーム
-    </a>
-    <a href="<?php echo $baseUrl; ?>/document" class="text-white hover:text-gray-200 transition-colors">
-        📄 書類一覧
-    </a>
-    <a href="<?php echo $baseUrl; ?>/ticket" class="text-white hover:text-gray-200 transition-colors">
-        🎫 チケット確認
-    </a>
-    <a href="<?php echo $baseUrl; ?>/logout.php" class="text-white hover:text-gray-200 transition-colors">
-        🚪 ログアウト
-    </a>
-</nav>
-
-<!-- ハンバーガーメニュー（モバイル用） -->
-<div class="md:hidden">
-    <button id="hamburger-btn" class="text-white hover:text-gray-200 focus:outline-none">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
-        </svg>
-    </button>
-</div>
-
-<!-- モバイルメニュー -->
-<div id="mobile-menu" class="hidden md:hidden absolute top-full left-0 right-0 bg-teal-700 shadow-lg">
-    <div class="px-4 py-2 space-y-1">
-        <a href="<?php echo $baseUrl; ?>" class="block px-3 py-2 text-white hover:bg-teal-600 rounded-md transition-colors">
-            📋 予約フォーム
-        </a>
-        <a href="<?php echo $baseUrl; ?>/document" class="block px-3 py-2 text-white hover:bg-teal-600 rounded-md transition-colors">
-            📄 書類一覧
-        </a>
-        <a href="<?php echo $baseUrl; ?>/ticket" class="block px-3 py-2 text-white hover:bg-teal-600 rounded-md transition-colors">
-            🎫 チケット確認
-        </a>
-        <a href="<?php echo $baseUrl; ?>/logout.php" class="block px-3 py-2 text-white hover:bg-teal-600 rounded-md transition-colors">
-            🚪 ログアウト
-        </a>
-    </div>
-</div>
-
-<script>
-// ハンバーガーメニューの制御
-document.addEventListener('DOMContentLoaded', function() {
-    const hamburgerBtn = document.getElementById('hamburger-btn');
-    const mobileMenu = document.getElementById('mobile-menu');
-    
-    if (hamburgerBtn && mobileMenu) {
-        hamburgerBtn.addEventListener('click', function() {
-            mobileMenu.classList.toggle('hidden');
-        });
-        
-        // メニュー外をクリックしたら閉じる
-        document.addEventListener('click', function(event) {
-            if (!hamburgerBtn.contains(event.target) && !mobileMenu.contains(event.target)) {
-                mobileMenu.classList.add('hidden');
-            }
-        });
-    }
-});
-</script>
+<nav>
+    <ul id="header-menu" class="bg-teal-600">
+		<li><span id="user-welcome" class="text-sm ">ようこそ、
+  <?php if ($pictureUrl): ?>
+  <img src="<?php echo htmlspecialchars($pictureUrl); ?>" alt="プロフィール画像" class="profile-image inline-block mr-1" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover;">
+  <?php endif; ?>
+  <span id="user-name"><?php echo htmlspecialchars($displayName); ?></span>様 </span></li>
+      <li><a href="https://cultirefine.com/reserve/" target="_blank" rel="noopener noreferrer" class="text-white hover:underline flex items-center text-sm" id="form-link">予約フォーム</a></li>
+      <li><a href="https://cultirefine.com/reserve/document" target="_blank" rel="noopener noreferrer" class="text-white hover:underline flex items-center text-sm" id="docs-link">書類一覧</a></li>
+      <li><a href="https://cultirefine.com/reserve/ticket" target="_blank" rel="noopener noreferrer" class="text-white hover:underline flex items-center text-sm" id="ticket-link">チケット確認</a></li>
+      <li><a href="https://cultirefine.com/reserve/history" target="_blank" rel="noopener noreferrer" class="text-white hover:underline flex items-center text-sm" id="reserve-history">予約履歴</a></li>
+    </ul>
+    <div id="hamburger" class="hamburger"> <span></span><span></span><span></span> </div>
+  </nav>

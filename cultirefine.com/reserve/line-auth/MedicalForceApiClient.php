@@ -10,16 +10,18 @@ class MedicalForceApiClient
     private string $apiKey;
     private string $clientId;
     private string $clientSecret;
+    private string $clinicId;
     private int $timeout;
     private ?string $accessToken = null;
     private ?int $tokenExpiry = null;
     
-    public function __construct(string $baseUrl, string $apiKey, string $clientId = '', string $clientSecret = '', int $timeout = 30)
+    public function __construct(string $baseUrl, string $apiKey, string $clientId = '', string $clientSecret = '', string $clinicId = '', int $timeout = 30)
     {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->apiKey = $apiKey;
         $this->clientId = $clientId;
         $this->clientSecret = $clientSecret;
+        $this->clinicId = $clinicId ?: getenv('CLINIC_ID') ?: '';
         $this->timeout = $timeout;
     }
     
@@ -39,12 +41,60 @@ class MedicalForceApiClient
             return $this->accessToken;
         }
         
+        // 環境変数のAPIキーがJWTトークンかチェック
+        if (!empty($this->apiKey) && substr($this->apiKey, 0, 2) === 'ey') {
+            // JWTトークンの有効期限をチェック
+            try {
+                $parts = explode('.', $this->apiKey);
+                if (count($parts) === 3) {
+                    $payload = base64_decode($parts[1] . str_repeat('=', 4 - strlen($parts[1]) % 4));
+                    $decoded = json_decode($payload, true);
+                    
+                    if (isset($decoded['exp'])) {
+                        $expiry = $decoded['exp'];
+                        
+                        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                            error_log('[Medical Force OAuth] JWT token expiry check:');
+                            error_log('[Medical Force OAuth] Token expires at: ' . date('Y-m-d H:i:s', $expiry));
+                            error_log('[Medical Force OAuth] Current time: ' . date('Y-m-d H:i:s', time()));
+                            error_log('[Medical Force OAuth] Is expired: ' . ($expiry <= time() ? 'YES' : 'NO'));
+                        }
+                        
+                        // 強制的に新しいトークンを取得するため、常に期限切れと判定
+                        // if ($expiry > time()) {
+                        if (false) { // 一時的に無効化
+                            // トークンがまだ有効
+                            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                                error_log('[Medical Force OAuth] Using valid JWT token from env, expires at: ' . date('Y-m-d H:i:s', $expiry));
+                            }
+                            $this->accessToken = $this->apiKey;
+                            $this->tokenExpiry = $expiry;
+                            return $this->apiKey;
+                        } else {
+                            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                                error_log('[Medical Force OAuth] JWT token from env is expired or forced refresh (expired at: ' . date('Y-m-d H:i:s', $expiry) . ')');
+                            }
+                        }
+                    }
+                }
+            } catch (Exception $e) {
+                error_log('[Medical Force OAuth] Failed to decode JWT token: ' . $e->getMessage());
+            }
+        }
+        
         // OAuth 2.0クライアント認証が設定されている場合
         if (!empty($this->clientId) && !empty($this->clientSecret)) {
             if (defined('DEBUG_MODE') && DEBUG_MODE) {
-                error_log('[Medical Force OAuth] Using OAuth 2.0 authentication');
+                error_log('[Medical Force OAuth] Using OAuth authentication to get new token');
             }
-            return $this->obtainOAuthToken();
+            
+            try {
+                return $this->obtainOAuthToken();
+            } catch (Exception $e) {
+                error_log('[Medical Force OAuth] Failed to obtain OAuth token: ' . $e->getMessage());
+                error_log('[Medical Force OAuth] Error code: ' . $e->getCode());
+                throw new Exception('OAuth認証に失敗しました: ' . $e->getMessage(), $e->getCode());
+            }
         }
         
         // フォールバック: 従来のAPIキー認証
@@ -87,43 +137,40 @@ class MedicalForceApiClient
     }
     
     /**
-     * OAuth 2.0 Client Credentials Grant でトークンを取得
+     * Medical Force API トークンを取得
      * 
      * @return string アクセストークン
      * @throws Exception
      */
     private function obtainOAuthToken(): string
     {
-        $tokenUrl = $this->baseUrl . '/oauth/token';
+        // Medical Force API トークンエンドポイント
+        $tokenUrl = 'https://api.medical-force.com/token';
         
-        // RFC 6749準拠: クライアント認証はBasic認証ヘッダーで送信
+        // Medical Force API形式: JSONボディでクライアント認証情報を送信
         $postData = [
-            'grant_type' => 'client_credentials',
-            'scope' => 'api'  // 必要に応じてスコープを調整
+            'client_id' => $this->clientId,
+            'client_secret' => $this->clientSecret
         ];
-        
-        // Basic認証用のクライアント認証情報
-        $clientCredentials = base64_encode($this->clientId . ':' . $this->clientSecret);
         
         $options = [
             CURLOPT_URL => $tokenUrl,
             CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => http_build_query($postData),
+            CURLOPT_POSTFIELDS => json_encode($postData),
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => $this->timeout,
             CURLOPT_HTTPHEADER => [
-                'Authorization: Basic ' . $clientCredentials,
-                'Content-Type: application/x-www-form-urlencoded',
+                'Content-Type: application/json',
                 'Accept: application/json'
             ],
-            CURLOPT_SSL_VERIFYPEER => false, // 開発環境用（本番では有効にする）
+            CURLOPT_SSL_VERIFYPEER => false,
         ];
         
         // デバッグ情報をログ出力
         if (defined('DEBUG_MODE') && DEBUG_MODE) {
-            error_log('[Medical Force OAuth] Token URL: ' . $tokenUrl);
-            error_log('[Medical Force OAuth] Client ID: ' . $this->clientId);
-            error_log('[Medical Force OAuth] Post Data: ' . json_encode($postData));
+            error_log('[Medical Force Token] Token URL: ' . $tokenUrl);
+            error_log('[Medical Force Token] Client ID: ' . $this->clientId);
+            error_log('[Medical Force Token] Request Body: ' . json_encode($postData));
         }
         
         $curl = curl_init();
@@ -136,41 +183,48 @@ class MedicalForceApiClient
         
         // デバッグ情報をログ出力
         if (defined('DEBUG_MODE') && DEBUG_MODE) {
-            error_log('[Medical Force OAuth] HTTP Code: ' . $httpCode);
-            error_log('[Medical Force OAuth] Response: ' . substr($response, 0, 500));
+            error_log('[Medical Force Token] Response HTTP Code: ' . $httpCode);
+            error_log('[Medical Force Token] Response Body: ' . substr($response, 0, 500));
+            if ($error) {
+                error_log('[Medical Force Token] cURL Error: ' . $error);
+            }
         }
         
         if ($error) {
-            error_log('[Medical Force OAuth] cURL Error: ' . $error);
-            throw new Exception("OAuth Token取得エラー (cURL): {$error}", 500);
+            error_log('[Medical Force Token] cURL Error: ' . $error);
+            throw new Exception("Token取得エラー (cURL): {$error}", 500);
         }
         
         if ($httpCode !== 200) {
-            error_log('[Medical Force OAuth] HTTP Error: ' . $httpCode . ' - ' . $response);
+            error_log('[Medical Force Token] HTTP Error: ' . $httpCode . ' - ' . $response);
             
             // より詳細なエラーメッセージを提供
             $errorDetails = json_decode($response, true);
-            $errorMessage = $errorDetails['message'] ?? $errorDetails['error_description'] ?? $response;
+            $errorMessage = $errorDetails['message'] ?? $errorDetails['error'] ?? $response;
             
-            throw new Exception("OAuth Token取得エラー (HTTP {$httpCode}): {$errorMessage}", $httpCode);
+            throw new Exception("Token取得エラー (HTTP {$httpCode}): {$errorMessage}", $httpCode);
         }
         
         $tokenData = json_decode($response, true);
         
         if (json_last_error() !== JSON_ERROR_NONE) {
-            error_log('[Medical Force OAuth] JSON Parse Error: ' . json_last_error_msg());
-            throw new Exception("OAuth Token取得エラー: JSONパースエラー - " . json_last_error_msg(), 500);
+            error_log('[Medical Force Token] JSON Parse Error: ' . json_last_error_msg());
+            throw new Exception("Token取得エラー: JSONパースエラー - " . json_last_error_msg(), 500);
         }
         
         if (!isset($tokenData['access_token'])) {
-            error_log('[Medical Force OAuth] Missing access_token in response: ' . json_encode($tokenData));
-            throw new Exception("OAuth Token取得エラー: access_tokenが見つかりません", 500);
+            error_log('[Medical Force Token] Missing access_token in response: ' . json_encode($tokenData));
+            throw new Exception("Token取得エラー: access_tokenが見つかりません", 500);
         }
         
         // トークンをキャッシュ
         $this->accessToken = $tokenData['access_token'];
         $expiresIn = $tokenData['expires_in'] ?? 86400; // デフォルト24時間
         $this->tokenExpiry = time() + $expiresIn - 300; // 5分のマージンを設ける
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[Medical Force Token] Token obtained successfully, expires at: ' . date('Y-m-d H:i:s', $this->tokenExpiry));
+        }
         
         return $this->accessToken;
     }
@@ -329,11 +383,39 @@ class MedicalForceApiClient
         // OAuth 2.0 アクセストークンを取得
         $token = $this->getAccessToken();
         
+        // Medical Force API は AWS Cognito ベースのため署名付きリクエストが必要
         $headers = [
             'Content-Type: application/json',
-            'Authorization: Bearer ' . $token,
             'Accept: application/json'
         ];
+        
+        // JWT トークンの場合の詳細ログ出力
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[Medical Force API] Token type detection:');
+            error_log('[Medical Force API] Token starts with ey: ' . (substr($token, 0, 2) === 'ey' ? 'yes' : 'no'));
+            error_log('[Medical Force API] Token length: ' . strlen($token));
+            error_log('[Medical Force API] Token prefix: ' . substr($token, 0, 20) . '...');
+        }
+        
+        // Medical Force API は標準的な Bearer 認証を使用
+        $headers[] = 'Authorization: Bearer ' . $token;
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[Medical Force API] Using standard Bearer authentication');
+            error_log('[Medical Force API] Authorization header: Bearer ' . substr($token, 0, 20) . '...');
+        }
+        
+        // clinic_idヘッダーを追加（Medical Force API仕様）
+        if (!empty($this->clinicId)) {
+            $headers[] = 'clinic_id: ' . $this->clinicId;
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[Medical Force API] Adding clinic_id header: ' . $this->clinicId);
+            }
+        } else {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[Medical Force API] WARNING: clinic_id is empty or not set');
+            }
+        }
         
         $options = [
             CURLOPT_URL => $url,
@@ -341,11 +423,24 @@ class MedicalForceApiClient
             CURLOPT_TIMEOUT => $this->timeout,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_CUSTOMREQUEST => $method,
-            CURLOPT_SSL_VERIFYPEER => false, // 開発環境用（本番では有効にする）
+            CURLOPT_SSL_VERIFYPEER => false,
         ];
         
         if (!empty($data) && in_array($method, ['POST', 'PUT', 'PATCH'])) {
             $options[CURLOPT_POSTFIELDS] = json_encode($data);
+        }
+        
+        // デバッグ: 送信されるリクエストの詳細をログ
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[Medical Force API] ===== Request Details =====');
+            error_log('[Medical Force API] URL: ' . $url);
+            error_log('[Medical Force API] Method: ' . $method);
+            error_log('[Medical Force API] Headers: ' . json_encode($headers));
+            if (!empty($data)) {
+                error_log('[Medical Force API] Request Body: ' . json_encode($data));
+            }
+            error_log('[Medical Force API] Clinic ID: ' . ($this->clinicId ?: 'NOT SET'));
+            error_log('[Medical Force API] =========================');
         }
         
         $curl = curl_init();
@@ -357,21 +452,42 @@ class MedicalForceApiClient
         curl_close($curl);
         
         if ($error) {
+            error_log('[Medical Force API] cURL Error occurred: ' . $error);
             throw new Exception("cURL Error: {$error}", 500);
+        }
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[Medical Force API] ===== Response Details =====');
+            error_log('[Medical Force API] HTTP Code: ' . $httpCode);
+            error_log('[Medical Force API] Response body: ' . $response);
+            error_log('[Medical Force API] ===========================');
         }
         
         $decodedResponse = json_decode($response, true);
         
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new Exception("Invalid JSON response: {$response}", 500);
+            error_log('[Medical Force API] JSON decode error: ' . json_last_error_msg());
+            error_log('[Medical Force API] Raw response: ' . $response);
+            throw new Exception("Invalid JSON response: " . json_last_error_msg(), 500);
         }
         
         // HTTPエラーコードをチェック
         if ($httpCode >= 400) {
-            throw new Exception(
-                $decodedResponse['message'] ?? "HTTP Error {$httpCode}",
-                $httpCode
-            );
+            $errorMessage = $decodedResponse['message'] ?? "HTTP Error {$httpCode}";
+            error_log('[Medical Force API] HTTP Error ' . $httpCode . ': ' . $errorMessage);
+            
+            if ($httpCode === 401) {
+                error_log('[Medical Force API] 401 Unauthorized - OAuth token may be invalid or expired');
+                throw new Exception("認証エラー: " . $errorMessage, 401);
+            } elseif ($httpCode === 403) {
+                error_log('[Medical Force API] 403 Forbidden - Check clinic_id and permissions');
+                throw new Exception("権限エラー: " . $errorMessage, 403);
+            } elseif ($httpCode === 404) {
+                error_log('[Medical Force API] 404 Not Found - Check endpoint: ' . $endpoint);
+                throw new Exception("エンドポイントが見つかりません: " . $errorMessage, 404);
+            } else {
+                throw new Exception($errorMessage, $httpCode);
+            }
         }
         
         return $decodedResponse;
@@ -506,5 +622,222 @@ class MedicalForceApiClient
                 'authentication' => $this->testOAuthAuthentication()
             ];
         }
+    }
+    
+    /**
+     * 空き時間一覧を取得（Medical Force API）
+     * 
+     * @param array $requestBody リクエストボディ
+     * @return array 空き時間情報
+     * @throws Exception
+     */
+    public function getVacancies(array $requestBody): array
+    {
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[Medical Force API] Getting vacancies with body: ' . json_encode($requestBody));
+        }
+        
+        try {
+            $response = $this->makeRequest('POST', '/developer/vacancies', $requestBody);
+            
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[Medical Force API] Vacancies response: ' . json_encode($response));
+            }
+            
+            // レスポンスがそのまま空き時間情報の場合
+            if (is_array($response) && !isset($response['error'])) {
+                return $response;
+            }
+            
+            // エラーレスポンスの場合
+            if (isset($response['message'])) {
+                throw new Exception('Medical Force API Error: ' . $response['message'], 400);
+            }
+            
+            throw new Exception('Unexpected response format from Medical Force API', 500);
+            
+        } catch (Exception $e) {
+            error_log('[Medical Force API] Vacancies error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+    
+    /**
+     * 予約を作成（Medical Force API）
+     * 
+     * @param array $reservationData 予約データ
+     * @return array 予約作成結果
+     * @throws Exception
+     */
+    public function createReservation(array $reservationData): array
+    {
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[Medical Force API] Creating reservation with data: ' . json_encode($reservationData));
+        }
+        
+        try {
+            // 必須フィールドの検証
+            $requiredFields = ['visitor_id', 'start_at', 'menus'];
+            foreach ($requiredFields as $field) {
+                if (!isset($reservationData[$field])) {
+                    throw new Exception("必須フィールド '{$field}' が不足しています", 400);
+                }
+            }
+            
+            // menusが配列で、各要素にmenu_idが含まれているかチェック
+            if (!is_array($reservationData['menus']) || empty($reservationData['menus'])) {
+                throw new Exception('menus は空でない配列である必要があります', 400);
+            }
+            
+            foreach ($reservationData['menus'] as $menu) {
+                if (!isset($menu['menu_id'])) {
+                    throw new Exception('各メニューには menu_id が必要です', 400);
+                }
+            }
+            
+            // デフォルト値を設定
+            $requestData = array_merge([
+                'note' => '天満病院予約システムからの予約',
+                'is_online' => false
+            ], $reservationData);
+            
+            $response = $this->makeRequest('POST', '/developer/reservations', $requestData);
+            
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[Medical Force API] Reservation created successfully: ' . json_encode($response));
+            }
+            
+            // 成功レスポンスの場合
+            if (isset($response['reservation_id'])) {
+                return [
+                    'success' => true,
+                    'reservation_id' => $response['reservation_id'],
+                    'message' => '予約が正常に作成されました'
+                ];
+            }
+            
+            // エラーレスポンスの場合
+            if (isset($response['message'])) {
+                $detailedError = $this->parseApiError($response);
+                throw new Exception($detailedError, 400);
+            }
+            
+            throw new Exception('Unexpected response format from Medical Force API', 500);
+            
+        } catch (Exception $e) {
+            error_log('[Medical Force API] Reservation creation error: ' . $e->getMessage());
+            
+            // エラーレスポンスを統一フォーマットで返す
+            $errorDetails = $this->categorizeError($e->getMessage());
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'category' => $errorDetails['category'],
+                'user_message' => $errorDetails['user_message']
+            ];
+        }
+    }
+    
+    /**
+     * APIエラーレスポンスを解析してより詳細なエラーメッセージを生成
+     */
+    private function parseApiError(array $response): string
+    {
+        $message = $response['message'] ?? 'Unknown API error';
+        $errors = $response['errors'] ?? [];
+        
+        // 具体的なエラー情報があれば追加
+        if (!empty($errors)) {
+            if (is_array($errors)) {
+                $errorDetails = [];
+                foreach ($errors as $field => $fieldErrors) {
+                    if (is_array($fieldErrors)) {
+                        $errorDetails[] = "{$field}: " . implode(', ', $fieldErrors);
+                    } else {
+                        $errorDetails[] = "{$field}: {$fieldErrors}";
+                    }
+                }
+                if (!empty($errorDetails)) {
+                    $message .= ' (' . implode('; ', $errorDetails) . ')';
+                }
+            }
+        }
+        
+        return $message;
+    }
+    
+    
+    /**
+     * エラーメッセージをカテゴリ別に分類
+     */
+    private function categorizeError(string $errorMessage): array
+    {
+        $msg = strtolower($errorMessage);
+        
+        if (strpos($msg, 'time slot not available') !== false || 
+            strpos($msg, 'already booked') !== false ||
+            strpos($msg, '時間が重複') !== false) {
+            return [
+                'category' => 'time_conflict',
+                'user_message' => '選択した時間は既に予約済みです。他の時間をお選びください。'
+            ];
+        }
+        
+        if (strpos($msg, 'visitor not found') !== false ||
+            strpos($msg, 'patient not found') !== false ||
+            strpos($msg, '患者が見つかりません') !== false) {
+            return [
+                'category' => 'patient_not_found',
+                'user_message' => '患者情報が見つかりません。患者登録を確認してください。'
+            ];
+        }
+        
+        if (strpos($msg, 'invalid menu') !== false ||
+            strpos($msg, 'menu not found') !== false ||
+            strpos($msg, 'メニューが無効') !== false) {
+            return [
+                'category' => 'invalid_menu',
+                'user_message' => '選択されたメニューが無効です。メニューを再選択してください。'
+            ];
+        }
+        
+        if (strpos($msg, 'insufficient tickets') !== false ||
+            strpos($msg, 'チケット不足') !== false) {
+            return [
+                'category' => 'insufficient_tickets',
+                'user_message' => 'チケットが不足しています。チケットをご購入ください。'
+            ];
+        }
+        
+        if (strpos($msg, 'business hours') !== false ||
+            strpos($msg, '営業時間外') !== false) {
+            return [
+                'category' => 'outside_business_hours',
+                'user_message' => '営業時間外の予約です。営業時間内の時間をお選びください。'
+            ];
+        }
+        
+        if (strpos($msg, 'past date') !== false ||
+            strpos($msg, '過去の日付') !== false) {
+            return [
+                'category' => 'past_date',
+                'user_message' => '過去の日付には予約できません。未来の日付をお選びください。'
+            ];
+        }
+        
+        if (strpos($msg, 'interval') !== false ||
+            strpos($msg, '間隔') !== false) {
+            return [
+                'category' => 'treatment_interval',
+                'user_message' => '施術間隔の規則に違反しています。前回の施術から十分な期間をおいてください。'
+            ];
+        }
+        
+        // その他のエラー
+        return [
+            'category' => 'other',
+            'user_message' => $errorMessage
+        ];
     }
 }

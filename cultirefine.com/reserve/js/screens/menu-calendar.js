@@ -10,11 +10,27 @@ import { formatDateKey } from '../data/treatment-data.js';
 import { loadPatientMenus } from '../components/patient-menu-loader.js';
 
 export function initMenuCalendarScreen() {
+    console.log('initMenuCalendarScreen called');
+    
     var backBtn = document.getElementById('back-to-patients-btn');
     var nextBtn = document.getElementById('next-menu-calendar-btn');
     var pairRoomSwitch = document.getElementById('pair-room-switch');
 
-    if (!backBtn || !nextBtn || !pairRoomSwitch) return;
+    // 必須要素のチェック（pairRoomSwitchは除外）
+    if (!backBtn || !nextBtn) {
+        console.warn('Required menu calendar screen elements not found:', {
+            backBtn: !!backBtn,
+            nextBtn: !!nextBtn,
+            pairRoomSwitch: !!pairRoomSwitch
+        });
+        return;
+    }
+    
+    console.log('Menu calendar screen initialization continuing with:', {
+        backBtn: true,
+        nextBtn: true,
+        pairRoomSwitch: !!pairRoomSwitch
+    });
 
     backBtn.addEventListener('click', function() {
         if (appState.currentPatientIndexForBooking > 0) {
@@ -71,26 +87,51 @@ export function initMenuCalendarScreen() {
         }
     });
 
-    pairRoomSwitch.addEventListener('change', function(e) {
-        var currentPatient = appState.selectedPatientsForBooking[appState.currentPatientIndexForBooking];
-        appState.pairRoomDesired[currentPatient.id] = e.target.checked;
-        // Re-check time slots when pair room preference changes
-        var date = appState.selectedDates[currentPatient.id];
-        if (date) {
-            checkAndUpdateTimeSlots(currentPatient.id, date);
-        }
-    });
+    // pairRoomSwitchは存在する場合のみイベントリスナーを登録
+    if (pairRoomSwitch) {
+        pairRoomSwitch.addEventListener('change', function(e) {
+            var currentPatient = appState.selectedPatientsForBooking[appState.currentPatientIndexForBooking];
+            appState.pairRoomDesired[currentPatient.id] = e.target.checked;
+            // Re-check time slots when pair room preference changes
+            var date = appState.selectedDates[currentPatient.id];
+            if (date) {
+                checkAndUpdateTimeSlots(currentPatient.id, date);
+            }
+        });
+    } else {
+        console.log('pairRoomSwitch not found, skipping pair room functionality');
+    }
 
+    console.log('Calling updateMenuCalendarScreen from initMenuCalendarScreen');
     updateMenuCalendarScreen();
 }
 
 export async function updateMenuCalendarScreen() {
+    console.log('updateMenuCalendarScreen called');
+    console.log('Selected patients:', appState.selectedPatientsForBooking);
+    console.log('Current patient index:', appState.currentPatientIndexForBooking);
+    
     var currentPatient = appState.selectedPatientsForBooking[appState.currentPatientIndexForBooking];
+    
+    if (!currentPatient) {
+        console.error('No current patient found at index:', appState.currentPatientIndexForBooking);
+        return;
+    }
+    
+    console.log('Current patient:', currentPatient);
+    
     var description = document.getElementById('menu-calendar-description');
     var backButtonText = document.getElementById('back-button-text');
     var nextButtonText = document.getElementById('next-button-text');
 
-    if (!description || !backButtonText || !nextButtonText) return;
+    if (!description || !backButtonText || !nextButtonText) {
+        console.error('Required UI elements not found:', {
+            description: !!description,
+            backButtonText: !!backButtonText,
+            nextButtonText: !!nextButtonText
+        });
+        return;
+    }
 
     description.innerHTML = 
         '<span>👤</span> ' + currentPatient.name + '様 ' +
@@ -105,19 +146,32 @@ export async function updateMenuCalendarScreen() {
         : "予約内容の確認へ";
 
     // 患者別メニューを取得して表示
-    await displayPatientMenus(currentPatient.id);
+    // current-userの場合は実際のvisitor_idを使用
+    const actualPatientId = currentPatient.id === 'current-user' 
+        ? (window.APP_CONFIG?.currentUserVisitorId || currentPatient.id)
+        : currentPatient.id;
+    
+    console.log('Menu-calendar: Getting menus for patient:', currentPatient.name, 'ID:', actualPatientId);
+    await displayPatientMenus(actualPatientId);
     
     // Initialize calendar - always create a fresh instance for each patient
     calendars['calendar'] = new Calendar('calendar', function(date) {
         selectDate(currentPatient.id, date);
     }, {
-        showAvailability: true
+        showAvailability: true,
+        onMonthChange: function(newDate) {
+            // 月が変更された時に空き情報を再取得
+            var selectedMenus = appState.selectedTreatments[currentPatient.id] || [];
+            if (selectedMenus.length > 0) {
+                loadCalendarAvailability(currentPatient.id, selectedMenus);
+            }
+        }
     });
     
     // 選択されたメニューがある場合は空き情報を取得
     var selectedMenus = appState.selectedTreatments[currentPatient.id] || [];
     if (selectedMenus.length > 0) {
-        await loadCalendarAvailability(currentPatient.id, selectedMenus[0].id);
+        await loadCalendarAvailability(currentPatient.id, selectedMenus);
     }
     
     // Restore selections
@@ -187,28 +241,45 @@ export function selectTreatmentProgrammatically(patientId, treatment) {
 }
 
 export function selectDate(patientId, date) {
-    console.log('selectDate called for patient:', patientId, 'date:', date);
+    console.log('[SelectDate] Called for patient:', patientId, 'date:', date);
     appState.selectedDates[patientId] = date;
     appState.selectedTimes[patientId] = null; // Reset time selection
     
+    // 日付が選択されたことを明示的に表示
+    const dateString = date ? date.toISOString().split('T')[0] : 'no date';
+    console.log('[SelectDate] Date saved as:', dateString, 'for patient:', patientId);
+    
     checkAndUpdateTimeSlots(patientId, date).then(function() {
+        console.log('[SelectDate] Time slots updated, updating button state');
         updateNextButtonState();
+    }).catch(function(error) {
+        console.error('[SelectDate] Error updating time slots:', error);
     });
 }
 
 export function checkAndUpdateTimeSlots(patientId, date) {
+    console.log('[CheckTimeSlots] Called for patient:', patientId, 'date:', date);
+    
     // 複数メニュー対応
     var selectedMenus = appState.selectedTreatments[patientId] || [];
     var pairRoom = appState.pairRoomDesired[patientId] || false;
     
+    console.log('[CheckTimeSlots] Selected menus:', selectedMenus.length, 'pairRoom:', pairRoom);
+    
     if (selectedMenus.length === 0 || !date) {
+        console.log('[CheckTimeSlots] Missing menus or date, returning early');
         return Promise.resolve();
     }
 
     var dateKey = formatDateKey(date);
+    console.log('[CheckTimeSlots] Date key:', dateKey);
+    
     // 最初のメニューで空き確認（5分間隔）
     const firstMenu = selectedMenus[0];
+    console.log('[CheckTimeSlots] Checking availability for menu:', firstMenu.name || firstMenu.id);
+    
     return mockCheckSlotAvailability(firstMenu.id, dateKey, pairRoom, 5).then(function(slotsResult) {
+        console.log('[CheckTimeSlots] Slots result:', slotsResult);
         // Show availability message
         if (slotsResult.message) {
             var alertType = slotsResult.availableTimes.length > 0 ? 'info' : 'warning';
@@ -221,8 +292,12 @@ export function checkAndUpdateTimeSlots(patientId, date) {
 
         // Update time slots
         var timeSlotsContainer = document.getElementById('time-slots');
-        if (!timeSlotsContainer) return;
+        if (!timeSlotsContainer) {
+            console.error('[CheckTimeSlots] time-slots container not found!');
+            return;
+        }
         
+        console.log('[CheckTimeSlots] Updating time slots container, available times:', slotsResult.availableTimes.length);
         timeSlotsContainer.innerHTML = '';
         
         if (slotsResult.availableTimes.length > 0) {
@@ -270,9 +345,13 @@ export function checkAndUpdateTimeSlots(patientId, date) {
                 }
             }
             timeSlotsContainer.classList.remove('hidden');
+            console.log('[CheckTimeSlots] Time slots container shown with', slotsResult.availableTimes.length, 'time slots');
         } else {
             timeSlotsContainer.classList.add('hidden');
+            console.log('[CheckTimeSlots] No available times, hiding time slots container');
         }
+    }).catch(function(error) {
+        console.error('[CheckTimeSlots] Error in slot availability check:', error);
     });
 }
 
@@ -294,11 +373,18 @@ async function displayPatientMenus(patientId) {
     const container = document.getElementById('treatment-categories');
     if (!container) return;
     
+    // current-userの場合は実際のvisitor_idを使用
+    const actualPatientId = patientId === 'current-user' 
+        ? (window.APP_CONFIG?.currentUserVisitorId || patientId)
+        : patientId;
+    
+    console.log('displayPatientMenus: patientId =', patientId, ', actualPatientId =', actualPatientId);
+    
     // ローディング表示
     container.innerHTML = '<div class="text-center py-4">メニューを読み込んでいます...</div>';
     
     // メニュー選択時のコールバック
-    const onMenuSelect = (menu, patientId) => {
+    const onMenuSelect = (menu, patientId, isChecked) => {
         // 選択されたメニューを配列に追加
         if (!appState.selectedTreatments[patientId]) {
             appState.selectedTreatments[patientId] = [];
@@ -307,15 +393,17 @@ async function displayPatientMenus(patientId) {
             appState.selectedMenuIds[patientId] = [];
         }
         
-        const menuIndex = appState.selectedTreatments[patientId].findIndex(t => t.id === menu.id);
-        if (menuIndex > -1) {
-            // 既に選択されている場合は削除
-            appState.selectedTreatments[patientId].splice(menuIndex, 1);
-            appState.selectedMenuIds[patientId] = appState.selectedMenuIds[patientId].filter(id => id !== menu.id);
+        if (isChecked) {
+            // チェックされた場合は追加
+            const exists = appState.selectedTreatments[patientId].some(t => t.id === menu.id);
+            if (!exists) {
+                appState.selectedTreatments[patientId].push(menu);
+                appState.selectedMenuIds[patientId].push(menu.id);
+            }
         } else {
-            // 新規選択
-            appState.selectedTreatments[patientId].push(menu);
-            appState.selectedMenuIds[patientId].push(menu.id);
+            // チェック解除された場合は削除
+            appState.selectedTreatments[patientId] = appState.selectedTreatments[patientId].filter(t => t.id !== menu.id);
+            appState.selectedMenuIds[patientId] = appState.selectedMenuIds[patientId].filter(id => id !== menu.id);
         }
         
         updateSelectedMenusDisplay(patientId);
@@ -323,15 +411,15 @@ async function displayPatientMenus(patientId) {
         
         // メニューが選択されたらカレンダーの空き情報を更新
         if (appState.selectedTreatments[patientId].length > 0) {
-            loadCalendarAvailability(patientId, appState.selectedTreatments[patientId][0].id);
+            loadCalendarAvailability(patientId, appState.selectedTreatments[patientId]);
         }
     };
     
     // 会社IDを取得
     const companyId = appState.membershipInfo?.companyId || window.APP_CONFIG?.companyInfo?.companyId || null;
     
-    // 患者別メニューをロード
-    await loadPatientMenus('treatment-categories', patientId, companyId, onMenuSelect);
+    // 患者別メニューをロード（実際のpatientIdを使用）
+    await loadPatientMenus('treatment-categories', actualPatientId, companyId, onMenuSelect);
     
     // 選択済みメニューをハイライト
     highlightSelectedMenus(patientId);
@@ -342,16 +430,40 @@ async function displayPatientMenus(patientId) {
  */
 function updateSelectedMenusDisplay(patientId) {
     const selectedMenus = appState.selectedTreatments[patientId] || [];
-    const totalDuration = selectedMenus.reduce((sum, menu) => sum + menu.duration, 0);
+    const totalDuration = selectedMenus.reduce((sum, menu) => sum + (menu.duration_minutes || menu.duration || 0), 0);
     const totalPrice = selectedMenus.reduce((sum, menu) => sum + (menu.price || 0), 0);
     
-    // 既存のエラー表示を更新
+    // 選択メニュー表示エリアを更新
+    const selectedMenusDisplay = document.getElementById('selected-menus-display');
+    if (selectedMenusDisplay) {
+        if (selectedMenus.length > 0) {
+            selectedMenusDisplay.classList.remove('hidden');
+            const menuList = selectedMenus.map(menu => 
+                `<span class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-teal-100 text-teal-800">
+                    ${menu.name || menu.menu_name}
+                    <button onclick="removeSelectedMenu('${patientId}', '${menu.id}')" class="ml-2 text-teal-600 hover:text-teal-800">
+                        ×
+                    </button>
+                </span>`
+            ).join(' ');
+            
+            selectedMenusDisplay.innerHTML = `
+                <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                    <h4 class="text-sm font-semibold text-blue-800 mb-2">選択中のメニュー</h4>
+                    <div class="flex flex-wrap gap-2 mb-2">${menuList}</div>
+                    <p class="text-sm text-blue-700">
+                        合計: ${selectedMenus.length}件 / ${totalDuration}分 / ￥${totalPrice.toLocaleString()}
+                    </p>
+                </div>
+            `;
+        } else {
+            selectedMenusDisplay.classList.add('hidden');
+        }
+    }
+    
+    // エラー表示エリアを非表示に（エラー用に確保）
     const intervalError = document.getElementById('interval-error');
-    if (selectedMenus.length > 0) {
-        intervalError.classList.remove('hidden');
-        document.getElementById('interval-error-text').innerHTML = 
-            `選択中: ${selectedMenus.length}件 / 合計${totalDuration}分 / ￥${totalPrice.toLocaleString()}`;
-    } else {
+    if (intervalError) {
         intervalError.classList.add('hidden');
     }
     
@@ -445,59 +557,139 @@ export function updateNextButtonState() {
     console.log('Times:', selectedTimes);
     
     nextBtn.disabled = !hasAllRequired;
+    
+    // ボタンのテキストを更新
+    if (hasAllRequired) {
+        nextBtn.innerHTML = '予約内容を確認する <span class="ml-2">➡️</span>';
+    } else {
+        nextBtn.innerHTML = '予約内容の確認へ <span class="ml-2">➡️</span>';
+    }
 }
 
 // カレンダーの空き情報を読み込む
-async function loadCalendarAvailability(patientId, menuId) {
+async function loadCalendarAvailability(patientId, selectedMenus) {
     const calendar = calendars['calendar'];
     if (!calendar) return;
+    
+    // ローディング表示
+    const calendarLoadingMsg = document.getElementById('calendar-loading-message');
+    if (calendarLoadingMsg) {
+        calendarLoadingMsg.classList.remove('hidden');
+        calendarLoadingMsg.innerHTML = `
+            <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                <p class="text-sm text-blue-700 flex items-center">
+                    <svg class="animate-spin h-4 w-4 mr-2 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    空き情報を取得しています...
+                </p>
+            </div>
+        `;
+    }
     
     // ローディング状態を設定
     calendar.setLoading(true);
     
     try {
-        // 現在の月の初日から30日分の空き情報を取得
+        // カレンダーの現在表示されている月の初日から30日分の空き情報を取得
         const currentDate = calendar.currentDate;
         const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
         const dateKey = calendar.formatDateKey(startDate);
         
-        // ペア予約の設定を取得
-        const pairRoom = appState.pairRoomDesired[patientId] || false;
+        // 複数メニューの場合、メニューIDの配列と合計時間を準備
+        const menuIds = selectedMenus.map(menu => menu.id || menu.menu_id);
+        const totalDuration = selectedMenus.reduce((sum, menu) => sum + (menu.duration_minutes || menu.duration || 0), 0);
         
-        // API呼び出し
-        const result = await getAvailableSlots(patientId, menuId, dateKey, 30, {
-            pairBooking: pairRoom,
-            allowMultipleSameDay: false
+        // API呼び出し（複数メニュー対応）
+        const result = await getAvailableSlots(patientId, menuIds, dateKey, 30, {
+            pairBooking: false,
+            allowMultipleSameDay: false,
+            totalDuration: totalDuration
         });
         
         if (result.success && result.data) {
             const data = result.data;
             
-            // 施術間隔制限の警告表示
-            if (data.treatment_interval_rules && data.treatment_interval_rules.has_restrictions) {
-                const rules = data.treatment_interval_rules;
-                if (rules.last_treatment_date && rules.next_available_date) {
-                    showAlert('interval-warning', 'info', '施術間隔制限', 
-                        `前回施術日: ${rules.last_treatment_date}、次回予約可能日: ${rules.next_available_date}`);
-                }
-            }
-            
             // カレンダーに空き情報を設定
             if (data.available_slots) {
                 calendar.setAvailableSlots(data.available_slots);
+                // ローディング表示を成功メッセージに変更
+                if (calendarLoadingMsg) {
+                    calendarLoadingMsg.innerHTML = `
+                        <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded">
+                            <p class="text-sm text-green-700">
+                                空き情報を取得しました
+                            </p>
+                        </div>
+                    `;
+                    // 3秒後に非表示
+                    setTimeout(() => {
+                        calendarLoadingMsg.classList.add('hidden');
+                    }, 3000);
+                }
             }
         } else {
             console.error('Failed to load availability:', result);
-            showAlert('availability-error', 'error', 'エラー', 
-                result.message || '空き情報の取得に失敗しました');
+            if (calendarLoadingMsg) {
+                calendarLoadingMsg.innerHTML = `
+                    <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+                        <p class="text-sm text-red-700">
+                            ${result.message || '空き情報の取得に失敗しました'}
+                        </p>
+                    </div>
+                `;
+            }
         }
         
     } catch (error) {
         console.error('Error loading availability:', error);
-        showAlert('availability-error', 'error', 'エラー', 
-            '空き情報の取得中にエラーが発生しました');
+        if (calendarLoadingMsg) {
+            calendarLoadingMsg.innerHTML = `
+                <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+                    <p class="text-sm text-red-700">
+                        空き情報の取得中にエラーが発生しました
+                    </p>
+                </div>
+            `;
+        }
     } finally {
         // ローディング状態を解除
         calendar.setLoading(false);
     }
 }
+
+// 選択されたメニューを削除
+window.removeSelectedMenu = function(patientId, menuId) {
+    if (!appState.selectedTreatments[patientId]) return;
+    
+    // メニューを削除
+    appState.selectedTreatments[patientId] = appState.selectedTreatments[patientId].filter(t => t.id !== menuId);
+    appState.selectedMenuIds[patientId] = appState.selectedMenuIds[patientId].filter(id => id !== menuId);
+    
+    // チェックボックスのチェックを外す
+    const checkbox = document.querySelector(`input[type="checkbox"][value="${menuId}"]`);
+    if (checkbox) {
+        checkbox.checked = false;
+    }
+    
+    // 表示を更新
+    updateSelectedMenusDisplay(patientId);
+    updateNextButtonState();
+    
+    // メニューがなくなったらカレンダーをリセット、残っていれば再読み込み
+    if (appState.selectedTreatments[patientId].length === 0) {
+        const calendar = calendars['calendar'];
+        if (calendar) {
+            calendar.setAvailableSlots({});
+        }
+        // カレンダーローディングメッセージを非表示
+        const calendarLoadingMsg = document.getElementById('calendar-loading-message');
+        if (calendarLoadingMsg) {
+            calendarLoadingMsg.classList.add('hidden');
+        }
+    } else {
+        // まだメニューが残っている場合は、空き情報を再読み込み
+        loadCalendarAvailability(patientId, appState.selectedTreatments[patientId]);
+    }
+};

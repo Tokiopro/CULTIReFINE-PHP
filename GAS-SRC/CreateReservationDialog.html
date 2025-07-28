@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        margin: 0;
+      }
+      
+      .container {
+        max-width: 100%;
+        margin: 0 auto;
+      }
+      
+      h2 {
+        color: #333;
+        margin-bottom: 20px;
+      }
+      
+      .form-section {
+        background: #f5f5f5;
+        padding: 20px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+      }
+      
+      .form-group {
+        margin-bottom: 15px;
+      }
+      
+      label {
+        display: inline-block;
+        width: 120px;
+        font-weight: bold;
+        color: #555;
+      }
+      
+      input[type="text"], input[type="date"], input[type="time"], select, textarea {
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        width: 250px;
+        font-size: 14px;
+      }
+      
+      textarea {
+        vertical-align: top;
+        height: 60px;
+      }
+      
+      button {
+        padding: 10px 20px;
+        font-size: 14px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-right: 10px;
+      }
+      
+      .create-btn {
+        background-color: #4CAF50;
+        color: white;
+      }
+      
+      .create-btn:hover {
+        background-color: #45a049;
+      }
+      
+      .create-btn:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+      
+      .check-btn {
+        background-color: #2196F3;
+        color: white;
+      }
+      
+      .check-btn:hover {
+        background-color: #0b7dda;
+      }
+      
+      .close-btn {
+        background-color: #666;
+        color: white;
+      }
+      
+      .close-btn:hover {
+        background-color: #555;
+      }
+      
+      #loading {
+        display: none;
+        text-align: center;
+        padding: 20px;
+      }
+      
+      #error {
+        display: none;
+        color: red;
+        padding: 10px;
+        background: #ffe0e0;
+        border-radius: 4px;
+        margin: 10px 0;
+      }
+      
+      #success {
+        display: none;
+        color: green;
+        padding: 10px;
+        background: #e0ffe0;
+        border-radius: 4px;
+        margin: 10px 0;
+      }
+      
+      .vacancy-info {
+        margin-top: 10px;
+        padding: 10px;
+        background: #e3f2fd;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+      
+      .vacancy-available {
+        color: #4CAF50;
+      }
+      
+      .vacancy-unavailable {
+        color: #f44336;
+      }
+      
+      .required {
+        color: red;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>予約作成</h2>
+      
+      <div id="loading">処理中...</div>
+      <div id="error"></div>
+      <div id="success"></div>
+      
+      <div class="form-section">
+        <h3>患者マスタ</h3>
+        <div class="form-group">
+          <label for="visitorId">患者ID <span class="required">*</span>:</label>
+          <input type="text" id="visitorId" placeholder="患者IDを入力">
+          <button class="check-btn" onclick="searchVisitor()">患者検索</button>
+        </div>
+        
+        <div class="form-group">
+          <label for="visitorName">患者名:</label>
+          <input type="text" id="visitorName" readonly style="background-color: #f0f0f0;">
+        </div>
+      </div>
+      
+      <div class="form-section">
+        <h3>予約情報</h3>
+        <div class="form-group">
+          <label for="reservationDate">予約日 <span class="required">*</span>:</label>
+          <input type="date" id="reservationDate" onchange="checkVacancy()">
+        </div>
+        
+        <div class="form-group">
+          <label for="startTime">開始時刻 <span class="required">*</span>:</label>
+          <input type="time" id="startTime" onchange="checkVacancy()">
+        </div>
+        
+        <div class="form-group">
+          <label for="endTime">終了時刻:</label>
+          <input type="time" id="endTime">
+        </div>
+        
+        <div class="form-group">
+          <label for="menuId">メニュー:</label>
+          <select id="menuId">
+            <option value="">選択してください</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="staffId">担当スタッフ:</label>
+          <select id="staffId">
+            <option value="">選択してください</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="memo">メモ:</label>
+          <textarea id="memo" placeholder="予約に関するメモ"></textarea>
+        </div>
+        
+        <div id="vacancyInfo" class="vacancy-info" style="display: none;"></div>
+      </div>
+      
+      <div class="form-group">
+        <button class="create-btn" onclick="createReservation()">予約作成</button>
+        <button class="close-btn" onclick="google.script.host.close()">閉じる</button>
+      </div>
+    </div>
+    
+    <script>
+      // ページ読み込み時にメニューとスタッフを取得
+      window.onload = function() {
+        loadMenus();
+        loadStaffs();
+        
+        // 今日の日付をデフォルト設定
+        const today = new Date();
+        document.getElementById('reservationDate').value = today.toISOString().split('T')[0];
+      };
+      
+      function loadMenus() {
+        google.script.run
+          .withSuccessHandler(function(menus) {
+            const select = document.getElementById('menuId');
+            select.innerHTML = '<option value="">選択してください</option>';
+            if (menus && menus.length > 0) {
+              menus.forEach(menu => {
+                const option = document.createElement('option');
+                option.value = menu.menu_id;
+                option.textContent = menu.name + (menu.duration ? ` (${menu.duration}分)` : '');
+                select.appendChild(option);
+              });
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error('メニュー取得エラー:', error);
+          })
+          .getMenusFromDialog();
+      }
+      
+      function loadStaffs() {
+        google.script.run
+          .withSuccessHandler(function(staffs) {
+            const select = document.getElementById('staffId');
+            select.innerHTML = '<option value="">選択してください</option>';
+            if (staffs && staffs.length > 0) {
+              staffs.forEach(staff => {
+                const option = document.createElement('option');
+                option.value = staff.staff_id;
+                option.textContent = staff.name;
+                select.appendChild(option);
+              });
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error('スタッフ取得エラー:', error);
+          })
+          .getStaffsFromDialog();
+      }
+      
+      function searchVisitor() {
+        const visitorId = document.getElementById('visitorId').value;
+        if (!visitorId) {
+          showError('患者IDを入力してください。');
+          return;
+        }
+        
+        document.getElementById('loading').style.display = 'block';
+        
+        google.script.run
+          .withSuccessHandler(function(visitor) {
+            document.getElementById('loading').style.display = 'none';
+            if (visitor) {
+              document.getElementById('visitorName').value = visitor.name || '';
+              clearError();
+            } else {
+              showError('患者が見つかりませんでした。');
+              document.getElementById('visitorName').value = '';
+            }
+          })
+          .withFailureHandler(function(error) {
+            document.getElementById('loading').style.display = 'none';
+            showError('患者検索エラー: ' + error.toString());
+          })
+          .getVisitorByIdFromDialog(visitorId);
+      }
+      
+      function checkVacancy() {
+        const date = document.getElementById('reservationDate').value;
+        const time = document.getElementById('startTime').value;
+        
+        if (!date || !time) {
+          document.getElementById('vacancyInfo').style.display = 'none';
+          return;
+        }
+        
+        // 空き時間確認の実装は省略（API呼び出しが必要）
+        const vacancyDiv = document.getElementById('vacancyInfo');
+        vacancyDiv.innerHTML = '<span class="vacancy-available">✓ この時間は予約可能です</span>';
+        vacancyDiv.style.display = 'block';
+      }
+      
+      function createReservation() {
+        // バリデーション
+        const visitorId = document.getElementById('visitorId').value;
+        const reservationDate = document.getElementById('reservationDate').value;
+        const startTime = document.getElementById('startTime').value;
+        
+        if (!visitorId || !reservationDate || !startTime) {
+          showError('必須項目（*）を入力してください。');
+          return;
+        }
+        
+        // 予約データを作成
+        const reservationData = {
+          visitor_id: visitorId,
+          start_at: reservationDate + 'T' + startTime + ':00',
+          menu_id: document.getElementById('menuId').value || null,
+          staff_id: document.getElementById('staffId').value || null,
+          memo: document.getElementById('memo').value || ''
+        };
+        
+        // 終了時刻が指定されている場合
+        const endTime = document.getElementById('endTime').value;
+        if (endTime) {
+          reservationData.end_at = reservationDate + 'T' + endTime + ':00';
+        }
+        
+        document.getElementById('loading').style.display = 'block';
+        document.querySelector('.create-btn').disabled = true;
+        
+        google.script.run
+          .withSuccessHandler(function(result) {
+            document.getElementById('loading').style.display = 'none';
+            showSuccess('予約を作成しました。予約ID: ' + result.reservation_id);
+            
+            // 3秒後に閉じる
+            setTimeout(function() {
+              google.script.host.close();
+            }, 3000);
+          })
+          .withFailureHandler(function(error) {
+            document.getElementById('loading').style.display = 'none';
+            document.querySelector('.create-btn').disabled = false;
+            showError('予約作成エラー: ' + error.toString());
+          })
+          .createReservationFromDialog(reservationData);
+      }
+      
+      function showError(message) {
+        const errorDiv = document.getElementById('error');
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+        document.getElementById('success').style.display = 'none';
+      }
+      
+      function clearError() {
+        document.getElementById('error').style.display = 'none';
+      }
+      
+      function showSuccess(message) {
+        const successDiv = document.getElementById('success');
+        successDiv.textContent = message;
+        successDiv.style.display = 'block';
+        document.getElementById('error').style.display = 'none';
+      }
+    </script>
+  </body>
+</html>

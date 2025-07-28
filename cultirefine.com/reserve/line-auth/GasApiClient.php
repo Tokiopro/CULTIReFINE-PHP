@@ -6,12 +6,12 @@
  */
 class GasApiClient
 {
-    private string $baseUrl;
-    private string $apiKey;
-    private int $cacheLifetime;
-    private string $cacheDir;
+    private $baseUrl;
+    private $apiKey;
+    private $cacheLifetime;
+    private $cacheDir;
     
-    public function __construct(string $deploymentId, string $apiKey, int $cacheLifetime = 300)
+    public function __construct($deploymentId, $apiKey, $cacheLifetime = 300)
     {
         $this->baseUrl = "https://script.google.com/macros/s/{$deploymentId}/exec";
         $this->apiKey = $apiKey;
@@ -20,7 +20,7 @@ class GasApiClient
         $this->ensureCacheDirectory();
     }
     
-    private function ensureCacheDirectory(): void
+    private function ensureCacheDirectory()
     {
         if (!is_dir($this->cacheDir)) {
             mkdir($this->cacheDir, 0755, true);
@@ -30,7 +30,7 @@ class GasApiClient
     /**
      * LINE IDから全ユーザー情報を一括取得
      */
-    public function getUserFullInfo(string $lineUserId): array
+    public function getUserFullInfo($lineUserId)
     {
         $cacheKey = "user_full_{$lineUserId}";
         
@@ -40,12 +40,23 @@ class GasApiClient
             error_log("[GAS API] Cache key: {$cacheKey}");
         }
         
+        // 開発モードではキャッシュを無効化（新形式テスト用）
+        $useCache = !defined('DEBUG_MODE') || !DEBUG_MODE;
+        
+        // 開発モードでは古いキャッシュを強制クリア
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            $this->clearCache("user_full_*");
+            error_log("[GAS API] Development mode: cleared all user_full caches");
+        }
+        
         // キャッシュチェック
-        if ($cachedData = $this->getFromCache($cacheKey)) {
+        if ($useCache && ($cachedData = $this->getFromCache($cacheKey))) {
             if (defined('DEBUG_MODE') && DEBUG_MODE) {
                 error_log("[GAS API] Returning cached data for: {$lineUserId}");
             }
             return $cachedData;
+        } else if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Cache disabled or no cached data found, making fresh request");
         }
         
         $path = "/api/users/line/" . urlencode($lineUserId) . "/full";
@@ -70,20 +81,25 @@ class GasApiClient
             }
         }
         
-        if ($result['status'] === 'success') {
-            // 成功時のみキャッシュ
-            $this->saveToCache($cacheKey, $result);
-            if (defined('DEBUG_MODE') && DEBUG_MODE) {
-                error_log("[GAS API] Data cached successfully for: {$lineUserId}");
+        // レスポンス形式を標準化
+        $normalizedResult = $this->normalizeGasApiResponse($result);
+        
+        // 正規化後のstatusをチェック
+        if (isset($normalizedResult['status']) && $normalizedResult['status'] === 'success') {
+            // 成功時かつキャッシュ使用時のみキャッシュ（正規化後のデータを保存）
+            if ($useCache) {
+                $this->saveToCache($cacheKey, $normalizedResult);
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    error_log("[GAS API] Data cached successfully for: {$lineUserId}");
+                }
+            } else if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Cache disabled, not saving to cache");
             }
         } else {
             if (defined('DEBUG_MODE') && DEBUG_MODE) {
-                error_log("[GAS API] Request failed, not caching. Status: " . ($result['status'] ?? 'unknown'));
+                error_log("[GAS API] Request failed, not caching. Status: " . ($normalizedResult['status'] ?? 'unknown'));
             }
         }
-        
-        // レスポンス形式を標準化
-        $normalizedResult = $this->normalizeGasApiResponse($result);
         
         return $normalizedResult;
     }
@@ -108,71 +124,33 @@ class GasApiClient
             return $response;
         }
         
-        // 実際のGAS APIレスポンス形式を標準形式に変換
-        if (isset($response['visitor']) || isset($response['company'])) {
-            $normalizedResponse = [
+        // 成功レスポンスだがdataがない場合（GAS APIの標準レスポンス形式）
+        if (isset($response['status']) && $response['status'] === 'success' && !isset($response['data'])) {
+            // レスポンス全体をdataとして扱う
+            $data = $response;
+            unset($data['status']);
+            return [
                 'status' => 'success',
-                'data' => []
+                'data' => $data
             ];
-            
-            // visitor情報を user と patient_info に分割
-            if (isset($response['visitor'])) {
-                $visitor = $response['visitor'];
-                $normalizedResponse['data']['user'] = [
-                    'id' => $visitor['visitor_id'] ?? '',
-                    'name' => $visitor['visitor_name'] ?? '',
-                ];
-                
-                $normalizedResponse['data']['patient_info'] = [
-                    'id' => $visitor['visitor_id'] ?? '',
-                    'is_new' => true // 来院者情報があれば登録済み
-                ];
-            }
-            
-            // company情報を membership_info に変換
-            if (isset($response['company'])) {
-                $company = $response['company'];
-                $normalizedResponse['data']['membership_info'] = [
-                    'is_member' => true,
-                    'company_id' => $company['company_id'] ?? '',
-                    'company_name' => $company['name'] ?? '',
-                    'member_type' => isset($response['visitor']['member_type']) && $response['visitor']['member_type'] === true ? '本会員' : 'サブ会員'
-                ];
-            }
-            
-            // その他の情報も追加
-            if (isset($response['ticketInfo'])) {
-                $normalizedResponse['data']['membership_info']['ticket_balance'] = $response['ticketInfo'];
-            }
-            
-            if (isset($response['ReservationHistory'])) {
-                $normalizedResponse['data']['upcoming_reservations'] = $response['ReservationHistory'];
-            }
-            
-            if (isset($response['docsinfo'])) {
-                $normalizedResponse['data']['documents'] = $response['docsinfo'];
-            }
-            
-            // 施術履歴と利用可能施術は空配列で初期化（必要に応じて後で追加）
-            $normalizedResponse['data']['treatment_history'] = [];
-            $normalizedResponse['data']['available_treatments'] = [];
-            
-            // 統計情報も空で初期化
-            $normalizedResponse['data']['statistics'] = [
-                'total_visits' => 0,
-                'total_treatments' => [],
-                'last_30_days_visits' => 0,
-                'favorite_treatment' => ''
-            ];
-            
+        }
+        
+        // 新形式のGAS APIレスポンス（フラット構造: visitor_id, visitor_name, ticketInfo, docsinfo, ReservationHistory）
+        if (isset($response['visitor_id']) || isset($response['visitor_name']) || 
+            isset($response['ticketInfo']) || isset($response['docsinfo']) || 
+            isset($response['ReservationHistory'])) {
             if (defined('DEBUG_MODE') && DEBUG_MODE) {
-                error_log("[GAS API] Normalized response structure: " . implode(', ', array_keys($normalizedResponse['data'])));
-                if (isset($normalizedResponse['data']['membership_info'])) {
-                    error_log("[GAS API] Membership info: " . json_encode($normalizedResponse['data']['membership_info']));
-                }
+                error_log("[GAS API] Detected new flat format response");
+                error_log("[GAS API] Response has visitor_id: " . (isset($response['visitor_id']) ? 'yes' : 'no'));
+                error_log("[GAS API] Response has docsinfo: " . (isset($response['docsinfo']) ? 'yes' : 'no'));
+                error_log("[GAS API] Response has ReservationHistory: " . (isset($response['ReservationHistory']) ? 'yes' : 'no'));
             }
             
-            return $normalizedResponse;
+            // 新形式はそのまま返す（変換しない）
+            return [
+                'status' => 'success',
+                'data' => $response
+            ];
         }
         
         // その他の場合はエラーとして扱う
@@ -242,7 +220,6 @@ class GasApiClient
     /**
      * 書類一覧取得（フォルダ階層対応）
      */
-	/*
     public function getDocuments(string $visitorId): array
     {
         $cacheKey = "documents_{$visitorId}";
@@ -265,7 +242,6 @@ class GasApiClient
         
         return $result;
     }
-    */
     /**
      * 会社に紐づく来院者一覧取得（新しいGAS API対応）
      */
@@ -407,10 +383,16 @@ class GasApiClient
         // 認証が必要なエンドポイントの場合、URLパラメータでAPIキーを送信
         if ($path !== '/api/health') {
             $url .= "&Authorization=" . urlencode("Bearer " . $this->apiKey);
+            
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Authorization added to URL - API Key length: " . strlen($this->apiKey));
+                error_log("[GAS API] Bearer token: " . substr("Bearer " . $this->apiKey, 0, 20) . "...");
+            }
         }
         
         if (defined('DEBUG_MODE') && DEBUG_MODE) {
             error_log("[GAS API] Final URL: {$url}");
+            error_log("[GAS API] API Key being used: " . ($this->apiKey ? substr($this->apiKey, 0, 10) . '...' : 'EMPTY'));
         }
         
         $headers = [
@@ -501,7 +483,16 @@ class GasApiClient
         
         // デバッグ用：生レスポンスをログに記録
         if (DEBUG_MODE) {
-            error_log("GAS API Raw Response (HTTP {$httpCode}): " . substr($response, 0, 500));
+            error_log("GAS API Raw Response (HTTP {$httpCode}): " . substr($response, 0, 1000));
+            error_log("GAS API Full Response Length: " . strlen($response));
+            
+            // APIキーエラーの特定チェック
+            if (strpos($response, 'APIキーが無効') !== false || 
+                strpos($response, 'Invalid API key') !== false ||
+                strpos($response, 'Unauthorized') !== false) {
+                error_log("*** GAS API KEY ERROR DETECTED IN RESPONSE ***");
+                error_log("Response contains API key error: " . $response);
+            }
         }
         
         // JSONデコード
@@ -511,6 +502,8 @@ class GasApiClient
             if (DEBUG_MODE) {
                 error_log("JSON Decode Error: {$jsonError}");
                 error_log("Response content: {$response}");
+                error_log("Response type: " . gettype($response));
+                error_log("Response encoding: " . mb_detect_encoding($response));
             }
             
             return [
@@ -522,6 +515,17 @@ class GasApiClient
                     'url' => $url
                 ]
             ];
+        }
+        
+        // デバッグ用: デコード後のレスポンス構造を確認
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("GAS API Decoded Response keys: " . implode(', ', array_keys($decodedResponse ?? [])));
+            if (isset($decodedResponse['error'])) {
+                error_log("GAS API Response Error: " . json_encode($decodedResponse['error']));
+            }
+            if (isset($decodedResponse['message'])) {
+                error_log("GAS API Response Message: " . $decodedResponse['message']);
+            }
         }
         
         return $decodedResponse;
@@ -601,18 +605,42 @@ class GasApiClient
      */
     public function createVisitorToSheet(array $visitorData): array
     {
-        // 必須パラメータの検証
-        $required = ['path', 'api_key', 'visitor_id', 'last_name', 'first_name', 
-                    'last_name_kana', 'first_name_kana', 'publicity_status'];
+        // デバッグ: 受信データを記録
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[GAS API] createVisitorToSheet called with data: ' . json_encode($visitorData));
+            error_log('[GAS API] API Key configured: ' . ($this->apiKey ? 'yes (' . strlen($this->apiKey) . ' chars)' : 'no'));
+            error_log('[GAS API] Base URL: ' . $this->baseUrl);
+        }
         
-        foreach ($required as $field) {
+        // システムパラメータの検証
+        if (empty($visitorData['path']) || empty($visitorData['api_key'])) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[GAS API] System parameter missing - path: ' . ($visitorData['path'] ?? 'empty') . ', api_key: ' . (empty($visitorData['api_key']) ? 'empty' : 'present'));
+            }
+            return [
+                'status' => 'error',
+                'error' => [
+                    'code' => 'SYSTEM_ERROR',
+                    'message' => 'システムパラメータが不足しています',
+                    'details' => 'pathとapi_keyは必須です'
+                ]
+            ];
+        }
+        
+        // ユーザーデータの必須パラメータ検証（最小限）
+        $requiredUserData = ['visitor_id', 'last_name', 'first_name'];
+        
+        foreach ($requiredUserData as $field) {
             if (empty($visitorData[$field])) {
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    error_log('[GAS API] Required user data missing: ' . $field);
+                }
                 return [
                     'status' => 'error',
                     'error' => [
                         'code' => 'INVALID_REQUEST',
                         'message' => "必須パラメータ '{$field}' が不足しています",
-                        'details' => '必須フィールド: ' . implode(', ', $required)
+                        'details' => '必須フィールド: ' . implode(', ', $requiredUserData)
                     ]
                 ];
             }
@@ -622,19 +650,51 @@ class GasApiClient
         $path = $visitorData['path'];
         unset($visitorData['path']); // pathはURLパラメータなので除外
         
+        // デバッグ: APIキーの比較
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            $requestApiKey = $visitorData['api_key'] ?? '';
+            $configuredApiKey = $this->apiKey;
+            error_log('[GAS API] Request API Key: ' . substr($requestApiKey, 0, 10) . '... (length: ' . strlen($requestApiKey) . ')');
+            error_log('[GAS API] Configured API Key: ' . substr($configuredApiKey, 0, 10) . '... (length: ' . strlen($configuredApiKey) . ')');
+            error_log('[GAS API] API Keys match: ' . ($requestApiKey === $configuredApiKey ? 'yes' : 'no'));
+        }
+        
         try {
             // POSTリクエストで送信
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[GAS API] Making POST request to path: ' . $path);
+                error_log('[GAS API] Request data keys: ' . implode(', ', array_keys($visitorData)));
+            }
+            
             $result = $this->makeRequest('POST', $path, $visitorData);
+            
+            // デバッグ: レスポンス詳細
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[GAS API] createVisitorToSheet response status: ' . ($result['status'] ?? 'no_status'));
+                error_log('[GAS API] Response keys: ' . implode(', ', array_keys($result)));
+                if (isset($result['error'])) {
+                    error_log('[GAS API] Error details: ' . json_encode($result['error']));
+                }
+            }
             
             if ($result['status'] === 'success') {
                 // 成功時はキャッシュをクリア（関連するキャッシュを削除）
                 $this->clearCache("visitors_*");
                 $this->clearCache("user_full_info_*");
+                
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    error_log('[GAS API] createVisitorToSheet completed successfully');
+                }
             }
             
             return $result;
             
         } catch (Exception $e) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[GAS API] createVisitorToSheet exception: ' . $e->getMessage());
+                error_log('[GAS API] Exception trace: ' . $e->getTraceAsString());
+            }
+            
             return [
                 'status' => 'error',
                 'error' => [
@@ -687,8 +747,15 @@ class GasApiClient
     {
         $cacheKey = "patient_menus_{$visitorId}" . ($companyId ? "_{$companyId}" : "");
         
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] getPatientMenus called - visitorId: {$visitorId}, companyId: " . ($companyId ?? 'null'));
+        }
+        
         // キャッシュチェック（10分）
         if ($cachedData = $this->getFromCache($cacheKey, 600)) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Returning cached patient menus for: {$visitorId}");
+            }
             return $cachedData;
         }
         
@@ -700,9 +767,24 @@ class GasApiClient
             $data['company_id'] = $companyId;
         }
         
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Making request to path: {$path} with params: " . json_encode($data));
+        }
+        
         $result = $this->makeRequest('GET', $path, $data);
         
-        if ($result['status'] === 'success') {
+        // デバッグ: レスポンス内容を確認
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Patient menus response status: " . ($result['status'] ?? 'no_status'));
+            if (isset($result['data'])) {
+                error_log("[GAS API] Response data keys: " . implode(', ', array_keys($result['data'])));
+                if (isset($result['data']['categories'])) {
+                    error_log("[GAS API] Categories count: " . count($result['data']['categories']));
+                }
+            }
+        }
+        
+        if (isset($result['status']) && $result['status'] === 'success') {
             $this->saveToCache($cacheKey, $result, 600);
         }
         
@@ -769,7 +851,6 @@ class GasApiClient
     /**
      * 予約履歴一覧を取得
      */
-	/*
     public function getReservationHistory(string $memberType, string $date, string $companyId): array
     {
         $cacheKey = "reservation_history_{$companyId}_{$memberType}_{$date}";
@@ -796,12 +877,17 @@ class GasApiClient
         
         return $result;
     }
-    */
     /**
      * API接続テスト
      */
     public function testConnection(): array
     {
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[GAS API] testConnection called');
+            error_log('[GAS API] Base URL: ' . $this->baseUrl);
+            error_log('[GAS API] API Key: ' . ($this->apiKey ? 'present (' . strlen($this->apiKey) . ' chars)' : 'MISSING'));
+        }
+        
         $testData = [
             'timestamp' => time(),
             'test' => true
@@ -809,6 +895,84 @@ class GasApiClient
         
         // ヘルスチェックエンドポイント
         $path = "/api/health";
-        return $this->makeRequest('GET', $path);
+        $result = $this->makeRequest('GET', $path);
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[GAS API] testConnection result: ' . json_encode($result));
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * GAS API設定の詳細検証
+     */
+    public function validateConfiguration(): array
+    {
+        $validation = [
+            'timestamp' => date('Y-m-d H:i:s'),
+            'config_check' => [
+                'base_url' => [
+                    'value' => $this->baseUrl,
+                    'valid' => !empty($this->baseUrl) && filter_var($this->baseUrl, FILTER_VALIDATE_URL),
+                ],
+                'api_key' => [
+                    'present' => !empty($this->apiKey),
+                    'length' => strlen($this->apiKey),
+                    'format' => strlen($this->apiKey) > 5 ? 'adequate' : 'too_short'
+                ],
+                'deployment_id' => [
+                    'extracted' => $this->extractDeploymentId(),
+                    'valid_format' => $this->isValidDeploymentIdFormat()
+                ]
+            ]
+        ];
+        
+        // 基本接続テスト
+        try {
+            $connectionTest = $this->testConnection();
+            $validation['connection_test'] = [
+                'success' => isset($connectionTest['status']) && $connectionTest['status'] === 'success',
+                'response' => $connectionTest
+            ];
+        } catch (Exception $e) {
+            $validation['connection_test'] = [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+        
+        // 全体的な設定状況
+        $validation['overall_status'] = 
+            $validation['config_check']['base_url']['valid'] &&
+            $validation['config_check']['api_key']['present'] &&
+            $validation['config_check']['deployment_id']['valid_format'] &&
+            ($validation['connection_test']['success'] ?? false);
+        
+        return $validation;
+    }
+    
+    /**
+     * デプロイメントIDを抽出
+     */
+    private function extractDeploymentId(): string
+    {
+        if (preg_match('/\/macros\/s\/([^\/]+)\/exec/', $this->baseUrl, $matches)) {
+            return $matches[1];
+        }
+        return '';
+    }
+    
+    /**
+     * デプロイメントIDの形式が正しいかチェック
+     */
+    private function isValidDeploymentIdFormat(): bool
+    {
+        $deploymentId = $this->extractDeploymentId();
+        // GAS deployment IDは通常64-95文字の英数字とアンダースコア、ハイフン
+        return !empty($deploymentId) && 
+               strlen($deploymentId) >= 50 && 
+               strlen($deploymentId) <= 100 &&
+               preg_match('/^[A-Za-z0-9_-]+$/', $deploymentId);
     }
 }

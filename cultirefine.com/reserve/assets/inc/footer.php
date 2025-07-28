@@ -1,10 +1,5 @@
-<footer class="bg-gray-800 text-white p-4 mt-8">
-    <div class="container mx-auto text-center">
-        <p class="text-sm">
-            &copy; <?php echo date('Y'); ?> CLUTIREFINEクリニック 予約システム
-        </p>
-        <p class="text-xs text-gray-400 mt-1">
-            Powered by LINE Login & Google Apps Script
-        </p>
-    </div>
+<footer class="bg-slate-800 text-slate-400 text-center p-4 text-sm">
+  <p>&copy; <span id="current-year"></span> CLUTIREFINEクリニック. All rights reserved.</p>
 </footer>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+<script src="https://cultirefine.com/reserve/js/hamburger.js"></script>

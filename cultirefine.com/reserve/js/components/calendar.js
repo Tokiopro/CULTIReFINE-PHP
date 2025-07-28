@@ -4,6 +4,7 @@
 export function Calendar(containerId, onDateSelect, options = {}) {
     this.container = document.getElementById(containerId);
     this.onDateSelect = onDateSelect;
+    this.onMonthChange = options.onMonthChange || null; // 月変更時のコールバック
     this.currentDate = new Date();
     this.selectedDate = null;
     this.containerId = containerId;
@@ -79,17 +80,17 @@ Calendar.prototype.render = function() {
         html += '>';
         html += '<span>' + day + '</span>';
         
-        // 空き情報のインジケーター
-        if (availability && !isPast) {
-            var indicatorClass = 'absolute bottom-0 w-2 h-2 rounded-full ';
-            if (availability.totalSlots === 0) {
-                indicatorClass += 'bg-red-500'; // 満席
-            } else if (availability.totalSlots <= 3) {
-                indicatorClass += 'bg-yellow-500'; // わずか
+        // 空き情報のインジケーター（赤×/緑○マーク）
+        if (availability && availability.hasData && !isPast) {
+            var indicatorHtml = '';
+            if (availability.hasAvailableSlots) {
+                // 空きあり: 緑の○マーク
+                indicatorHtml = '<span class="absolute top-0 right-0 w-4 h-4 text-green-600 font-bold text-xs leading-none">○</span>';
             } else {
-                indicatorClass += 'bg-green-500'; // 空きあり
+                // 空きなし: 赤の×マーク
+                indicatorHtml = '<span class="absolute top-0 right-0 w-4 h-4 text-red-600 font-bold text-xs leading-none">×</span>';
             }
-            html += '<span class="' + indicatorClass + '"></span>';
+            html += indicatorHtml;
         }
         
         html += '</button>';
@@ -110,11 +111,19 @@ Calendar.prototype.selectDate = function(year, month, day) {
 Calendar.prototype.previousMonth = function() {
     this.currentDate.setMonth(this.currentDate.getMonth() - 1);
     this.render();
+    // 月変更時のコールバックを呼び出し
+    if (this.onMonthChange) {
+        this.onMonthChange(this.currentDate);
+    }
 };
 
 Calendar.prototype.nextMonth = function() {
     this.currentDate.setMonth(this.currentDate.getMonth() + 1);
     this.render();
+    // 月変更時のコールバックを呼び出し
+    if (this.onMonthChange) {
+        this.onMonthChange(this.currentDate);
+    }
 };
 
 Calendar.prototype.setSelectedDate = function(date) {
@@ -135,21 +144,45 @@ Calendar.prototype.formatDateKey = function(date) {
 
 // 空き情報を設定
 Calendar.prototype.setAvailableSlots = function(availableSlots) {
+    console.log('[Calendar] setAvailableSlots called with:', availableSlots);
+    
     this.availableSlots = {};
     
-    if (availableSlots && Array.isArray(availableSlots)) {
-        availableSlots.forEach(daySlots => {
-            var totalAvailable = 0;
-            if (daySlots.slots && Array.isArray(daySlots.slots)) {
-                totalAvailable = daySlots.slots.filter(slot => slot.is_available).length;
+    if (availableSlots && typeof availableSlots === 'object') {
+        // Medical Force API形式: { "2025-07-29": { "16:15": "ng", "16:20": "ok", ... } }
+        for (var dateKey in availableSlots) {
+            var daySlots = availableSlots[dateKey];
+            console.log('[Calendar] Processing date:', dateKey, 'slots:', daySlots);
+            
+            if (Array.isArray(daySlots) && daySlots.length === 0) {
+                // 空の配列の場合はデータなし
+                this.availableSlots[dateKey] = {
+                    hasData: false,
+                    hasAvailableSlots: false,
+                    totalSlots: 0,
+                    rawData: daySlots
+                };
+                console.log('[Calendar] Empty array for', dateKey);
+            } else if (typeof daySlots === 'object' && daySlots !== null && !Array.isArray(daySlots)) {
+                // タイムスロットのオブジェクト形式
+                var timeSlots = Object.values(daySlots);
+                var availableCount = timeSlots.filter(status => status === 'ok').length;
+                var hasAvailableSlots = availableCount > 0;
+                
+                this.availableSlots[dateKey] = {
+                    hasData: timeSlots.length > 0,
+                    hasAvailableSlots: hasAvailableSlots,
+                    totalSlots: availableCount,
+                    allSlots: timeSlots.length,
+                    rawData: daySlots
+                };
+                
+                console.log('[Calendar] Processed', dateKey, '- Available:', availableCount, '/', timeSlots.length, 'hasAvailable:', hasAvailableSlots);
             }
-            this.availableSlots[daySlots.date] = {
-                totalSlots: totalAvailable,
-                slots: daySlots.slots || []
-            };
-        });
+        }
     }
     
+    console.log('[Calendar] Final availableSlots:', this.availableSlots);
     this.render();
 };
 

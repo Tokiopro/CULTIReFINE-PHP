@@ -36,22 +36,28 @@ export function initBulkBookingScreen() {
             return;
         }
 
-        // Update bookings with shared date/time
-        appState.bookings = appState.selectedPatientsForBooking.map(function(patient) {
-            return {
-                patientId: patient.id,
-                patientName: patient.name,
-                treatment: appState.selectedTreatments[patient.id],
-                selectedDate: appState.selectedDates['bulk'],
-                selectedTime: appState.selectedTimes['bulk'],
-                pairRoomDesired: false,
-                status: "pending"
-            };
-        });
+        // 複数予約データを準備
+        const reservationData = {
+            type: 'multiple',
+            selectedDate: appState.selectedDates['bulk'],
+            selectedTime: appState.selectedTimes['bulk'],
+            patients: appState.selectedPatientsForBooking.map(function(patient) {
+                const selectedMenus = appState.selectedTreatments[patient.id];
+                return {
+                    id: patient.id,
+                    name: patient.name,
+                    selectedMenus: Array.isArray(selectedMenus) ? selectedMenus : [selectedMenus]
+                };
+            })
+        };
 
-        // Save data and go to confirmation page
-        appState.saveToStorage();
-        window.location.href = 'confirmation.html';
+        // 確認モーダルを表示
+        import('../components/reservation-confirm.js').then(function(module) {
+            module.showReservationConfirmModal(reservationData, async function(data) {
+                const mainModule = await import('../main.js');
+                await mainModule.createMultipleReservations(data);
+            });
+        });
     });
 
     updateBulkBookingScreen();
@@ -112,8 +118,13 @@ function updateBulkBookingScreen() {
         container.appendChild(patientDiv);
         
         // Create treatment accordion for this patient
-        console.log('Creating treatment accordion for patient', patient.id, 'in container', treatmentsId);
-        createTreatmentAccordion(treatmentsId, patient.id);
+        // current-userの場合は実際のvisitor_idを使用
+        const actualPatientId = patient.id === 'current-user' 
+            ? (window.APP_CONFIG?.currentUserVisitorId || patient.id)
+            : patient.id;
+        
+        console.log('Creating treatment accordion for patient', patient.id, 'actualId:', actualPatientId, 'in container', treatmentsId);
+        createTreatmentAccordion(treatmentsId, actualPatientId);
     }
 
     // Initialize bulk calendar

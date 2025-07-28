@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      max-width: 100%;
+    }
+    
+    .container {
+      max-width: 100%;
+    }
+    
+    h2 {
+      color: #333;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #555;
+    }
+    
+    input[type="text"],
+    input[type="url"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+    
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+    
+    .button-group {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+      justify-content: flex-start;
+    }
+    
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.3s;
+    }
+    
+    .btn-primary {
+      background-color: #4CAF50;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background-color: #45a049;
+    }
+    
+    .btn-secondary {
+      background-color: #757575;
+      color: white;
+    }
+    
+    .btn-secondary:hover {
+      background-color: #616161;
+    }
+    
+    .btn-danger {
+      background-color: #f44336;
+      color: white;
+    }
+    
+    .btn-danger:hover {
+      background-color: #da190b;
+    }
+    
+    .document-list {
+      margin-top: 30px;
+    }
+    
+    .document-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    
+    .document-table th,
+    .document-table td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    
+    .document-table th {
+      background-color: #f2f2f2;
+      font-weight: bold;
+    }
+    
+    .document-table tr:hover {
+      background-color: #f5f5f5;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #666;
+    }
+    
+    .error {
+      color: #f44336;
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #ffebee;
+      border-radius: 4px;
+    }
+    
+    .success {
+      color: #4CAF50;
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #e8f5e9;
+      border-radius: 4px;
+    }
+    
+    .form-section {
+      background-color: #f9f9f9;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    
+    .action-buttons {
+      display: flex;
+      gap: 5px;
+    }
+    
+    .btn-small {
+      padding: 5px 10px;
+      font-size: 12px;
+    }
+    
+    .filter-section {
+      display: flex;
+      gap: 15px;
+      align-items: end;
+      margin-bottom: 15px;
+    }
+    
+    .filter-section .form-group {
+      margin-bottom: 0;
+      flex: 1;
+    }
+    
+    /* タブスタイル */
+    .tab-navigation {
+      display: flex;
+      gap: 0;
+      margin: 20px 0;
+      border-bottom: 2px solid #ddd;
+    }
+    
+    .tab-button {
+      padding: 10px 20px;
+      border: none;
+      background-color: #f5f5f5;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+      border-radius: 4px 4px 0 0;
+    }
+    
+    .tab-button:hover {
+      background-color: #e0e0e0;
+    }
+    
+    .tab-button.active {
+      background-color: #4CAF50;
+      color: white;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    .folder-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    
+    .folder-table th,
+    .folder-table td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    
+    .folder-table th {
+      background-color: #f2f2f2;
+      font-weight: bold;
+    }
+    
+    .folder-table tr:hover {
+      background-color: #f5f5f5;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>書類管理</h2>
+    
+    <div id="message"></div>
+    
+    <!-- タブナビゲーション -->
+    <div class="tab-navigation">
+      <button class="tab-button active" onclick="switchTab('documents')">書類管理</button>
+      <button class="tab-button" onclick="switchTab('folders')">フォルダ管理</button>
+    </div>
+    
+    <!-- 書類管理タブ -->
+    <div id="documentsTab" class="tab-content active">
+      <!-- 書類登録フォーム -->
+      <div class="form-section">
+      <h3 id="formTitle">新規書類登録</h3>
+      <form id="documentForm">
+        <input type="hidden" id="documentId" value="">
+        
+        <div class="form-group">
+          <label for="title">書類タイトル <span style="color: red;">*</span></label>
+          <input type="text" id="title" name="title" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="url">書類URL <span style="color: red;">*</span></label>
+          <input type="url" id="url" name="url" required placeholder="https://example.com/document">
+        </div>
+        
+        <div class="form-group">
+          <label for="visitorSearch">対象患者 <span style="color: red;">*</span></label>
+          <input type="text" id="visitorSearch" name="visitorSearch" list="visitorList" 
+                 placeholder="患者名を入力して検索（氏名またはフリガナ）" 
+                 autocomplete="off" required>
+          <datalist id="visitorList"></datalist>
+          <input type="hidden" id="visitorId" name="visitorId" required>
+          <div id="visitorError" style="color: red; font-size: 12px; margin-top: 5px; display: none;"></div>
+        </div>
+        
+        <div class="form-group">
+          <label for="treatmentName">対象施術名</label>
+          <input type="text" id="treatmentName" name="treatmentName" placeholder="例: ボトックス注射">
+        </div>
+        
+        <div class="form-group">
+          <label for="notes">備考</label>
+          <textarea id="notes" name="notes"></textarea>
+        </div>
+        
+        <div class="button-group">
+          <button type="submit" class="btn-primary">登録</button>
+          <button type="button" class="btn-secondary" onclick="resetForm()">クリア</button>
+          <button type="button" class="btn-secondary" id="cancelEditBtn" style="display: none;" onclick="cancelEdit()">キャンセル</button>
+        </div>
+      </form>
+    </div>
+    
+    <!-- 書類一覧 -->
+    <div class="document-list">
+      <h3>書類一覧</h3>
+      
+      <!-- フィルター -->
+      <div class="filter-section">
+        <div class="form-group">
+          <label for="filterVisitorSearch">患者でフィルター</label>
+          <div style="position: relative;">
+            <input type="text" id="filterVisitorSearch" list="filterVisitorList" 
+                   placeholder="患者名で検索（空欄で全て表示）" 
+                   autocomplete="off">
+            <datalist id="filterVisitorList"></datalist>
+            <input type="hidden" id="filterVisitor">
+            <button type="button" class="btn-secondary btn-small" 
+                    onclick="clearFilterVisitor()" 
+                    style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); padding: 3px 8px;"
+                    title="クリア">×</button>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="filterTreatment">施術名でフィルター</label>
+          <input type="text" id="filterTreatment" placeholder="施術名を入力" onkeyup="loadDocuments()">
+        </div>
+        
+        <button type="button" class="btn-secondary" onclick="loadDocuments()">検索</button>
+      </div>
+      
+      <div id="documentListContainer">
+        <div class="loading">読み込み中...</div>
+      </div>
+    </div>
+    </div>
+    
+    <!-- フォルダ管理タブ -->
+    <div id="foldersTab" class="tab-content">
+      <!-- フォルダ登録フォーム -->
+      <div class="form-section">
+        <h3 id="folderFormTitle">新規フォルダ登録</h3>
+        <form id="folderForm">
+          <input type="hidden" id="folderId" value="">
+          
+          <div class="form-group">
+            <label for="folderName">フォルダ名 <span style="color: red;">*</span></label>
+            <input type="text" id="folderName" name="folderName" required>
+          </div>
+          
+          <div class="form-group">
+            <label for="folderDescription">説明</label>
+            <textarea id="folderDescription" name="folderDescription"></textarea>
+          </div>
+          
+          <div class="form-group">
+            <label for="displayOrder">表示順</label>
+            <input type="number" id="displayOrder" name="displayOrder" min="1" value="999">
+          </div>
+          
+          <div class="button-group">
+            <button type="submit" class="btn-primary">登録</button>
+            <button type="button" class="btn-secondary" onclick="resetFolderForm()">クリア</button>
+            <button type="button" class="btn-secondary" id="cancelFolderEditBtn" style="display: none;" onclick="cancelFolderEdit()">キャンセル</button>
+          </div>
+        </form>
+      </div>
+      
+      <!-- フォルダ一覧 -->
+      <div class="document-list">
+        <h3>フォルダ一覧</h3>
+        <div id="folderListContainer">
+          <div class="loading">読み込み中...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // 初期化
+    window.onload = function() {
+      loadVisitors();
+      loadDocuments();
+      loadFolders();
+    };
+    
+    // タブ切り替え
+    function switchTab(tabName) {
+      // すべてのタブコンテンツを非表示
+      const tabContents = document.querySelectorAll('.tab-content');
+      tabContents.forEach(tab => tab.classList.remove('active'));
+      
+      // すべてのタブボタンを非アクティブ
+      const tabButtons = document.querySelectorAll('.tab-button');
+      tabButtons.forEach(button => button.classList.remove('active'));
+      
+      // 選択されたタブを表示
+      document.getElementById(tabName + 'Tab').classList.add('active');
+      
+      // 選択されたボタンをアクティブ
+      event.target.classList.add('active');
+      
+      // タブに応じてデータを再読み込み
+      if (tabName === 'documents') {
+        loadDocuments();
+      } else if (tabName === 'folders') {
+        loadFolders();
+      }
+    }
+    
+    // グローバル変数として患者リストを保持
+    let visitorsList = [];
+    
+    // 患者リストを読み込む
+    function loadVisitors() {
+      google.script.run
+        .withSuccessHandler(function(visitors) {
+          visitorsList = visitors;
+          const datalist = document.getElementById('visitorList');
+          const filterDatalist = document.getElementById('filterVisitorList');
+          
+          // データリストをクリア
+          datalist.innerHTML = '';
+          filterDatalist.innerHTML = '';
+          
+          // 患者を追加
+          visitors.forEach(function(visitor) {
+            const displayName = visitor.name + (visitor.name_kana ? ' (' + visitor.name_kana + ')' : '');
+            
+            // 登録フォーム用
+            const option = document.createElement('option');
+            option.value = displayName;
+            option.setAttribute('data-visitor-id', visitor.visitor_id);
+            datalist.appendChild(option);
+            
+            // フィルター用
+            const filterOption = document.createElement('option');
+            filterOption.value = displayName;
+            filterOption.setAttribute('data-visitor-id', visitor.visitor_id);
+            filterDatalist.appendChild(filterOption);
+          });
+          
+          // 患者検索入力フィールドのイベントリスナーを設定
+          setupVisitorSearchEvents();
+          setupFilterVisitorSearchEvents();
+        })
+        .withFailureHandler(function(error) {
+          showMessage('患者リストの読み込みに失敗しました: ' + error, 'error');
+        })
+        .getVisitorsForDocumentDialog();
+    }
+    
+    // 患者検索のイベントを設定
+    function setupVisitorSearchEvents() {
+      const visitorSearch = document.getElementById('visitorSearch');
+      const visitorId = document.getElementById('visitorId');
+      const visitorError = document.getElementById('visitorError');
+      
+      // 入力時の処理
+      visitorSearch.addEventListener('input', function() {
+        const searchValue = this.value.toLowerCase();
+        let matchedVisitor = null;
+        
+        // 完全一致する患者を検索
+        for (const visitor of visitorsList) {
+          const displayName = visitor.name + (visitor.name_kana ? ' (' + visitor.name_kana + ')' : '');
+          if (displayName === this.value) {
+            matchedVisitor = visitor;
+            break;
+          }
+        }
+        
+        if (matchedVisitor) {
+          visitorId.value = matchedVisitor.visitor_id;
+          visitorError.style.display = 'none';
+          this.setCustomValidity('');
+        } else {
+          visitorId.value = '';
+          if (this.value) {
+            // 部分一致で候補を探す
+            const candidates = visitorsList.filter(visitor => {
+              const name = visitor.name.toLowerCase();
+              const kana = (visitor.name_kana || '').toLowerCase();
+              return name.includes(searchValue) || kana.includes(searchValue);
+            });
+            
+            if (candidates.length === 0) {
+              visitorError.textContent = '該当する患者が見つかりません';
+              visitorError.style.display = 'block';
+              this.setCustomValidity('リストから患者を選択してください');
+            } else {
+              visitorError.style.display = 'none';
+              this.setCustomValidity('リストから患者を選択してください');
+            }
+          } else {
+            visitorError.style.display = 'none';
+            this.setCustomValidity('患者を選択してください');
+          }
+        }
+      });
+      
+      // フォーカスアウト時の処理
+      visitorSearch.addEventListener('blur', function() {
+        if (!visitorId.value && this.value) {
+          visitorError.textContent = 'リストから患者を選択してください';
+          visitorError.style.display = 'block';
+        }
+      });
+    }
+    
+    // 書類一覧を読み込む
+    function loadDocuments() {
+      const filterVisitor = document.getElementById('filterVisitor').value;
+      const filterTreatment = document.getElementById('filterTreatment').value;
+      
+      const filters = {};
+      if (filterVisitor) filters.visitorId = filterVisitor;
+      if (filterTreatment) filters.treatmentName = filterTreatment;
+      
+      google.script.run
+        .withSuccessHandler(function(documents) {
+          displayDocuments(documents);
+        })
+        .withFailureHandler(function(error) {
+          showMessage('書類一覧の読み込みに失敗しました: ' + error, 'error');
+        })
+        .getDocumentsFromDialog(filters);
+    }
+    
+    // フィルター用患者検索のイベントを設定
+    function setupFilterVisitorSearchEvents() {
+      const filterVisitorSearch = document.getElementById('filterVisitorSearch');
+      const filterVisitor = document.getElementById('filterVisitor');
+      
+      // 入力時の処理
+      filterVisitorSearch.addEventListener('input', function() {
+        const searchValue = this.value.toLowerCase();
+        let matchedVisitor = null;
+        
+        // 完全一致する患者を検索
+        for (const visitor of visitorsList) {
+          const displayName = visitor.name + (visitor.name_kana ? ' (' + visitor.name_kana + ')' : '');
+          if (displayName === this.value) {
+            matchedVisitor = visitor;
+            break;
+          }
+        }
+        
+        if (matchedVisitor) {
+          filterVisitor.value = matchedVisitor.visitor_id;
+        } else {
+          filterVisitor.value = '';
+        }
+        
+        // 即座にフィルタリング
+        loadDocuments();
+      });
+      
+      // フォーカスアウト時の処理
+      filterVisitorSearch.addEventListener('blur', function() {
+        // 無効な入力の場合はクリア
+        if (this.value && !filterVisitor.value) {
+          this.value = '';
+          loadDocuments();
+        }
+      });
+    }
+    
+    // フィルター患者選択をクリア
+    function clearFilterVisitor() {
+      document.getElementById('filterVisitorSearch').value = '';
+      document.getElementById('filterVisitor').value = '';
+      loadDocuments();
+    }
+    
+    // 書類一覧を表示
+    function displayDocuments(documents) {
+      const container = document.getElementById('documentListContainer');
+      
+      if (!documents || documents.length === 0) {
+        container.innerHTML = '<p>書類が登録されていません。</p>';
+        return;
+      }
+      
+      let html = '<table class="document-table">';
+      html += '<thead><tr>';
+      html += '<th>書類タイトル</th>';
+      html += '<th>対象患者</th>';
+      html += '<th>対象施術</th>';
+      html += '<th>登録日時</th>';
+      html += '<th>操作</th>';
+      html += '</tr></thead>';
+      html += '<tbody>';
+      
+      documents.forEach(function(document) {
+        html += '<tr>';
+        html += '<td><a href="' + document.url + '" target="_blank">' + document.title + '</a></td>';
+        html += '<td>' + document.visitorName + '</td>';
+        html += '<td>' + (document.treatmentName || '-') + '</td>';
+        html += '<td>' + formatDate(document.createdAt) + '</td>';
+        html += '<td class="action-buttons">';
+        html += '<button class="btn-primary btn-small" onclick="editDocument(\'' + document.documentId + '\')">編集</button>';
+        html += '<button class="btn-danger btn-small" onclick="deleteDocument(\'' + document.documentId + '\')">削除</button>';
+        html += '</td>';
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+    
+    // フォーム送信
+    document.getElementById('documentForm').onsubmit = function(e) {
+      e.preventDefault();
+      
+      const documentId = document.getElementById('documentId').value;
+      const documentData = {
+        title: document.getElementById('title').value,
+        url: document.getElementById('url').value,
+        visitorId: document.getElementById('visitorId').value,
+        treatmentName: document.getElementById('treatmentName').value,
+        notes: document.getElementById('notes').value
+      };
+      
+      if (documentId) {
+        // 更新
+        google.script.run
+          .withSuccessHandler(function(result) {
+            showMessage('書類情報を更新しました', 'success');
+            resetForm();
+            loadDocuments();
+          })
+          .withFailureHandler(function(error) {
+            showMessage('更新に失敗しました: ' + error, 'error');
+          })
+          .updateDocumentFromDialog(documentId, documentData);
+      } else {
+        // 新規登録
+        google.script.run
+          .withSuccessHandler(function(result) {
+            showMessage('書類を登録しました', 'success');
+            resetForm();
+            loadDocuments();
+          })
+          .withFailureHandler(function(error) {
+            showMessage('登録に失敗しました: ' + error, 'error');
+          })
+          .addDocumentFromDialog(documentData);
+      }
+    };
+    
+    // 書類を編集
+    function editDocument(documentId) {
+      // 書類データを取得して編集モードに切り替え
+      google.script.run
+        .withSuccessHandler(function(documents) {
+          const document = documents.find(d => d.documentId === documentId);
+          if (document) {
+            document.getElementById('documentId').value = document.documentId;
+            document.getElementById('title').value = document.title;
+            document.getElementById('url').value = document.url;
+            document.getElementById('visitorId').value = document.visitorId;
+            
+            // 患者検索フィールドに患者名を設定
+            const visitor = visitorsList.find(v => v.visitor_id === document.visitorId);
+            if (visitor) {
+              document.getElementById('visitorSearch').value = visitor.name + 
+                (visitor.name_kana ? ' (' + visitor.name_kana + ')' : '');
+            }
+            
+            document.getElementById('treatmentName').value = document.treatmentName || '';
+            document.getElementById('notes').value = document.notes || '';
+            
+            document.getElementById('formTitle').textContent = '書類編集';
+            document.getElementById('cancelEditBtn').style.display = 'inline-block';
+            
+            // フォームまでスクロール
+            document.querySelector('.form-section').scrollIntoView({ behavior: 'smooth' });
+          }
+        })
+        .withFailureHandler(function(error) {
+          showMessage('書類データの取得に失敗しました: ' + error, 'error');
+        })
+        .getDocumentsFromDialog({ documentId: documentId });
+    }
+    
+    // 編集をキャンセル
+    function cancelEdit() {
+      resetForm();
+    }
+    
+    // 書類を削除
+    function deleteDocument(documentId) {
+      if (confirm('この書類を削除してもよろしいですか？')) {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            showMessage('書類を削除しました', 'success');
+            loadDocuments();
+          })
+          .withFailureHandler(function(error) {
+            showMessage('削除に失敗しました: ' + error, 'error');
+          })
+          .deleteDocumentFromDialog(documentId);
+      }
+    }
+    
+    // フォームをリセット
+    function resetForm() {
+      document.getElementById('documentForm').reset();
+      document.getElementById('documentId').value = '';
+      document.getElementById('visitorId').value = '';
+      document.getElementById('visitorSearch').value = '';
+      document.getElementById('visitorError').style.display = 'none';
+      document.getElementById('formTitle').textContent = '新規書類登録';
+      document.getElementById('cancelEditBtn').style.display = 'none';
+    }
+    
+    // メッセージを表示
+    function showMessage(message, type) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.className = type;
+      messageDiv.textContent = message;
+      
+      // 3秒後に消す
+      setTimeout(function() {
+        messageDiv.textContent = '';
+        messageDiv.className = '';
+      }, 3000);
+    }
+    
+    // 日付フォーマット
+    function formatDate(dateValue) {
+      if (!dateValue) return '-';
+      
+      const date = new Date(dateValue);
+      const year = date.getFullYear();
+      const month = ('0' + (date.getMonth() + 1)).slice(-2);
+      const day = ('0' + date.getDate()).slice(-2);
+      const hours = ('0' + date.getHours()).slice(-2);
+      const minutes = ('0' + date.getMinutes()).slice(-2);
+      
+      return year + '/' + month + '/' + day + ' ' + hours + ':' + minutes;
+    }
+    
+    // フォルダ管理機能
+    
+    // フォルダ一覧を読み込む
+    function loadFolders() {
+      google.script.run
+        .withSuccessHandler(function(folders) {
+          displayFolders(folders);
+        })
+        .withFailureHandler(function(error) {
+          showMessage('フォルダ一覧の読み込みに失敗しました: ' + error, 'error');
+        })
+        .getFoldersFromDialog();
+    }
+    
+    // フォルダ一覧を表示
+    function displayFolders(folders) {
+      const container = document.getElementById('folderListContainer');
+      
+      if (!folders || folders.length === 0) {
+        container.innerHTML = '<p>フォルダが登録されていません。</p>';
+        return;
+      }
+      
+      let html = '<table class="folder-table">';
+      html += '<thead><tr>';
+      html += '<th>フォルダ名</th>';
+      html += '<th>説明</th>';
+      html += '<th>表示順</th>';
+      html += '<th>作成日時</th>';
+      html += '<th>操作</th>';
+      html += '</tr></thead>';
+      html += '<tbody>';
+      
+      folders.forEach(function(folder) {
+        html += '<tr>';
+        html += '<td>' + folder.folderName + '</td>';
+        html += '<td>' + (folder.description || '-') + '</td>';
+        html += '<td>' + folder.displayOrder + '</td>';
+        html += '<td>' + (folder.createdAt || '-') + '</td>';
+        html += '<td class="action-buttons">';
+        html += '<button class="btn-primary btn-small" onclick="editFolder(\'' + folder.folderId + '\')">編集</button>';
+        html += '<button class="btn-danger btn-small" onclick="deleteFolder(\'' + folder.folderId + '\')">削除</button>';
+        html += '</td>';
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+    
+    // フォルダフォーム送信
+    document.getElementById('folderForm').onsubmit = function(e) {
+      e.preventDefault();
+      
+      const folderId = document.getElementById('folderId').value;
+      const folderData = {
+        folderName: document.getElementById('folderName').value,
+        description: document.getElementById('folderDescription').value,
+        displayOrder: parseInt(document.getElementById('displayOrder').value) || 999
+      };
+      
+      if (folderId) {
+        // 更新
+        google.script.run
+          .withSuccessHandler(function(result) {
+            showMessage('フォルダ情報を更新しました', 'success');
+            resetFolderForm();
+            loadFolders();
+          })
+          .withFailureHandler(function(error) {
+            showMessage('更新に失敗しました: ' + error, 'error');
+          })
+          .updateFolderFromDialog(folderId, folderData);
+      } else {
+        // 新規登録
+        google.script.run
+          .withSuccessHandler(function(result) {
+            showMessage('フォルダを登録しました', 'success');
+            resetFolderForm();
+            loadFolders();
+          })
+          .withFailureHandler(function(error) {
+            showMessage('登録に失敗しました: ' + error, 'error');
+          })
+          .addFolderFromDialog(folderData);
+      }
+    };
+    
+    // フォルダを編集
+    function editFolder(folderId) {
+      google.script.run
+        .withSuccessHandler(function(folders) {
+          const folder = folders.find(f => f.folderId === folderId);
+          if (folder) {
+            document.getElementById('folderId').value = folder.folderId;
+            document.getElementById('folderName').value = folder.folderName;
+            document.getElementById('folderDescription').value = folder.description || '';
+            document.getElementById('displayOrder').value = folder.displayOrder;
+            
+            document.getElementById('folderFormTitle').textContent = 'フォルダ編集';
+            document.getElementById('cancelFolderEditBtn').style.display = 'inline-block';
+            
+            // フォームまでスクロール
+            document.querySelector('#foldersTab .form-section').scrollIntoView({ behavior: 'smooth' });
+          }
+        })
+        .withFailureHandler(function(error) {
+          showMessage('フォルダデータの取得に失敗しました: ' + error, 'error');
+        })
+        .getFoldersFromDialog({ folderId: folderId });
+    }
+    
+    // フォルダ編集をキャンセル
+    function cancelFolderEdit() {
+      resetFolderForm();
+    }
+    
+    // フォルダを削除
+    function deleteFolder(folderId) {
+      if (confirm('このフォルダを削除してもよろしいですか？')) {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            showMessage('フォルダを削除しました', 'success');
+            loadFolders();
+          })
+          .withFailureHandler(function(error) {
+            showMessage('削除に失敗しました: ' + error, 'error');
+          })
+          .deleteFolderFromDialog(folderId);
+      }
+    }
+    
+    // フォルダフォームをリセット
+    function resetFolderForm() {
+      document.getElementById('folderForm').reset();
+      document.getElementById('folderId').value = '';
+      document.getElementById('folderFormTitle').textContent = '新規フォルダ登録';
+      document.getElementById('cancelFolderEditBtn').style.display = 'none';
+    }
+  </script>
+</body>
+</html>

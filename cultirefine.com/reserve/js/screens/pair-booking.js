@@ -32,31 +32,33 @@ export function initPairBookingScreen() {
             return;
         }
 
-        // Update bookings
-        appState.bookings = [
-            {
-                patientId: patient1.id,
-                patientName: patient1.name,
-                treatment: treatment1,
-                selectedDate: date,
-                selectedTime: time,
-                pairRoomDesired: true,
-                status: "pending"
-            },
-            {
-                patientId: patient2.id,
-                patientName: patient2.name,
-                treatment: treatment2,
-                selectedDate: date,
-                selectedTime: time,
-                pairRoomDesired: true,
-                status: "pending"
-            }
-        ];
+        // ペア予約データを準備
+        const reservationData = {
+            type: 'multiple',
+            selectedDate: date,
+            selectedTime: time,
+            pairBooking: true,
+            patients: [
+                {
+                    id: patient1.id,
+                    name: patient1.name,
+                    selectedMenus: Array.isArray(treatment1) ? treatment1 : [treatment1]
+                },
+                {
+                    id: patient2.id,
+                    name: patient2.name,
+                    selectedMenus: Array.isArray(treatment2) ? treatment2 : [treatment2]
+                }
+            ]
+        };
 
-        // Save data and go to confirmation page
-        appState.saveToStorage();
-        window.location.href = 'confirmation.html';
+        // 確認モーダルを表示
+        import('../components/reservation-confirm.js').then(function(module) {
+            module.showReservationConfirmModal(reservationData, async function(data) {
+                const mainModule = await import('../main.js');
+                await mainModule.createMultipleReservations(data);
+            });
+        });
     });
 
     updatePairBookingScreen();
@@ -82,8 +84,19 @@ function updatePairBookingScreen() {
         patient2Title.innerHTML = '👤 ' + patient2.name + '様の施術メニュー';
     }
 
-    createTreatmentAccordion('patient1-treatments', patient1.id);
-    createTreatmentAccordion('patient2-treatments', patient2.id);
+    // current-userの場合は実際のvisitor_idを使用
+    const actualPatient1Id = patient1.id === 'current-user' 
+        ? (window.APP_CONFIG?.currentUserVisitorId || patient1.id)
+        : patient1.id;
+    const actualPatient2Id = patient2.id === 'current-user' 
+        ? (window.APP_CONFIG?.currentUserVisitorId || patient2.id)
+        : patient2.id;
+    
+    console.log('Pair booking: patient1', patient1.id, 'actualId:', actualPatient1Id);
+    console.log('Pair booking: patient2', patient2.id, 'actualId:', actualPatient2Id);
+    
+    createTreatmentAccordion('patient1-treatments', actualPatient1Id);
+    createTreatmentAccordion('patient2-treatments', actualPatient2Id);
     
     // Initialize pair calendar - always create fresh instance
     calendars['pair-calendar'] = new Calendar('pair-calendar', function(date) {

@@ -31,30 +31,64 @@ try {
     // 1. ユーザー情報を取得して会社情報を確認
     $userInfo = $gasApi->getUserFullInfo($lineUserId);
     
-    if ($userInfo['status'] === 'success' && isset($userInfo['data']['membership_info'])) {
-        $membershipInfo = $userInfo['data']['membership_info'];
+    if ($userInfo['status'] === 'success' && isset($userInfo['data']['company']) && isset($userInfo['data']['visitor'])) {
+        $companyData = $userInfo['data']['company'];
+        $visitorData = $userInfo['data']['visitor'];
         
         // 会社情報を取得
-        if (isset($membershipInfo['company_id']) && !empty($membershipInfo['company_id'])) {
-            $companyId = $membershipInfo['company_id'];
-            $companyName = $membershipInfo['company_name'] ?? '不明';
-            $memberType = $membershipInfo['member_type'] ?? 'サブ会員';
+        if (isset($companyData['company_id']) && !empty($companyData['company_id'])) {
+            $companyId = $companyData['company_id'];
+            $companyName = $companyData['name'] ?? '不明';
             
-            // 2. 予約履歴を取得（現在日付で前後3ヶ月）
-            $currentDate = date('Y-m-d');
-            $historyResponse = $gasApi->getReservationHistory($memberType, $currentDate, $companyId);
+            // member_typeを判定（visitor.member_typeがtrueなら本会員）
+            $isMemberType = $visitorData['member_type'] ?? false;
+            $memberType = $isMemberType ? 'main' : 'sub';
             
-            if ($historyResponse['status'] === 'success') {
-                $reservations = $historyResponse['data']['reservations'] ?? [];
+            // 予約履歴がレスポンスに含まれている場合は直接使用
+            if (isset($userInfo['data']['ReservationHistory'])) {
+                // ReservationHistoryのフィールド名をマッピング
+                $rawReservations = $userInfo['data']['ReservationHistory'];
+                $reservations = [];
+                
+                foreach ($rawReservations as $reservation) {
+                    $reservations[] = [
+                        'reservation_id' => $reservation['history_id'] ?? $reservation['reservation_id'] ?? '',
+                        'visitor_name' => $reservation['reservepatient'] ?? $reservation['patient_name'] ?? '',
+                        'status' => $reservation['reservestatus'] ?? '予約',
+                        'menu_name' => $reservation['reservename'] ?? '',
+                        'date' => $reservation['reservedate'] ?? '',
+                        'time' => $reservation['reservetime'] ?? '',
+                        'memo' => $reservation['notes'] ?? '',
+                        'is_public' => true // デフォルト値
+                    ];
+                }
                 
                 // デバッグログ
                 if (defined('DEBUG_MODE') && DEBUG_MODE) {
                     error_log('Company ID: ' . $companyId);
                     error_log('Member Type: ' . $memberType);
-                    error_log('Reservations count: ' . count($reservations));
+                    error_log('Reservations from getUserFullInfo: ' . count($reservations));
+                    if (count($rawReservations) > 0) {
+                        error_log('Sample reservation data: ' . json_encode($rawReservations[0]));
+                    }
                 }
             } else {
-                $errorMessage = '予約履歴の取得に失敗しました: ' . ($historyResponse['message'] ?? 'Unknown error');
+                // 予約履歴を別途取得（必要な場合）
+                $currentDate = date('Y-m-d');
+                $historyResponse = $gasApi->getReservationHistory($memberType, $currentDate, $companyId);
+                
+                if ($historyResponse['status'] === 'success') {
+                    $reservations = $historyResponse['data']['reservations'] ?? [];
+                    
+                    // デバッグログ
+                    if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                        error_log('Company ID: ' . $companyId);
+                        error_log('Member Type: ' . $memberType);
+                        error_log('Reservations count: ' . count($reservations));
+                    }
+                } else {
+                    $errorMessage = '予約履歴の取得に失敗しました: ' . ($historyResponse['message'] ?? 'Unknown error');
+                }
             }
         } else {
             $errorMessage = '会社情報が見つかりません。管理者にお問い合わせください。';
@@ -97,6 +131,12 @@ try {
 
 <!-- Main Content -->
 <main class="flex-1 py-6 min-h-screen flex items-start justify-center bg-gray-100">
+	<?php if (isset($userInfo)): ?>
+<div style="background: #f0f0f0; padding: 10px; margin: 10px; overflow: auto;">
+    <h3>デバッグ情報</h3>
+    <pre><?php echo json_encode($userInfo, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE); ?></pre>
+</div>
+<?php endif; ?>
   <div class="container mx-auto px-0 sm:px-6">
     <div class="his_cont_wrap">
       <h2>予約履歴一覧<br>

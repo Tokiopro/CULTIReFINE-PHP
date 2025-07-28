@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      padding: 30px;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 30px;
+      font-size: 24px;
+      border-bottom: 2px solid #4285f4;
+      padding-bottom: 10px;
+    }
+    .section {
+      margin-bottom: 40px;
+      padding: 20px;
+      background-color: #f9f9f9;
+      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+    }
+    .section-title {
+      font-size: 18px;
+      font-weight: bold;
+      color: #1a73e8;
+      margin-bottom: 20px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    label {
+      display: inline-block;
+      width: 200px;
+      font-weight: 500;
+      color: #555;
+    }
+    input[type="number"], input[type="email"], select {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      width: 200px;
+    }
+    input[type="checkbox"] {
+      margin-right: 10px;
+      transform: scale(1.2);
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 24px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #4285f4;
+    }
+    input:checked + .slider:before {
+      transform: translateX(26px);
+    }
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 30px;
+      justify-content: center;
+    }
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    .btn-primary {
+      background-color: #4285f4;
+      color: white;
+    }
+    .btn-primary:hover {
+      background-color: #357ae8;
+    }
+    .btn-secondary {
+      background-color: #f1f3f4;
+      color: #5f6368;
+    }
+    .btn-secondary:hover {
+      background-color: #e8eaed;
+    }
+    .btn-danger {
+      background-color: #ea4335;
+      color: white;
+    }
+    .btn-danger:hover {
+      background-color: #d33b2c;
+    }
+    .preview-section {
+      margin-top: 30px;
+      padding: 20px;
+      background-color: #f0f7ff;
+      border-radius: 8px;
+      border: 1px solid #4285f4;
+    }
+    .preview-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #1a73e8;
+      margin-bottom: 15px;
+    }
+    .preview-content {
+      padding: 15px;
+      background-color: white;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .loading {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 9999;
+      justify-content: center;
+      align-items: center;
+    }
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #4285f4;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .error {
+      color: #ea4335;
+      font-size: 14px;
+      margin-top: 5px;
+    }
+    .success {
+      color: #34a853;
+      font-size: 14px;
+      margin-top: 5px;
+    }
+    .info {
+      background-color: #e8f0fe;
+      border-left: 4px solid #4285f4;
+      padding: 10px 15px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: #1a73e8;
+    }
+    .test-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .test-button {
+      padding: 5px 15px;
+      font-size: 12px;
+      background-color: #34a853;
+      color: white;
+    }
+    .test-button:hover {
+      background-color: #2d8e47;
+    }
+    .test-send-button {
+      padding: 5px 15px;
+      font-size: 12px;
+      background-color: #FF5722;
+      color: white;
+    }
+    .test-send-button:hover {
+      background-color: #E64A19;
+    }
+    .recipient-select {
+      margin-top: 15px;
+      padding: 15px;
+      background-color: #FFF3E0;
+      border-radius: 8px;
+      border: 1px solid #FFB74D;
+    }
+    .recipient-list {
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      background-color: white;
+    }
+    .recipient-item {
+      padding: 5px;
+      margin: 2px 0;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .recipient-item:hover {
+      background-color: #f5f5f5;
+    }
+    .recipient-item input[type="checkbox"] {
+      margin-right: 8px;
+    }
+    .email-input-group {
+      margin-top: 10px;
+    }
+    .email-input-group label {
+      font-size: 13px;
+      color: #666;
+      display: block;
+      margin-bottom: 5px;
+    }
+    .email-input-group input {
+      width: 100%;
+    }
+    .email-hint {
+      font-size: 11px;
+      color: #999;
+      margin-top: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="loading" id="loading">
+    <div class="loading-spinner"></div>
+  </div>
+
+  <div class="container">
+    <h1>📧 予約通知管理</h1>
+
+    <div class="info">
+      予約に関する各種通知の設定を管理します。LINE通知とメール通知の両方に対応しています。
+    </div>
+
+    <!-- 基本設定 -->
+    <div class="section">
+      <div class="section-title">🔧 基本設定</div>
+      
+      <div class="form-group">
+        <div class="form-row">
+          <label>LINE通知</label>
+          <label class="switch">
+            <input type="checkbox" id="lineEnabled" checked>
+            <span class="slider"></span>
+          </label>
+          <span style="margin-left: 10px; color: #666;">LINEで通知を送信</span>
+        </div>
+        
+        <div class="form-row">
+          <label>メール通知</label>
+          <label class="switch">
+            <input type="checkbox" id="emailEnabled">
+            <span class="slider"></span>
+          </label>
+          <span style="margin-left: 10px; color: #666;">メールでも通知を送信</span>
+        </div>
+        
+        <div id="emailSettingsSection" style="display: none;">
+          <div class="email-input-group">
+            <label>通知先メールアドレス（全般）</label>
+            <input type="email" id="notificationEmail" placeholder="example@example.com">
+            <div class="email-hint">※すべての通知に使用されます（カンマ区切りで複数指定可）</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 予約確定通知 -->
+    <div class="section">
+      <div class="section-title">✅ 予約確定通知</div>
+      
+      <div class="form-group">
+        <div class="form-row">
+          <label>予約確定通知</label>
+          <label class="switch">
+            <input type="checkbox" id="bookingConfirmationEnabled" checked>
+            <span class="slider"></span>
+          </label>
+          <span style="margin-left: 10px; color: #666;">予約確定時に自動通知</span>
+        </div>
+        
+        <div class="email-input-group" style="display: none;" id="bookingEmailGroup">
+          <label>予約確定通知用メールアドレス</label>
+          <input type="email" id="bookingConfirmationEmail" placeholder="booking@example.com">
+          <div class="email-hint">※空欄の場合は全般のメールアドレスを使用（カンマ区切りで複数指定可）</div>
+        </div>
+      </div>
+
+      <div class="test-buttons">
+        <button class="test-button" onclick="testBookingConfirmation()">
+          プレビュー（予約確定）
+        </button>
+        <button class="test-send-button" onclick="showTestSendDialog('full_booking_confirmation')">
+          実際に送信
+        </button>
+      </div>
+    </div>
+
+    <!-- リマインダー設定 -->
+    <div class="section">
+      <div class="section-title">⏰ リマインダー設定</div>
+      
+      <div class="form-group">
+        <div class="form-row">
+          <label>前日リマインダー</label>
+          <label class="switch">
+            <input type="checkbox" id="dayBeforeEnabled" checked>
+            <span class="slider"></span>
+          </label>
+          <select id="dayBeforeHour" style="margin-left: 10px; width: 100px;">
+            <% for (let i = 0; i < 24; i++) { %>
+              <option value="<%= i %>" <%= i === 11 ? 'selected' : '' %>><%= i %>時</option>
+            <% } %>
+          </select>
+          <span style="margin-left: 10px; color: #666;">に送信</span>
+        </div>
+        
+        <div class="form-row">
+          <label>当日リマインダー</label>
+          <label class="switch">
+            <input type="checkbox" id="sameDayEnabled" checked>
+            <span class="slider"></span>
+          </label>
+          <select id="sameDayHour" style="margin-left: 10px; width: 100px;">
+            <% for (let i = 0; i < 24; i++) { %>
+              <option value="<%= i %>" <%= i === 9 ? 'selected' : '' %>><%= i %>時</option>
+            <% } %>
+          </select>
+          <span style="margin-left: 10px; color: #666;">に送信</span>
+        </div>
+        
+        <div class="email-input-group" style="display: none;" id="reminderEmailGroup">
+          <label>リマインダー通知用メールアドレス</label>
+          <input type="email" id="reminderNotificationEmail" placeholder="reminder@example.com">
+          <div class="email-hint">※空欄の場合は全般のメールアドレスを使用（カンマ区切りで複数指定可）</div>
+        </div>
+      </div>
+
+      <div class="test-buttons">
+        <button class="test-button" onclick="testReminder('day_before')">
+          プレビュー（前日）
+        </button>
+        <button class="test-send-button" onclick="showTestSendDialog('reminder')">
+          実際に送信（前日）
+        </button>
+        <button class="test-button" onclick="testReminder('same_day')">
+          プレビュー（当日）
+        </button>
+        <button class="test-send-button" onclick="showTestSendDialog('reminder')">
+          実際に送信（当日）
+        </button>
+      </div>
+    </div>
+
+    <!-- 施術後通知 -->
+    <div class="section">
+      <div class="section-title">✨ 施術後通知</div>
+      
+      <div class="form-group">
+        <div class="form-row">
+          <label>施術後通知</label>
+          <label class="switch">
+            <input type="checkbox" id="postTreatmentEnabled" checked>
+            <span class="slider"></span>
+          </label>
+          <span style="margin-left: 10px; color: #666;">施術終了</span>
+          <input type="number" id="postTreatmentDelay" value="1" min="1" max="24" style="margin-left: 10px; width: 60px;">
+          <span style="margin-left: 10px; color: #666;">時間後に送信</span>
+        </div>
+        
+        <div class="email-input-group" style="display: none;" id="postTreatmentEmailGroup">
+          <label>施術後通知用メールアドレス</label>
+          <input type="email" id="postTreatmentEmail" placeholder="post-treatment@example.com">
+          <div class="email-hint">※空欄の場合は全般のメールアドレスを使用（カンマ区切りで複数指定可）</div>
+        </div>
+      </div>
+
+      <div class="test-buttons">
+        <button class="test-button" onclick="testPostTreatment()">
+          プレビュー（施術後）
+        </button>
+        <button class="test-send-button" onclick="showTestSendDialog('post_treatment')">
+          実際に送信
+        </button>
+      </div>
+    </div>
+
+    <!-- プレビューセクション -->
+    <div class="preview-section" id="previewSection" style="display: none;">
+      <div class="preview-title">📱 通知プレビュー</div>
+      <div class="preview-content" id="previewContent">
+        <!-- プレビュー内容がここに表示されます -->
+      </div>
+    </div>
+
+    <!-- ボタングループ -->
+    <div class="button-group">
+      <button class="btn-primary" onclick="saveSettings()">保存</button>
+      <button class="btn-secondary" onclick="loadSettings()">設定を再読み込み</button>
+      <button class="btn-secondary" onclick="google.script.host.close()">閉じる</button>
+    </div>
+
+    <div id="message"></div>
+  </div>
+
+  <!-- テスト送信ダイアログ -->
+  <div id="testSendDialog" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); z-index: 10000;">
+    <div style="position: relative; max-width: 600px; margin: 50px auto; background-color: white; border-radius: 8px; padding: 30px;">
+      <h2 style="margin-top: 0;">📧 テスト送信</h2>
+      <p>実際にLINEやメールで通知を送信します。送信先を選択してください。</p>
+      
+      <div class="recipient-select">
+        <h3 style="margin-top: 0; font-size: 16px;">送信先を選択</h3>
+        <div style="margin-bottom: 10px;">
+          <label>
+            <input type="checkbox" id="selectAllRecipients" onchange="toggleAllRecipients()">
+            すべて選択
+          </label>
+        </div>
+        <div class="recipient-list" id="recipientList">
+          <!-- 動的に生成される -->
+        </div>
+      </div>
+      
+      <div style="margin-top: 20px;">
+        <label>
+          <input type="checkbox" id="sendLineCheck" checked>
+          LINE通知を送信
+        </label>
+        <label style="margin-left: 20px;">
+          <input type="checkbox" id="sendEmailCheck" checked>
+          メール通知を送信
+        </label>
+      </div>
+      
+      <div class="button-group" style="margin-top: 20px;">
+        <button class="btn-primary" onclick="executeTestSend()">送信実行</button>
+        <button class="btn-secondary" onclick="closeTestSendDialog()">キャンセル</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 初期化
+    window.onload = function() {
+      loadSettings();
+      setupEventListeners();
+    };
+
+    // イベントリスナーの設定
+    function setupEventListeners() {
+      document.getElementById('emailEnabled').addEventListener('change', function(e) {
+        const isChecked = e.target.checked;
+        document.getElementById('emailSettingsSection').style.display = isChecked ? 'block' : 'none';
+        document.getElementById('bookingEmailGroup').style.display = isChecked ? 'block' : 'none';
+        document.getElementById('reminderEmailGroup').style.display = isChecked ? 'block' : 'none';
+        document.getElementById('postTreatmentEmailGroup').style.display = isChecked ? 'block' : 'none';
+      });
+    }
+    
+    // 現在のテスト通知タイプ
+    let currentTestType = null;
+
+    // 設定の読み込み
+    function loadSettings() {
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(settings) {
+          showLoading(false);
+          applySettings(settings);
+          showMessage('設定を読み込みました', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showMessage('設定の読み込みに失敗しました: ' + error, 'error');
+        })
+        .getNotificationSettings();
+    }
+
+    // 設定を画面に反映
+    function applySettings(settings) {
+      // 基本設定
+      document.getElementById('lineEnabled').checked = settings.line_notifications_enabled.enabled;
+      document.getElementById('emailEnabled').checked = settings.email_notifications_enabled.enabled;
+      document.getElementById('notificationEmail').value = settings.notification_email.value || '';
+      
+      // メールアドレス行の表示/非表示
+      const emailEnabled = settings.email_notifications_enabled.enabled;
+      document.getElementById('emailSettingsSection').style.display = emailEnabled ? 'block' : 'none';
+      document.getElementById('bookingEmailGroup').style.display = emailEnabled ? 'block' : 'none';
+      document.getElementById('reminderEmailGroup').style.display = emailEnabled ? 'block' : 'none';
+      document.getElementById('postTreatmentEmailGroup').style.display = emailEnabled ? 'block' : 'none';
+      
+      // 通知タイプ別メールアドレス
+      document.getElementById('bookingConfirmationEmail').value = settings.booking_confirmation_email ? settings.booking_confirmation_email.value || '' : '';
+      document.getElementById('reminderNotificationEmail').value = settings.reminder_notification_email ? settings.reminder_notification_email.value || '' : '';
+      document.getElementById('postTreatmentEmail').value = settings.post_treatment_email ? settings.post_treatment_email.value || '' : '';
+      
+      // 予約確定通知
+      document.getElementById('bookingConfirmationEnabled').checked = settings.booking_confirmation_enabled.enabled;
+      
+      // リマインダー設定
+      document.getElementById('dayBeforeEnabled').checked = settings.reminder_day_before_hour.enabled;
+      document.getElementById('dayBeforeHour').value = settings.reminder_day_before_hour.value;
+      document.getElementById('sameDayEnabled').checked = settings.reminder_same_day_hour.enabled;
+      document.getElementById('sameDayHour').value = settings.reminder_same_day_hour.value;
+      
+      // 施術後通知
+      document.getElementById('postTreatmentEnabled').checked = settings.post_treatment_delay_hours.enabled;
+      document.getElementById('postTreatmentDelay').value = settings.post_treatment_delay_hours.value;
+    }
+
+    // 設定の保存
+    function saveSettings() {
+      const settings = {
+        line_notifications_enabled: document.getElementById('lineEnabled').checked,
+        email_notifications_enabled: document.getElementById('emailEnabled').checked,
+        notification_email: document.getElementById('notificationEmail').value,
+        booking_confirmation_email: document.getElementById('bookingConfirmationEmail').value,
+        reminder_notification_email: document.getElementById('reminderNotificationEmail').value,
+        post_treatment_email: document.getElementById('postTreatmentEmail').value,
+        booking_confirmation_enabled: document.getElementById('bookingConfirmationEnabled').checked,
+        reminder_day_before_enabled: document.getElementById('dayBeforeEnabled').checked,
+        reminder_day_before_hour: parseInt(document.getElementById('dayBeforeHour').value),
+        reminder_same_day_enabled: document.getElementById('sameDayEnabled').checked,
+        reminder_same_day_hour: parseInt(document.getElementById('sameDayHour').value),
+        post_treatment_enabled: document.getElementById('postTreatmentEnabled').checked,
+        post_treatment_delay_hours: parseInt(document.getElementById('postTreatmentDelay').value)
+      };
+
+      // バリデーション
+      if (settings.email_notifications_enabled && !settings.notification_email) {
+        showMessage('メール通知を有効にする場合は、メールアドレスを入力してください', 'error');
+        return;
+      }
+
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function() {
+          showLoading(false);
+          showMessage('設定を保存しました', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showMessage('設定の保存に失敗しました: ' + error, 'error');
+        })
+        .saveNotificationSettings(settings);
+    }
+
+    // テスト送信
+    function testBookingConfirmation() {
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          showPreview(result);
+          showMessage('テスト送信を実行しました', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showMessage('テスト送信に失敗しました: ' + error, 'error');
+        })
+        .testBookingConfirmationNotification();
+    }
+
+    function testReminder(timing) {
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          showPreview(result);
+          showMessage('テスト送信を実行しました', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showMessage('テスト送信に失敗しました: ' + error, 'error');
+        })
+        .testReminderNotification(timing);
+    }
+
+    function testPostTreatment() {
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          showPreview(result);
+          showMessage('テスト送信を実行しました', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showMessage('テスト送信に失敗しました: ' + error, 'error');
+        })
+        .testPostTreatmentNotification();
+    }
+
+    // プレビュー表示
+    function showPreview(content) {
+      document.getElementById('previewSection').style.display = 'block';
+      document.getElementById('previewContent').innerHTML = 
+        '<pre style="margin: 0; white-space: pre-wrap;">' + 
+        JSON.stringify(content, null, 2) + 
+        '</pre>';
+    }
+
+    // ローディング表示
+    function showLoading(show) {
+      document.getElementById('loading').style.display = show ? 'flex' : 'none';
+    }
+
+    // メッセージ表示
+    function showMessage(message, type) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.className = type;
+      messageDiv.textContent = message;
+      setTimeout(() => {
+        messageDiv.textContent = '';
+        messageDiv.className = '';
+      }, 5000);
+    }
+
+    // テスト送信ダイアログを表示
+    function showTestSendDialog(notificationType) {
+      currentTestType = notificationType;
+      showLoading(true);
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          if (result.success) {
+            displayRecipients(result.recipients);
+            document.getElementById('testSendDialog').style.display = 'block';
+          } else {
+            showMessage('送信対象者の取得に失敗しました: ' + result.error, 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showMessage('エラーが発生しました: ' + error, 'error');
+        })
+        .getTestRecipients();
+    }
+
+    // 送信対象者を表示
+    function displayRecipients(recipients) {
+      const listDiv = document.getElementById('recipientList');
+      listDiv.innerHTML = '';
+      
+      if (recipients.length === 0) {
+        listDiv.innerHTML = '<p style="color: #999;">送信可能なユーザーがいません</p>';
+        return;
+      }
+      
+      recipients.forEach(recipient => {
+        const item = document.createElement('div');
+        item.className = 'recipient-item';
+        
+        const hasLine = recipient.hasLine ? '✓ LINE' : '';
+        const hasEmail = recipient.hasEmail ? '✓ メール' : '';
+        const status = `${hasLine} ${hasEmail}`.trim();
+        
+        item.innerHTML = `
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" value="${recipient.visitorId}" name="recipient">
+            <span style="flex: 1;">${recipient.displayName}</span>
+            <span style="font-size: 12px; color: #666;">${status}</span>
+          </label>
+        `;
+        
+        listDiv.appendChild(item);
+      });
+    }
+
+    // 全選択/解除
+    function toggleAllRecipients() {
+      const selectAll = document.getElementById('selectAllRecipients').checked;
+      const checkboxes = document.querySelectorAll('input[name="recipient"]');
+      checkboxes.forEach(cb => cb.checked = selectAll);
+    }
+
+    // テスト送信を実行
+    function executeTestSend() {
+      const selectedRecipients = [];
+      const checkboxes = document.querySelectorAll('input[name="recipient"]:checked');
+      
+      checkboxes.forEach(cb => {
+        selectedRecipients.push(cb.value);
+      });
+      
+      if (selectedRecipients.length === 0) {
+        showMessage('送信対象者を選択してください', 'error');
+        return;
+      }
+      
+      const sendOptions = {
+        sendLine: document.getElementById('sendLineCheck').checked,
+        sendEmail: document.getElementById('sendEmailCheck').checked
+      };
+      
+      if (!sendOptions.sendLine && !sendOptions.sendEmail) {
+        showMessage('LINE通知またはメール通知のいずれかを選択してください', 'error');
+        return;
+      }
+      
+      showLoading(true);
+      closeTestSendDialog();
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          if (result.success) {
+            let message = `送信完了: `;
+            if (result.summary.lineSuccess > 0) {
+              message += `LINE ${result.summary.lineSuccess}件成功`;
+            }
+            if (result.summary.lineFailed > 0) {
+              message += ` ${result.summary.lineFailed}件失敗`;
+            }
+            if (result.summary.emailSuccess > 0) {
+              message += ` / メール ${result.summary.emailSuccess}件成功`;
+            }
+            if (result.summary.emailFailed > 0) {
+              message += ` ${result.summary.emailFailed}件失敗`;
+            }
+            showMessage(message, 'success');
+          } else {
+            showMessage('テスト送信に失敗しました: ' + result.error, 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showMessage('エラーが発生しました: ' + error, 'error');
+        })
+        .sendTestNotification(currentTestType, selectedRecipients, sendOptions);
+    }
+
+    // テスト送信ダイアログを閉じる
+    function closeTestSendDialog() {
+      document.getElementById('testSendDialog').style.display = 'none';
+      document.getElementById('selectAllRecipients').checked = false;
+      currentTestType = null;
+    }
+  </script>
+</body>
+</html>

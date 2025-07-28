@@ -377,6 +377,21 @@ input[type="checkbox"]:checked + .switch .switch-thumb {
     background-color: #f8fafc; /* slate-50 */
 }
 
+/* Loading Spinner */
+.loading-spinner {
+    display: inline-block;
+    width: 2rem;
+    height: 2rem;
+    border: 3px solid #e5e7eb;
+    border-radius: 50%;
+    border-top-color: #14b8a6;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
 .completed-booking .patient-name {
     font-weight: 500;
     color: #0f766e; /* teal-700 */
@@ -456,4 +471,70 @@ input[type="checkbox"]:checked + .switch .switch-thumb {
         margin-left: 1rem;
         font-size: 0.675rem;
     }
+}
+
+/* アニメーション */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Toggle Switch Styles (公開・非公開設定用) */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.toggle-checkbox {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.4s;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+}
+
+.toggle-checkbox:checked + .toggle-slider {
+    background-color: #14b8a6; /* teal-500 */
+}
+
+.toggle-checkbox:checked + .toggle-slider:before {
+    transform: translateX(20px);
+}
+
+/* ディスエーブル状態 */
+.toggle-checkbox:disabled + .toggle-slider {
+    background-color: #e5e7eb; /* gray-200 */
+    cursor: not-allowed;
+}
+
+.toggle-checkbox:disabled + .toggle-slider:before {
+    background-color: #f3f4f6; /* gray-100 */
 }

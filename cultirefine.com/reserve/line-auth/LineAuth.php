@@ -17,7 +17,8 @@ class LineAuth
             'redirect_uri' => LINE_CALLBACK_URL,
             'state' => $state,
             'scope' => 'profile openid',
-            'nonce' => bin2hex(random_bytes(16))
+            'nonce' => bin2hex(random_bytes(16)),
+            'bot_prompt' => 'aggressive'
         ];
         
         return self::LINE_AUTH_URL . '?' . http_build_query($params);

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      max-width: 100%;
+    }
+    
+    .container {
+      max-width: 100%;
+    }
+    
+    h2 {
+      color: #333;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #555;
+    }
+    
+    select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+    
+    .button-group {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.3s;
+    }
+    
+    .btn-primary {
+      background-color: #4CAF50;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background-color: #45a049;
+    }
+    
+    .btn-secondary {
+      background-color: #757575;
+      color: white;
+    }
+    
+    .btn-secondary:hover {
+      background-color: #616161;
+    }
+    
+    .error {
+      color: #f44336;
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #ffebee;
+      border-radius: 4px;
+    }
+    
+    .success {
+      color: #4CAF50;
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #e8f5e9;
+      border-radius: 4px;
+    }
+    
+    .current-plan-info {
+      background-color: #f9f9f9;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    
+    .plan-details {
+      margin-top: 15px;
+      padding: 15px;
+      background-color: #f0f0f0;
+      border-radius: 4px;
+    }
+    
+    .plan-details h4 {
+      margin-top: 0;
+      color: #333;
+    }
+    
+    .plan-tickets {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .ticket-item {
+      background-color: #fff;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      text-align: center;
+    }
+    
+    .ticket-item .label {
+      font-size: 12px;
+      color: #666;
+    }
+    
+    .ticket-item .value {
+      font-size: 18px;
+      font-weight: bold;
+      color: #333;
+      margin-top: 5px;
+    }
+    
+    .warning {
+      color: #ff9800;
+      background-color: #fff3e0;
+      padding: 10px;
+      border-radius: 4px;
+      margin-top: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>プラン変更</h2>
+    
+    <div id="message"></div>
+    
+    <form id="planChangeForm">
+      <div class="form-group">
+        <label for="companyId">会社 <span style="color: red;">*</span></label>
+        <select id="companyId" name="companyId" required onchange="loadCurrentPlan()">
+          <option value="">会社を選択してください</option>
+        </select>
+      </div>
+      
+      <div id="currentPlanInfo" class="current-plan-info" style="display: none;">
+        <h3>現在のプラン</h3>
+        <p><strong>プラン名:</strong> <span id="currentPlanName">-</span></p>
+        <div class="plan-tickets">
+          <div class="ticket-item">
+            <div class="label">幹細胞</div>
+            <div class="value" id="currentStemCell">-</div>
+          </div>
+          <div class="ticket-item">
+            <div class="label">施術</div>
+            <div class="value" id="currentTreatment">-</div>
+          </div>
+          <div class="ticket-item">
+            <div class="label">点滴</div>
+            <div class="value" id="currentInfusion">-</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label for="newPlan">新しいプラン <span style="color: red;">*</span></label>
+        <select id="newPlan" name="newPlan" required onchange="showNewPlanDetails()">
+          <option value="">プランを選択してください</option>
+        </select>
+      </div>
+      
+      <div id="newPlanDetails" class="plan-details" style="display: none;">
+        <h4>新プランの内容</h4>
+        <div class="plan-tickets">
+          <div class="ticket-item">
+            <div class="label">幹細胞</div>
+            <div class="value" id="newStemCell">-</div>
+          </div>
+          <div class="ticket-item">
+            <div class="label">施術</div>
+            <div class="value" id="newTreatment">-</div>
+          </div>
+          <div class="ticket-item">
+            <div class="label">点滴</div>
+            <div class="value" id="newInfusion">-</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="warning" style="display: none;" id="warning">
+        <strong>注意:</strong> プラン変更は翌月から適用されます。当月の残りチケットは引き継がれません。
+      </div>
+      
+      <div class="button-group">
+        <button type="submit" class="btn-primary">変更する</button>
+        <button type="button" class="btn-secondary" onclick="resetForm()">キャンセル</button>
+      </div>
+    </form>
+  </div>
+  
+  <script>
+    let companiesData = [];
+    let plansData = [];
+    
+    // 初期化
+    window.onload = function() {
+      loadCompanies();
+      loadPlans();
+    };
+    
+    // 会社リストを読み込む
+    function loadCompanies() {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            companiesData = result.data;
+            const select = document.getElementById('companyId');
+            result.data.forEach(function(company) {
+              const option = document.createElement('option');
+              option.value = company.id;
+              option.textContent = company.name;
+              select.appendChild(option);
+            });
+          } else {
+            showMessage('会社リストの読み込みに失敗しました: ' + result.error, 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showMessage('会社リストの読み込みに失敗しました: ' + error, 'error');
+        })
+        .getCompaniesForDialog();
+    }
+    
+    // プランリストを読み込む
+    function loadPlans() {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            plansData = result.data;
+            const select = document.getElementById('newPlan');
+            result.data.forEach(function(plan) {
+              const option = document.createElement('option');
+              option.value = plan.name;
+              option.textContent = plan.name;
+              select.appendChild(option);
+            });
+          } else {
+            showMessage('プランリストの読み込みに失敗しました: ' + result.error, 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showMessage('プランリストの読み込みに失敗しました: ' + error, 'error');
+        })
+        .getAvailablePlansForDialog();
+    }
+    
+    // 現在のプランを表示
+    function loadCurrentPlan() {
+      const companyId = document.getElementById('companyId').value;
+      if (!companyId) {
+        document.getElementById('currentPlanInfo').style.display = 'none';
+        return;
+      }
+      
+      const company = companiesData.find(c => c.id === companyId);
+      if (company) {
+        document.getElementById('currentPlanName').textContent = company.plan;
+        document.getElementById('currentStemCell').textContent = company.stemCell + '枚';
+        document.getElementById('currentTreatment').textContent = company.treatment + '枚';
+        document.getElementById('currentInfusion').textContent = company.infusion + '枚';
+        document.getElementById('currentPlanInfo').style.display = 'block';
+        document.getElementById('warning').style.display = 'block';
+      }
+    }
+    
+    // 新プランの詳細を表示
+    function showNewPlanDetails() {
+      const newPlanName = document.getElementById('newPlan').value;
+      if (!newPlanName) {
+        document.getElementById('newPlanDetails').style.display = 'none';
+        return;
+      }
+      
+      const plan = plansData.find(p => p.name === newPlanName);
+      if (plan) {
+        document.getElementById('newStemCell').textContent = plan.stemCell + '枚';
+        document.getElementById('newTreatment').textContent = plan.treatment + '枚';
+        document.getElementById('newInfusion').textContent = plan.infusion + '枚';
+        document.getElementById('newPlanDetails').style.display = 'block';
+      }
+    }
+    
+    // フォーム送信
+    document.getElementById('planChangeForm').onsubmit = function(e) {
+      e.preventDefault();
+      
+      const companyId = document.getElementById('companyId').value;
+      const newPlan = document.getElementById('newPlan').value;
+      
+      if (confirm('プランを変更しますか？\n\nこの変更は翌月から適用されます。')) {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && !result.error) {
+              showMessage('プランを変更しました', 'success');
+              resetForm();
+            } else {
+              showMessage('プラン変更に失敗しました: ' + (result ? result.error : '不明なエラー'), 'error');
+            }
+          })
+          .withFailureHandler(function(error) {
+            showMessage('プラン変更に失敗しました: ' + error, 'error');
+          })
+          .changePlanFromDialog(companyId, newPlan);
+      }
+    };
+    
+    // フォームをリセット
+    function resetForm() {
+      document.getElementById('planChangeForm').reset();
+      document.getElementById('currentPlanInfo').style.display = 'none';
+      document.getElementById('newPlanDetails').style.display = 'none';
+      document.getElementById('warning').style.display = 'none';
+    }
+    
+    // メッセージを表示
+    function showMessage(message, type) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.className = type;
+      messageDiv.textContent = message;
+      
+      // 3秒後に消す
+      setTimeout(function() {
+        messageDiv.textContent = '';
+        messageDiv.className = '';
+      }, 3000);
+    }
+  </script>
+</body>
+</html>

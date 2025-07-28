@@ -1,15 +1,86 @@
 <?php
-session_start();
+// デバッグモードの設定を確認
+require_once __DIR__ . '/line-auth/config.php';
 
-// LINE認証チェック
-if (!isset($_SESSION['line_user_id'])) {
-    header('Location: /reserve/line-auth/');
+// 直接session_start()を使用（index.phpと統一）
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+// 直接セッションからデータ取得
+$lineUserId = $_SESSION['line_user_id'] ?? null;
+$displayName = $_SESSION['line_display_name'] ?? 'ゲスト';
+$pictureUrl = $_SESSION['line_picture_url'] ?? null;
+
+// セッションデバッグ情報
+$sessionDebug = [
+    'session_id' => session_id(),
+    'session_status' => session_status(),
+    'line_user_id' => $lineUserId ?? 'not_set',
+    'line_display_name' => $displayName ?? 'not_set',
+    'session_data_count' => count($_SESSION),
+    'session_keys' => array_keys($_SESSION),
+    'is_authenticated' => !empty($lineUserId)
+];
+
+if (defined('DEBUG_MODE') && DEBUG_MODE) {
+    error_log('[Not-Registered] Session debug: ' . json_encode($sessionDebug));
+}
+
+// LINE認証チェック（直接セッション確認）
+if (empty($lineUserId)) {
+    error_log('[Session Error] No LINE user ID in session at not-registered.php: ' . json_encode($sessionDebug));
+    
+    // 直接エラーページを表示（リダイレクトしない）
+    ?>
+    <!DOCTYPE html>
+    <html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>セッションエラー - 天満病院 予約システム</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    <body class="bg-gray-50">
+        <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+            <div class="max-w-lg w-full space-y-8">
+                <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+                    <div class="bg-red-500 text-white p-6 text-center">
+                        <h1 class="text-2xl font-bold">セッションエラー</h1>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <p class="text-gray-700">セッション情報が取得できませんでした。</p>
+                        <div class="bg-gray-100 p-4 rounded text-sm">
+                            <p class="font-semibold mb-2">対処方法：</p>
+                            <ul class="list-disc list-inside space-y-1">
+                                <li>ブラウザのキャッシュとCookieをクリアしてください</li>
+                                <li>プライベートブラウジングモードで再度お試しください</li>
+                                <li>別のブラウザでお試しください</li>
+                            </ul>
+                        </div>
+                        <?php if (defined('DEBUG_MODE') && DEBUG_MODE): ?>
+                        <div class="bg-red-50 p-4 rounded text-xs">
+                            <p class="font-semibold mb-2">デバッグ情報：</p>
+                            <pre><?php echo htmlspecialchars(json_encode($sessionDebug, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></pre>
+                        </div>
+                        <?php endif; ?>
+                        <div class="text-center">
+                            <a href="/reserve/line-auth/" class="inline-block bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600">
+                                もう一度ログインする
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    <?php
     exit;
 }
 
-$displayName = $_SESSION['line_display_name'] ?? 'ゲスト';
-$pictureUrl = $_SESSION['line_picture_url'] ?? null;
-$lineUserId = $_SESSION['line_user_id'];
+// 既に上部で取得済みなので再度の取得は不要
+// $displayName, $pictureUrl, $lineUserId は既に定義済み
 ?>
 <!DOCTYPE html>
 <html lang="ja">
@@ -28,6 +99,18 @@ $lineUserId = $_SESSION['line_user_id'];
     </style>
 </head>
 <body class="bg-gray-50">
+    <script>
+        // PHPセッションデータをJavaScriptに渡す（main.jsリダイレクト防止）
+        window.SESSION_USER_DATA = {
+            lineUserId: '<?php echo htmlspecialchars($lineUserId ?? ''); ?>',
+            displayName: '<?php echo htmlspecialchars($displayName ?? ''); ?>',
+            pictureUrl: '<?php echo htmlspecialchars($pictureUrl ?? ''); ?>',
+            userData: null // 未登録ユーザーなのでnull
+        };
+        
+        // デバッグ用にコンソールに出力
+        console.log('SESSION_USER_DATA set (not-registered):', window.SESSION_USER_DATA);
+    </script>
     <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <div class="max-w-lg w-full space-y-8">
             <!-- メインカード -->

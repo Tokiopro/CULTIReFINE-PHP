@@ -1,161 +1,276 @@
 <?php
-session_start();
-require_once __DIR__ . '/line-auth/url-helper.php';
+// config.phpを最初に読み込み（DEBUG_MODE定義のため）
+if (!file_exists(__DIR__ . '/line-auth/config.php')) {
+    die('エラー: config.phpが見つかりません - パス: ' . __DIR__ . '/line-auth/config.php');
+}
+require_once __DIR__ . '/line-auth/config.php';
 
-// LINE認証チェック
-if (!isset($_SESSION['line_user_id'])) {
-    // 未認証の場合はLINE認証へリダイレクト
+// エラー表示設定（DEBUG_MODE定義後に実行）
+if (defined('DEBUG_MODE') && DEBUG_MODE) {
+    ini_set('display_errors', 1);
+    ini_set('display_startup_errors', 1);
+    error_reporting(E_ALL);
+}
+
+// 必要なファイルを読み込み
+if (!file_exists(__DIR__ . '/line-auth/logger.php')) {
+    die('エラー: logger.phpが見つかりません');
+}
+require_once __DIR__ . '/line-auth/logger.php';
+
+if (!file_exists(__DIR__ . '/line-auth/url-helper.php')) {
+    die('エラー: url-helper.phpが見つかりません');
+}
+require_once __DIR__ . '/line-auth/url-helper.php';
+// SessionManagerの使用を削除（500エラー対策）
+// require_once __DIR__ . '/line-auth/SessionManager.php';
+
+$logger = new Logger();
+// $sessionManager = SessionManager::getInstance();
+
+// 直接session_start()を使用（callback.phpと統一）
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+// 直接セッション確認によるLINE認証状態チェック
+$isLINEAuthenticated = isset($_SESSION['line_user_id']) && !empty($_SESSION['line_user_id']);
+$hasUserData = isset($_SESSION['user_data']) && !empty($_SESSION['user_data']);
+
+// セッション状態をログに記録
+$sessionDebug = [
+    'session_id' => session_id(),
+    'session_status' => session_status(),
+    'session_name' => session_name(),
+    'has_line_user_id' => $isLINEAuthenticated,
+    'line_user_id_value' => $_SESSION['line_user_id'] ?? 'not_set',
+    'has_user_data' => $hasUserData,
+    'session_keys' => array_keys($_SESSION),
+    'session_data_preview' => array_slice($_SESSION, 0, 5, true)
+];
+
+$logger->info('[Index] Session Debug（直接セッション版）', $sessionDebug);
+
+// 直接セッションでのLINE認証チェック
+if (!$isLINEAuthenticated) {
+    $logger->info('[Auth Check] LINE認証が必要', [
+        'reason' => 'LINE認証情報がセッションにない',
+        'session_debug' => $sessionDebug
+    ]);
+    
+    // LINE認証へリダイレクト
     header('Location: ' . getRedirectUrl('/reserve/line-auth/'));
     exit;
 }
 
-// ユーザー情報を取得
+// 簡単なセッション有効性チェック（24時間以内の認証）
+$isSessionValid = true;
+if (isset($_SESSION['line_auth_time'])) {
+    $elapsed = time() - $_SESSION['line_auth_time'];
+    $sessionLifetime = 86400; // 24時間
+    if ($elapsed > $sessionLifetime) {
+        $isSessionValid = false;
+        $logger->info('[Auth Check] セッションタイムアウト', [
+            'elapsed_time' => $elapsed,
+            'lifetime' => $sessionLifetime
+        ]);
+    }
+}
+
+if (!$isSessionValid) {
+    $logger->info('[Auth Check] セッション無効', [
+        'reason' => 'セッション有効期限切れ',
+        'session_debug' => $sessionDebug
+    ]);
+    
+    // セッションを破棄してLINE認証へリダイレクト
+    session_destroy();
+    header('Location: ' . getRedirectUrl('/reserve/line-auth/'));
+    exit;
+}
+
+// 直接セッションからユーザー情報を取得
 $lineUserId = $_SESSION['line_user_id'];
 $displayName = $_SESSION['line_display_name'] ?? 'ゲスト';
 $pictureUrl = $_SESSION['line_picture_url'] ?? null;
 $userData = $_SESSION['user_data'] ?? null;
 
-// 権限管理とGAS APIから来院者データを取得
-require_once __DIR__ . '/line-auth/config.php';
-require_once __DIR__ . '/line-auth/GasApiClient.php';
+$logger->info('[Index] LINE認証成功 - セッション情報詳細', [
+    'line_user_id' => $lineUserId,
+    'display_name' => $displayName,
+    'has_picture_url' => !empty($pictureUrl),
+    'has_user_data' => !empty($userData),
+    'session_id' => session_id(),
+    'session_keys_count' => count($_SESSION),
+    'session_all_keys' => array_keys($_SESSION),
+    'line_auth_time' => $_SESSION['line_auth_time'] ?? 'not_set',
+    'user_data_keys' => is_array($userData) ? array_keys($userData) : 'not_array',
+    'has_user_data' => !is_null($userData)
+]);
 
+// ユーザーデータがない場合の処理改善
+if (!$userData) {
+    // 直接セッションで未登録フラグをチェック
+    if (isset($_SESSION['user_not_registered']) && $_SESSION['user_not_registered'] === true) {
+        // 未登録フラグの有効期限をチェック（24時間）
+        $notRegisteredTime = $_SESSION['not_registered_time'] ?? 0;
+        $timeSinceNotRegistered = time() - $notRegisteredTime;
+        
+        if ($timeSinceNotRegistered < 86400) { // 24時間以内
+            $logger->info('[Index] 未登録ユーザーとして直接案内ページへ', [
+                'line_user_id' => $lineUserId,
+                'reason' => 'セッションに未登録フラグあり（24時間以内）',
+                'time_since_not_registered' => $timeSinceNotRegistered
+            ]);
+            header('Location: ' . getRedirectUrl('/reserve/not-registered.php'));
+            exit;
+        } else {
+            // 24時間経過した場合、フラグをクリアしてGAS APIを再チェック
+            unset($_SESSION['user_not_registered'], $_SESSION['not_registered_time']);
+            $logger->info('[Index] 未登録フラグの有効期限切れ、GAS APIを再チェック', [
+                'line_user_id' => $lineUserId,
+                'time_since_not_registered' => $timeSinceNotRegistered
+            ]);
+        }
+    }
+}
+
+// user_dataがない場合のデバッグ情報
+if (!$userData && defined('DEBUG_MODE') && DEBUG_MODE) {
+    $logger->debug('[Index] user_data not found in session, will fetch from GAS API', [
+        'session_data_keys' => array_keys($_SESSION),
+        'session_size' => count($_SESSION)
+    ]);
+}
+
+// ユーザーデータがセッションにない場合は、LINE認証を再実行
+if (!$userData) {
+    $logger->info('[Index] ユーザーデータなし、LINE認証をやり直し', [
+        'line_user_id' => $lineUserId,
+        'reason' => 'セッションにuser_dataが存在しない'
+    ]);
+    
+    // セッションをクリアしてLINE認証からやり直し
+    session_destroy();
+    header('Location: ' . getRedirectUrl('/reserve/line-auth/'));
+    exit;
+}
+
+// 以下はuser_dataがある場合の通常処理
 $companyPatients = [];
 $companyInfo = null;
 $userRole = 'sub'; // デフォルトはサブ会員
 $errorMessage = '';
-$debugInfo = []; // デバッグ情報を格納
+$debugInfo = []; // デバッグ情報を初期化
 $currentUserVisitorId = null; // ログインユーザーのvisitor_id
 
+// GAS APIクライアントを読み込み（user_dataの詳細情報取得用）
+require_once __DIR__ . '/line-auth/GasApiClient.php';
+
 try {
-    // デバッグ: セッション情報
-    if (DEBUG_MODE) {
-        $debugInfo['session'] = [
-            'line_user_id' => $_SESSION['line_user_id'] ?? 'not_set',
-            'line_display_name' => $_SESSION['line_display_name'] ?? 'not_set',
-            'session_id' => session_id(),
-            'all_session_data' => $_SESSION
-        ];
-        error_log('[DEBUG] Session info: ' . json_encode($debugInfo['session']));
-    }
+    // 既存のuser_dataを使用（callback.phpで既に取得済み）
+    $logger->info('[Index] セッションからユーザーデータを使用', [
+        'line_user_id' => $lineUserId,
+        'user_data_keys' => array_keys($userData),
+        'has_visitor_id' => isset($userData['visitor_id']) || isset($userData['id'])
+    ]);
     
     $gasApi = new GasApiClient(GAS_DEPLOYMENT_ID, GAS_API_KEY);
     
-    // デバッグ: GAS API設定
-    if (DEBUG_MODE) {
-        $debugInfo['gas_config'] = [
-            'deployment_id' => GAS_DEPLOYMENT_ID ? '設定済み' : '未設定',
-            'api_key' => GAS_API_KEY ? '設定済み' : '未設定',
-            'line_user_id' => $lineUserId
-        ];
-        error_log('[DEBUG] GAS API config: ' . json_encode($debugInfo['gas_config']));
-    }
+    // userDataからユーザー情報を取得（callback.phpで取得済み）
+    $currentUserVisitorId = $userData['visitor_id'] ?? $userData['id'] ?? null;
     
-    // 1. ユーザー情報を取得して会社情報を確認
-    if (DEBUG_MODE) {
-        error_log('[DEBUG] Calling getUserFullInfo for LINE User ID: ' . $lineUserId);
-    }
+    $logger->info('[Index] ユーザー基本情報確認', [
+        'current_user_visitor_id' => $currentUserVisitorId,
+        'user_name' => $userData['visitor_name'] ?? $userData['name'] ?? null,
+        'member_type' => $userData['member_type'] ?? 'sub'
+    ]);
     
-    $userInfo = $gasApi->getUserFullInfo($lineUserId);
-    
-    // デバッグ: API レスポンス詳細
-    if (DEBUG_MODE) {
-        $debugInfo['gas_api_response'] = [
-            'status' => $userInfo['status'] ?? 'no_status',
-            'has_data' => isset($userInfo['data']),
-            'data_keys' => isset($userInfo['data']) ? array_keys($userInfo['data']) : [],
-            'error' => $userInfo['error'] ?? null,
-            'full_response' => $userInfo
-        ];
-        error_log('[DEBUG] GAS API Response: ' . json_encode($debugInfo['gas_api_response']));
-    }
-    
-    // GAS APIの実際のレスポンス形式に対応
-    if (isset($userInfo['visitor']) && isset($userInfo['company'])) {
-        // ログインユーザーのvisitor_idを取得
-        $currentUserVisitorId = $userInfo['visitor']['visitor_id'] ?? null;
-        
-        // 実際のGAS APIレスポンスから membership_info 形式に変換
-        $membershipInfo = [
-            'company_id' => $userInfo['company']['company_id'] ?? null,
-            'company_name' => $userInfo['company']['name'] ?? '不明',
-            'member_type' => $userInfo['visitor']['member_type'] === true ? '本会員' : 'サブ会員'
-        ];
+    // JavaScript側でGAS APIを呼び出すため、PHP側では呼び出さない
+    // 会社情報とメンバータイプのみ設定（callback.phpで取得済みのuserDataから）
+    if ($currentUserVisitorId) {
+        // userDataから会社情報を構築（既にcallback.phpで取得済み）
+        $companyData = $userData['company'] ?? null;
         
         if (DEBUG_MODE) {
-            error_log('[DEBUG] Current user visitor_id: ' . $currentUserVisitorId);
-            error_log('[DEBUG] Converted membership info: ' . json_encode($membershipInfo));
+            $logger->debug('[Index] Company data from userData', [
+                'company_data' => $companyData,
+                'userData_keys' => array_keys($userData)
+            ]);
         }
         
-        // 会社情報を取得
-        if (isset($membershipInfo['company_id']) && !empty($membershipInfo['company_id'])) {
+        // 会社情報の処理
+        if ($companyData && isset($companyData['company_id']) && !empty($companyData['company_id'])) {
+            // member_typeの判定（userDataから取得）
+            $isMemberType = ($userData['member_type'] ?? false) === true;
+            $memberTypeLabel = $isMemberType ? '本会員' : 'サブ会員';
+            
             $companyInfo = [
-                'id' => $membershipInfo['company_id'],
-                'name' => $membershipInfo['company_name'] ?? '不明',
-                'member_type' => $membershipInfo['member_type'] ?? 'サブ会員',
-                'role' => ($membershipInfo['member_type'] === '本会員') ? 'main' : 'sub'
+                'id' => $companyData['company_id'],
+                'name' => $companyData['name'] ?? '不明',
+                'plan' => $companyData['plan'] ?? '',
+                'member_type' => $memberTypeLabel,
+                'role' => $isMemberType ? 'main' : 'sub'
             ];
             
-            $userRole = $companyInfo['role'];
-            
-            // 2. 会社に紐づく来院者一覧を取得
-            $patientsResponse = $gasApi->getPatientsByCompany($companyInfo['id'], $userRole);
-            
-            if ($patientsResponse['status'] === 'success') {
-                $rawPatients = $patientsResponse['data']['visitors'] ?? [];
+            // 会社関連のメンバーリストをGAS APIから取得
+            try {
+                $logger->info('[Index] 会社別来院者を取得開始', [
+                    'company_id' => $companyData['company_id'],
+                    'user_role' => $companyInfo['role']
+                ]);
                 
-                // ログインユーザーのvisitor_idと重複する来院者を除外
-                $companyPatients = [];
-                foreach ($rawPatients as $patient) {
-                    $patientVisitorId = $patient['visitor_id'] ?? null;
-                    // ログインユーザーのvisitor_idと一致しない場合のみ追加
-                    if ($patientVisitorId !== $currentUserVisitorId || $currentUserVisitorId === null) {
-                        $companyPatients[] = $patient;
+                $companyVisitorsResult = $gasApi->getPatientsByCompany(
+                    $companyData['company_id'], 
+                    $companyInfo['role']
+                );
+                
+                if ($companyVisitorsResult['status'] === 'success' && isset($companyVisitorsResult['data']['visitors'])) {
+                    $companyPatients = $companyVisitorsResult['data']['visitors'];
+                    
+                    $logger->info('[Index] 会社別来院者取得成功', [
+                        'company_id' => $companyData['company_id'],
+                        'total_count' => count($companyPatients),
+                        'user_role' => $companyInfo['role']
+                    ]);
+                    
+                    if (DEBUG_MODE) {
+                        $logger->debug('[Index] 来院者リスト詳細', [
+                            'first_5_visitors' => array_slice($companyPatients, 0, 5)
+                        ]);
                     }
+                } else {
+                    $logger->warning('[Index] 会社別来院者取得失敗', [
+                        'company_id' => $companyData['company_id'],
+                        'result' => $companyVisitorsResult
+                    ]);
+                    $companyPatients = [];
                 }
-                
-                $totalPatients = count($companyPatients);
-                
-                // デバッグログ
-                if (defined('DEBUG_MODE') && DEBUG_MODE) {
-                    error_log('Company ID: ' . $companyInfo['id']);
-                    error_log('User Role: ' . $userRole);
-                    error_log('Raw patients count: ' . count($rawPatients));
-                    error_log('Filtered patients count: ' . $totalPatients);
-                    error_log('Current user visitor_id: ' . $currentUserVisitorId);
-                    error_log('Excluded duplicates: ' . (count($rawPatients) - $totalPatients));
+            } catch (Exception $e) {
+                $logger->error('[Index] 会社別来院者取得エラー', [
+                    'company_id' => $companyData['company_id'],
+                    'error' => $e->getMessage()
+                ]);
+                $companyPatients = [];
+                // エラーメッセージに追加
+                if (!$errorMessage) {
+                    $errorMessage = '会社メンバーの取得に失敗しました。';
                 }
-            } else {
-                $errorMessage = '来院者一覧の取得に失敗しました: ' . ($patientsResponse['message'] ?? 'Unknown error');
             }
         } else {
-            $errorMessage = '会社情報が見つかりません。管理者にお問い合わせください。';
+            // 会社情報がない場合（個人利用者）
+            $companyInfo = null;
         }
     } else {
-        // GAS APIレスポンスの形式をチェックして適切なエラーメッセージを生成
-        $hasVisitorInfo = isset($userInfo['visitor']);
-        $hasCompanyInfo = isset($userInfo['company']);
-        
-        if ($hasVisitorInfo && !$hasCompanyInfo) {
-            $errorMessage = '来院者情報は取得できましたが、会社情報が見つかりません。';
-        } elseif (!$hasVisitorInfo && $hasCompanyInfo) {
-            $errorMessage = '会社情報は取得できましたが、来院者情報が見つかりません。';
-        } elseif (isset($userInfo['status']) && $userInfo['status'] === 'error') {
-            $errorMessage = 'GAS APIエラー: ' . ($userInfo['error']['message'] ?? $userInfo['message'] ?? 'Unknown error');
-        } else {
-            $errorMessage = 'ユーザー情報の取得に失敗しました: レスポンス形式が不正です';
-        }
+        // visitor_idがない場合のエラーメッセージ
+        $errorMessage = 'ユーザー情報の取得に失敗しました。visitor_idが見つかりません。';
         
         // デバッグ: 失敗詳細
         if (DEBUG_MODE) {
-            $debugInfo['failure_details'] = [
-                'has_visitor_info' => $hasVisitorInfo,
-                'has_company_info' => $hasCompanyInfo,
-                'response_keys' => array_keys($userInfo),
-                'visitor_data' => $userInfo['visitor'] ?? null,
-                'company_data' => $userInfo['company'] ?? null,
-                'full_user_info' => $userInfo
-            ];
-            error_log('[DEBUG] Failure details: ' . json_encode($debugInfo['failure_details']));
+            $logger->debug('[Index] No visitor_id found', [
+                'user_data' => $userData,
+                'line_user_id' => $lineUserId
+            ]);
         }
     }
 } catch (Exception $e) {
@@ -168,7 +283,7 @@ try {
             'line' => $e->getLine(),
             'trace' => $e->getTraceAsString()
         ];
-        error_log('[DEBUG] Exception: ' . json_encode($debugInfo['exception']));
+        $logger->error('[Index] Exception occurred', $debugInfo['exception']);
     }
     
     error_log('Patients loading error: ' . $e->getMessage());
@@ -365,24 +480,19 @@ try {
                             <div id="treatment-categories" class="border border-gray-200 rounded-lg overflow-hidden"></div>
                         </section>
 
+                        <!-- 選択メニュー表示エリア -->
+                        <div id="selected-menus-display" class="hidden"></div>
+
                         <div id="interval-error" class="hidden bg-red-50 border-l-4 border-red-500 p-4 rounded">
-                            <h4 class="text-sm font-semibold text-red-800">施術間隔エラー</h4>
+                            <h4 class="text-sm font-semibold text-red-800">エラー</h4>
                             <p id="interval-error-text" class="text-xs text-red-600"></p>
                         </div>
 
                         <section id="date-time-selection" class="space-y-4 hidden">
                             <h3 class="text-lg font-semibold text-gray-700">2. ご希望日時を選択</h3>
-                            <div class="bg-slate-100 border border-gray-200 rounded-md p-3">
-                                <label class="flex items-center space-x-2 cursor-pointer">
-                                    <input type="checkbox" id="pair-room-switch" class="sr-only">
-                                    <div class="switch relative w-11 h-6 bg-gray-200 rounded-full transition-colors">
-                                        <div class="switch-thumb absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform"></div>
-                                    </div>
-                                    <span class="text-base font-medium text-pink-600 flex items-center">
-                                        <span class="mr-2">👫</span> ペア施術を希望 (2枠確保)
-                                    </span>
-                                </label>
-                            </div>
+                            
+                            <!-- カレンダーローディングメッセージ -->
+                            <div id="calendar-loading-message" class="hidden"></div>
                             
                             <div id="slot-availability-message" class="hidden bg-teal-50 border-l-4 border-teal-500 p-4 rounded">
                                 <h4 id="slot-availability-title" class="text-sm font-semibold text-teal-800">予約可能な時間</h4>
@@ -533,21 +643,35 @@ try {
                 <button class="text-gray-400 hover:text-gray-600 text-2xl leading-none w-8 h-8 flex items-center justify-center" id="modal-close-btn">&times;</button>
             </div>
             <div class="p-6 space-y-4">
-                <!-- 氏名 -->
+                <!-- 氏名（姓・名） -->
                 <div>
-                    <label for="new-patient-name" class="block text-sm font-medium text-gray-700 mb-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
                         氏名 <span class="text-red-500">*</span>
                     </label>
-                    <input type="text" id="new-patient-name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="例: 鈴木 一郎（姓名をスペースで区切って入力）" maxlength="30" required>
-                    <p class="text-xs text-gray-500 mt-1">30字以内で入力してください。</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <input type="text" id="new-patient-last-name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="姓" maxlength="15" required>
+                        </div>
+                        <div>
+                            <input type="text" id="new-patient-first-name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="名" maxlength="15" required>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">姓と名を別々に入力してください。</p>
                 </div>
                 
-                <!-- カナ -->
+                <!-- カナ（セイ・メイ） -->
                 <div>
-                    <label for="new-patient-kana" class="block text-sm font-medium text-gray-700 mb-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
                         カナ <span class="text-red-500">*</span>
                     </label>
-                    <input type="text" id="new-patient-kana" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="例: スズキ イチロウ（セイメイをスペースで区切って入力）" maxlength="60" required>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <input type="text" id="new-patient-last-name-kana" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="セイ" maxlength="30" required>
+                        </div>
+                        <div>
+                            <input type="text" id="new-patient-first-name-kana" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500" placeholder="メイ" maxlength="30" required>
+                        </div>
+                    </div>
                     <p class="text-xs text-gray-500 mt-1">全角カタカナで入力してください。</p>
                 </div>
                 
@@ -606,6 +730,56 @@ try {
         </div>
     </div>
 
+    <!-- 予約確認モーダル -->
+    <div id="reservation-confirm-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-10 mx-auto p-5 border max-w-2xl shadow-lg rounded-md bg-white">
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-bold text-gray-900">予約内容の確認</h3>
+                    <button id="close-confirm-modal" class="text-gray-400 hover:text-gray-600">
+                        <span class="sr-only">閉じる</span>
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- 予約サマリー表示エリア -->
+                <div id="reservation-summary" class="space-y-4 mb-6">
+                    <!-- JavaScriptで動的に生成 -->
+                </div>
+                
+                <!-- 確認メッセージ -->
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-yellow-700">
+                                上記の内容で予約を確定してもよろしいですか？<br>
+                                確定後のキャンセル・変更については、直接クリニックまでお電話ください。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- ボタン -->
+                <div class="flex flex-col sm:flex-row justify-end gap-3">
+                    <button id="cancel-reservation-btn" class="w-full sm:w-auto border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 py-2 px-4 rounded-md">
+                        戻る
+                    </button>
+                    <button id="confirm-reservation-btn" class="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 text-white py-2 px-4 rounded-md font-medium flex items-center justify-center">
+                        <span id="confirm-btn-text">予約を確定する</span>
+                        <div id="confirm-btn-spinner" class="hidden ml-2 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- スピナー -->
     <div id="loading-spinner" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
         <div class="flex items-center justify-center h-full">
@@ -633,23 +807,33 @@ try {
             debugMode: <?php echo DEBUG_MODE ? 'true' : 'false'; ?>,
             debugInfo: <?php echo json_encode($debugInfo); ?>
         };
+        
+        // DEBUG_MODEをPHPから取得してwindowオブジェクトに設定
+        window.DEBUG_MODE = <?php echo (defined('DEBUG_MODE') && DEBUG_MODE) ? 'true' : 'false'; ?>;
+        
+        // DEBUG_MODEの状態をコンソールに出力
+        if (window.DEBUG_MODE) {
+            console.log('[DEBUG] DEBUG_MODE is enabled (from PHP environment)');
+            console.log('[DEBUG] PHP DEBUG_MODE value:', <?php echo defined('DEBUG_MODE') ? (DEBUG_MODE ? 'true' : 'false') : 'undefined'; ?>);
+        }
     </script>
 
     <!-- JavaScriptモジュール -->
-    <script type="module" src="./js/core/polyfills.js"></script>
-    <script type="module" src="./js/core/storage-manager.js"></script>
-    <script type="module" src="./js/core/app-state.js"></script>
-    <script type="module" src="./js/core/ui-helpers.js"></script>
-    <script type="module" src="./js/data/treatment-data.js"></script>
-    <script type="module" src="./js/data/mock-api.js"></script>
-    <script type="module" src="./js/data/gas-api.js"></script>
-    <script type="module" src="./js/components/calendar.js"></script>
-    <script type="module" src="./js/components/treatment-accordion.js"></script>
-    <script type="module" src="./js/components/modal.js"></script>
-    <script type="module" src="./js/screens/patient-selection.js"></script>
-    <script type="module" src="./js/screens/menu-calendar.js"></script>
-    <script type="module" src="./js/screens/pair-booking.js"></script>
-    <script type="module" src="./js/screens/bulk-booking.js"></script>
+    <script type="module" src="./js/core/polyfills.js?v=20250128"></script>
+    <script type="module" src="./js/core/storage-manager.js?v=20250128"></script>
+    <script type="module" src="./js/core/app-state.js?v=20250128"></script>
+    <script type="module" src="./js/core/ui-helpers.js?v=20250128"></script>
+    <script type="module" src="./js/data/treatment-data.js?v=20250128"></script>
+    <script type="module" src="./js/data/mock-api.js?v=20250128"></script>
+    <script type="module" src="./js/data/gas-api.js?v=20250128"></script>
+    <script type="module" src="./js/components/calendar.js?v=20250128"></script>
+    <script type="module" src="./js/components/treatment-accordion.js?v=20250128"></script>
+    <script type="module" src="./js/components/modal.js?v=20250128"></script>
+    <script type="module" src="./js/components/reservation-confirm.js?v=20250128"></script>
+    <script type="module" src="./js/screens/patient-selection.js?v=20250128"></script>
+    <script type="module" src="./js/screens/menu-calendar.js?v=20250128"></script>
+    <script type="module" src="./js/screens/pair-booking.js?v=20250128"></script>
+    <script type="module" src="./js/screens/bulk-booking.js?v=20250128"></script>
     
     <!-- デバッグ情報表示スクリプト -->
     <script>
@@ -1835,6 +2019,27 @@ try {
         }
     </script>
     
-    <script type="module" src="./js/main.js"></script>
+    <!-- セッションデータをJavaScriptに渡す -->
+    <script>
+        window.SESSION_USER_DATA = {
+            lineUserId: <?php echo json_encode($lineUserId); ?>,
+            displayName: <?php echo json_encode($displayName); ?>,
+            pictureUrl: <?php echo json_encode($pictureUrl); ?>,
+            userData: <?php echo json_encode($userData); ?>,
+            debugMode: <?php echo json_encode(defined('DEBUG_MODE') && DEBUG_MODE); ?>,
+            debugInfo: <?php echo json_encode($debugInfo ?? []); ?>
+        };
+        
+        // デバッグ情報
+        if (window.SESSION_USER_DATA.debugMode) {
+            console.log('=== SESSION USER DATA SET ===');
+            console.log('Line User ID:', window.SESSION_USER_DATA.lineUserId);
+            console.log('Display Name:', window.SESSION_USER_DATA.displayName);
+            console.log('Has User Data:', !!window.SESSION_USER_DATA.userData);
+            console.log('User Data:', window.SESSION_USER_DATA.userData);
+        }
+    </script>
+    
+    <script type="module" src="./js/main.js?v=20250128"></script>
 </body>
 </html>
