@@ -210,8 +210,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 const mappedData = mapGasDataToAppState(cachedData);
                 Object.assign(appState, mappedData);
                 updatePatientsList();
-                console.log('Cached user data loaded successfully');
+                console.log('キャッシュからユーザーデータを読み込みました');
                 hideLoadingOverlay();
+                showAlert('success', 'success', '読み込み完了', 'ユーザー情報を読み込みました');
+                setTimeout(() => hideAlert('success'), 3000);
                 return;
             } catch (error) {
                 console.error('Error using cached data:', error);
@@ -227,7 +229,7 @@ document.addEventListener('DOMContentLoaded', function() {
             appState.setScreen('patient-selection');
             hideLoadingOverlay();
             showErrorMessage('データの読み込みに時間がかかっています。一部機能が利用できない場合があります。');
-        }, 10000); // 10秒でタイムアウト（短縮）
+        }, 30000); // 30秒でタイムアウト（API側と統一）
         
         getUserFullInfo().then(function(data) {
             clearTimeout(loadingTimeout);
@@ -262,7 +264,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // UI更新
                 updatePatientsList();
-                console.log('User data loaded successfully');
+                console.log('GAS APIからユーザーデータを正常に読み込みました');
+                showAlert('success', 'success', '読み込み完了', 'ユーザー情報を読み込みました');
+                setTimeout(() => hideAlert('success'), 3000);
             } catch (mappingError) {
                 console.error('Error mapping user data:', mappingError);
                 console.error('Data structure:', data);
@@ -287,16 +291,22 @@ document.addEventListener('DOMContentLoaded', function() {
             // エラーの種類に応じて適切なメッセージを表示
             let errorMessage = 'データの読み込みに失敗しました。';
             
-            if (error.name === 'TimeoutError') {
+            if (error.name === 'TimeoutError' || error.message?.includes('タイムアウト')) {
                 errorMessage = 'サーバーへの接続がタイムアウトしました。ページを再読み込みしてください。';
+                console.error('タイムアウトエラー:', error);
             } else if (error.message && error.message.includes('network')) {
                 errorMessage = 'ネットワークエラーが発生しました。インターネット接続を確認してください。';
+                console.error('ネットワークエラー:', error);
             } else if (error.message && error.message.includes('認証')) {
                 errorMessage = '認証エラーが発生しました。再度ログインしてください。';
+                console.error('認証エラー:', error);
                 // 3秒後に認証ページへリダイレクト
                 setTimeout(() => {
                     window.location.href = '/reserve/line-auth/';
                 }, 3000);
+            } else {
+                console.error('予期しないエラー:', error);
+                errorMessage = `エラーが発生しました: ${error.message || '不明なエラー'}`;
             }
             
             showErrorMessage(errorMessage);
