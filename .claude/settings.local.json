@@ -10,7 +10,10 @@
       "Bash(rm:*)",
       "Bash(mkdir:*)",
       "Bash(chmod:*)",
-      "Bash(php:*)"
+      "Bash(php:*)",
+      "Bash(python3:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:docs.anthropic.com)"
     ],
     "deny": []
   }

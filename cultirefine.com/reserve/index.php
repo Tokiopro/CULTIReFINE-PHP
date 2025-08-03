@@ -164,6 +164,12 @@ $errorMessage = '';
 $debugInfo = []; // デバッグ情報を初期化
 $currentUserVisitorId = null; // ログインユーザーのvisitor_id
 
+// デバッグ: データ取得前の状態
+$logger->info('[Index] データ取得開始', [
+    'has_user_data' => !empty($userData),
+    'line_user_id' => $lineUserId
+]);
+
 // GAS APIクライアントを読み込み（user_dataの詳細情報取得用）
 require_once __DIR__ . '/line-auth/GasApiClient.php';
 
@@ -452,7 +458,112 @@ try {
                             </label>
                         </div>
 
-                        <div id="patients-list" class="max-h-80 overflow-y-auto space-y-3 pr-2"></div>
+                        <div id="patients-list" class="max-h-80 overflow-y-auto space-y-3 pr-2" data-php-generated="true">
+                            <?php 
+                            // ローディング表示（JavaScriptがデータを取得するまで）
+                            if (empty($companyPatients)): 
+                            ?>
+                                <div class="text-center py-8 text-gray-500" id="loading-company-visitors">
+                                    <div class="text-4xl mb-4">⏳</div>
+                                    <p>会社別来院者データを取得しています。</p>
+                                    <p class="text-sm mt-2">しばらくお待ちください...</p>
+                                </div>
+                            <?php else: ?>
+                                <?php 
+                                // PHPで患者リストを生成
+                                foreach ($companyPatients as $patient): 
+                                    // ダミーデータをスキップ
+                                    if (strpos($patient['visitor_name'] ?? $patient['name'] ?? '', '既存') !== false ||
+                                        strpos($patient['visitor_name'] ?? $patient['name'] ?? '', 'ダミー') !== false ||
+                                        strpos($patient['visitor_name'] ?? $patient['name'] ?? '', 'テスト') !== false) {
+                                        continue;
+                                    }
+                                    
+                                    // サブ会員の場合、非公開の患者をスキップ
+                                    if ($userRole === 'sub' && isset($patient['is_public']) && $patient['is_public'] === false) {
+                                        continue;
+                                    }
+                                    
+                                    $patientId = $patient['visitor_id'] ?? $patient['id'] ?? '';
+                                    $patientName = $patient['visitor_name'] ?? $patient['name'] ?? '不明';
+                                    $patientKana = $patient['kana'] ?? '';
+                                    $memberType = $patient['member_type'] ?? '';
+                                    $isPublic = $patient['is_public'] ?? true;
+                                    $lastVisit = $patient['last_visit'] ?? null;
+                                    $isNew = $patient['is_new'] ?? false;
+                                    
+                                    // 現在のユーザーかどうか判定
+                                    $isCurrentUser = ($patientId === $currentUserVisitorId);
+                                ?>
+                                <div class="patient-item flex items-center space-x-3 p-3 border rounded-md cursor-pointer transition-all border-gray-200 hover:bg-slate-50" 
+                                     data-patient-id="<?php echo htmlspecialchars($patientId); ?>">
+                                    <input type="checkbox" class="patient-checkbox" data-patient-id="<?php echo htmlspecialchars($patientId); ?>">
+                                    <div class="flex-1 cursor-pointer">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <span class="font-medium"><?php echo htmlspecialchars($patientName); ?></span>
+                                                <?php if ($patientKana): ?>
+                                                    <span class="text-xs text-gray-500 ml-1">(<?php echo htmlspecialchars($patientKana); ?>)</span>
+                                                <?php endif; ?>
+                                                <?php if ($lastVisit): ?>
+                                                    <span class="text-xs text-gray-500 ml-2">(最終来院: <?php echo htmlspecialchars($lastVisit); ?>)</span>
+                                                <?php endif; ?>
+                                                <?php if ($isNew): ?>
+                                                    <span class="text-xs text-green-600 ml-2">(新規)</span>
+                                                <?php endif; ?>
+                                                <?php if ($userRole === 'main' && !$isPublic): ?>
+                                                    <span class="text-xs text-red-600 ml-2">(非公開)</span>
+                                                <?php endif; ?>
+                                                <?php if ($memberType === 'sub'): ?>
+                                                    <span class="text-xs text-blue-600 ml-2">(サブ会員)</span>
+                                                <?php elseif ($memberType === 'main' || $memberType === '本会員'): ?>
+                                                    <span class="text-xs text-green-600 ml-2">(本会員)</span>
+                                                <?php endif; ?>
+                                                <?php if ($isCurrentUser): ?>
+                                                    <span class="text-xs text-teal-600 ml-2">(ご本人)</span>
+                                                <?php endif; ?>
+                                            </div>
+                                            
+                                            <?php 
+                                            // トグルボタンの表示条件
+                                            // 1. 現在のユーザーが本会員
+                                            // 2. 対象がサブ会員
+                                            // 3. 現在のユーザー自身ではない
+                                            $shouldShowToggle = $userRole === 'main' && 
+                                                               ($memberType === 'sub' || $memberType === 'サブ会員') && 
+                                                               !$isCurrentUser;
+                                            
+                                            if ($shouldShowToggle): 
+                                            ?>
+                                            <div class="ml-2 flex items-center">
+                                                <span class="text-xs text-gray-500 mr-1">公開:</span>
+                                                <div class="relative">
+                                                    <label class="toggle-switch" for="toggle-<?php echo htmlspecialchars($patientId); ?>">
+                                                        <input type="checkbox" 
+                                                               id="toggle-<?php echo htmlspecialchars($patientId); ?>" 
+                                                               class="toggle-checkbox" 
+                                                               <?php echo $isPublic ? 'checked' : ''; ?>
+                                                               data-visitor-id="<?php echo htmlspecialchars($patientId); ?>"
+                                                               data-patient-name="<?php echo htmlspecialchars($patientName); ?>">
+                                                        <span class="toggle-slider"></span>
+                                                    </label>
+                                                    <span id="loading-<?php echo htmlspecialchars($patientId); ?>" 
+                                                          class="hidden text-xs text-blue-600 ml-2 flex items-center">
+                                                        <svg class="animate-spin h-3 w-3 mr-1 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                            <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                        </svg>
+                                                        処理中...
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
 
                         <button id="add-patient-btn" class="w-full border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 py-2 px-4 rounded-md flex items-center justify-center">
                             <span class="mr-2">➕</span> 新しい来院者を追加
@@ -802,6 +913,8 @@ try {
             companyInfo: <?php echo $companyInfo ? json_encode($companyInfo) : 'null'; ?>,
             userRole: '<?php echo htmlspecialchars($userRole); ?>',
             companyPatients: <?php echo json_encode($companyPatients); ?>,
+            companyPatientsCount: <?php echo count($companyPatients); ?>,
+            isCompanyPatientsEmpty: <?php echo empty($companyPatients) ? 'true' : 'false'; ?>,
             errorMessage: '<?php echo htmlspecialchars($errorMessage); ?>',
             // デバッグ情報
             debugMode: <?php echo DEBUG_MODE ? 'true' : 'false'; ?>,
@@ -2041,5 +2154,106 @@ try {
     </script>
     
     <script type="module" src="./js/main.js?v=20250128"></script>
+    
+    <!-- トグルボタンのイベントハンドラ -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // トグルボタンのイベントリスナーを設定
+            const toggleCheckboxes = document.querySelectorAll('.toggle-checkbox');
+            
+            toggleCheckboxes.forEach(function(checkbox) {
+                checkbox.addEventListener('change', async function(e) {
+                    const visitorId = this.getAttribute('data-visitor-id');
+                    const patientName = this.getAttribute('data-patient-name');
+                    const isPublic = this.checked;
+                    const loadingElement = document.getElementById('loading-' + visitorId);
+                    
+                    console.log('[Toggle] Changed:', visitorId, isPublic);
+                    
+                    try {
+                        // ローディング表示
+                        if (loadingElement) {
+                            const actionText = isPublic ? '公開にしています' : '非公開にしています';
+                            loadingElement.innerHTML = 
+                                '<svg class="animate-spin h-3 w-3 mr-1 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">' +
+                                    '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
+                                    '<path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>' +
+                                '</svg>' +
+                                patientName + 'の公開設定を' + actionText + '。';
+                            loadingElement.classList.remove('hidden');
+                        }
+                        
+                        // API呼び出し
+                        const response = await fetch('/reserve/api-bridge.php?action=updateVisitorPublicStatus', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({
+                                visitor_id: visitorId,
+                                is_public: isPublic
+                            })
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            // 成功メッセージ
+                            const successMessage = isPublic ? 
+                                patientName + 'の公開設定を公開に変更しました' : 
+                                patientName + 'の公開設定を非公開に変更しました';
+                            showStatusMessage(successMessage, 'success');
+                        } else {
+                            // エラーの場合、チェックボックスを元に戻す
+                            checkbox.checked = !isPublic;
+                            const errorMessage = result.error?.message || result.message || '公開設定の変更に失敗しました';
+                            showStatusMessage(errorMessage, 'error');
+                        }
+                    } catch (error) {
+                        console.error('[Toggle] Error:', error);
+                        checkbox.checked = !isPublic;
+                        showStatusMessage('システムエラーが発生しました', 'error');
+                    } finally {
+                        // ローディング非表示
+                        if (loadingElement) {
+                            loadingElement.classList.add('hidden');
+                        }
+                    }
+                });
+            });
+            
+            // ステータスメッセージ表示関数
+            function showStatusMessage(message, type) {
+                // 既存のメッセージがあれば削除
+                const existingMessage = document.getElementById('status-message');
+                if (existingMessage) {
+                    existingMessage.remove();
+                }
+
+                const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+                const icon = type === 'success' ? 
+                    '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>' :
+                    '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>';
+
+                const statusDiv = document.createElement('div');
+                statusDiv.id = 'status-message';
+                statusDiv.className = 'fixed top-20 right-4 ' + bgColor + ' text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center';
+                statusDiv.innerHTML = `
+                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        ${icon}
+                    </svg>
+                    <span>${message}</span>
+                `;
+
+                document.body.appendChild(statusDiv);
+
+                // 3秒後に自動的に削除
+                setTimeout(function() {
+                    statusDiv.remove();
+                }, 3000);
+            }
+        });
+    </script>
 </body>
 </html>

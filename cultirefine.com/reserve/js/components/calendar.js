@@ -6,6 +6,8 @@ export function Calendar(containerId, onDateSelect, options = {}) {
     this.onDateSelect = onDateSelect;
     this.onMonthChange = options.onMonthChange || null; // 月変更時のコールバック
     this.currentDate = new Date();
+    // 現在月の1日から開始
+    this.currentDate.setDate(1);
     this.selectedDate = null;
     this.containerId = containerId;
     this.availableSlots = {}; // 日付ごとの空き情報
@@ -68,20 +70,25 @@ Calendar.prototype.render = function() {
         var isSelected = this.selectedDate && date.toDateString() === this.selectedDate.toDateString();
         var availability = this.availableSlots[dateKey];
         
+        // 3ヶ月先までの制限を追加
+        var threeMonthsLater = new Date(today);
+        threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
+        var isBeyondThreeMonths = date > threeMonthsLater;
+        
         var className = 'calendar-day relative w-10 h-10 flex flex-col items-center justify-center text-sm border-none bg-none rounded-md cursor-pointer transition-all';
         if (isToday) className += ' today bg-gray-100';
         if (isSelected) className += ' selected bg-teal-500 text-white';
-        if (isPast) className += ' disabled text-gray-400 cursor-not-allowed opacity-50';
-        if (!isPast && !isSelected) className += ' hover:bg-gray-100';
+        if (isPast || isBeyondThreeMonths) className += ' disabled text-gray-400 cursor-not-allowed opacity-50';
+        if (!isPast && !isBeyondThreeMonths && !isSelected) className += ' hover:bg-gray-100';
 
         html += '<button class="' + className + '" ';
         html += 'onclick="calendarSelectDate(\'' + this.containerId + '\', ' + year + ', ' + month + ', ' + day + ')"';
-        if (isPast) html += ' disabled';
+        if (isPast || isBeyondThreeMonths) html += ' disabled';
         html += '>';
         html += '<span>' + day + '</span>';
         
         // 空き情報のインジケーター（赤×/緑○マーク）
-        if (availability && availability.hasData && !isPast) {
+        if (availability && availability.hasData && !isPast && !isBeyondThreeMonths) {
             var indicatorHtml = '';
             if (availability.hasAvailableSlots) {
                 // 空きあり: 緑の○マーク

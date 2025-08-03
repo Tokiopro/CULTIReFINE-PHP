@@ -160,10 +160,15 @@ export async function updateMenuCalendarScreen() {
     }, {
         showAvailability: true,
         onMonthChange: function(newDate) {
+            console.log('[Calendar] Month changed to:', newDate);
             // 月が変更された時に空き情報を再取得
+            var actualPatientId = currentPatient.id === 'current-user' 
+                ? (window.APP_CONFIG?.currentUserVisitorId || currentPatient.id)
+                : currentPatient.id;
             var selectedMenus = appState.selectedTreatments[currentPatient.id] || [];
+            console.log('[Calendar] Month change - patientId:', actualPatientId, 'selectedMenus:', selectedMenus.length);
             if (selectedMenus.length > 0) {
-                loadCalendarAvailability(currentPatient.id, selectedMenus);
+                loadCalendarAvailability(actualPatientId, selectedMenus);
             }
         }
     });
@@ -171,7 +176,7 @@ export async function updateMenuCalendarScreen() {
     // 選択されたメニューがある場合は空き情報を取得
     var selectedMenus = appState.selectedTreatments[currentPatient.id] || [];
     if (selectedMenus.length > 0) {
-        await loadCalendarAvailability(currentPatient.id, selectedMenus);
+        await loadCalendarAvailability(actualPatientId, selectedMenus);
     }
     
     // Restore selections
@@ -258,16 +263,36 @@ export function selectDate(patientId, date) {
 }
 
 export function checkAndUpdateTimeSlots(patientId, date) {
+    console.log('[CheckTimeSlots] ========== START ==========');
     console.log('[CheckTimeSlots] Called for patient:', patientId, 'date:', date);
+    console.log('[CheckTimeSlots] All keys in selectedTreatments:', Object.keys(appState.selectedTreatments));
+    console.log('[CheckTimeSlots] Full appState.selectedTreatments:', JSON.stringify(appState.selectedTreatments));
     
     // 複数メニュー対応
     var selectedMenus = appState.selectedTreatments[patientId] || [];
     var pairRoom = appState.pairRoomDesired[patientId] || false;
     
-    console.log('[CheckTimeSlots] Selected menus:', selectedMenus.length, 'pairRoom:', pairRoom);
+    console.log('[CheckTimeSlots] Selected menus for', patientId, ':', selectedMenus.length, 'pairRoom:', pairRoom);
+    if (selectedMenus.length > 0) {
+        console.log('[CheckTimeSlots] Menu details:', selectedMenus.map(m => ({ id: m.id, name: m.name })));
+    }
     
     if (selectedMenus.length === 0 || !date) {
         console.log('[CheckTimeSlots] Missing menus or date, returning early');
+        
+        // メニューが選択されていない場合のメッセージ表示
+        if (selectedMenus.length === 0 && date) {
+            showAlert('slot-availability-message', 'warning', 
+                     'メニュー未選択', 
+                     'まず施術メニューを選択してください。');
+        }
+        
+        // 時間スロットを非表示
+        var timeSlotsContainer = document.getElementById('time-slots');
+        if (timeSlotsContainer) {
+            timeSlotsContainer.classList.add('hidden');
+        }
+        
         return Promise.resolve();
     }
 
@@ -350,8 +375,10 @@ export function checkAndUpdateTimeSlots(patientId, date) {
             timeSlotsContainer.classList.add('hidden');
             console.log('[CheckTimeSlots] No available times, hiding time slots container');
         }
+        console.log('[CheckTimeSlots] ========== END ==========');
     }).catch(function(error) {
         console.error('[CheckTimeSlots] Error in slot availability check:', error);
+        console.log('[CheckTimeSlots] ========== END (ERROR) ==========');
     });
 }
 
@@ -384,35 +411,57 @@ async function displayPatientMenus(patientId) {
     container.innerHTML = '<div class="text-center py-4">メニューを読み込んでいます...</div>';
     
     // メニュー選択時のコールバック
-    const onMenuSelect = (menu, patientId, isChecked) => {
+    const onMenuSelect = (menu, menuPatientId, isChecked) => {
+        console.log('[MenuSelect] ========== START ==========');
+        console.log('[MenuSelect] Menu:', menu.name || menu.id, 'Patient ID from menu:', menuPatientId, 'isChecked:', isChecked);
+        console.log('[MenuSelect] Current patient:', currentPatient.name, 'ID:', currentPatient.id);
+        console.log('[MenuSelect] actualPatientId:', actualPatientId);
+        
+        // current-userの場合はactualPatientIdを使用する
+        const statePatientId = currentPatient.id; // 状態管理には常にcurrent-userを使用
+        
+        console.log('[MenuSelect] State patient ID to use:', statePatientId);
+        console.log('[MenuSelect] Current appState.selectedTreatments:', Object.keys(appState.selectedTreatments));
+        
         // 選択されたメニューを配列に追加
-        if (!appState.selectedTreatments[patientId]) {
-            appState.selectedTreatments[patientId] = [];
+        if (!appState.selectedTreatments[statePatientId]) {
+            appState.selectedTreatments[statePatientId] = [];
+            console.log('[MenuSelect] Created new selectedTreatments array for:', statePatientId);
         }
-        if (!appState.selectedMenuIds[patientId]) {
-            appState.selectedMenuIds[patientId] = [];
+        if (!appState.selectedMenuIds[statePatientId]) {
+            appState.selectedMenuIds[statePatientId] = [];
         }
         
         if (isChecked) {
             // チェックされた場合は追加
-            const exists = appState.selectedTreatments[patientId].some(t => t.id === menu.id);
+            const exists = appState.selectedTreatments[statePatientId].some(t => t.id === menu.id);
             if (!exists) {
-                appState.selectedTreatments[patientId].push(menu);
-                appState.selectedMenuIds[patientId].push(menu.id);
+                appState.selectedTreatments[statePatientId].push(menu);
+                appState.selectedMenuIds[statePatientId].push(menu.id);
+                console.log('[MenuSelect] Added menu to state. Total menus:', appState.selectedTreatments[statePatientId].length);
             }
         } else {
             // チェック解除された場合は削除
-            appState.selectedTreatments[patientId] = appState.selectedTreatments[patientId].filter(t => t.id !== menu.id);
-            appState.selectedMenuIds[patientId] = appState.selectedMenuIds[patientId].filter(id => id !== menu.id);
+            appState.selectedTreatments[statePatientId] = appState.selectedTreatments[statePatientId].filter(t => t.id !== menu.id);
+            appState.selectedMenuIds[statePatientId] = appState.selectedMenuIds[statePatientId].filter(id => id !== menu.id);
+            console.log('[MenuSelect] Removed menu from state. Total menus:', appState.selectedTreatments[statePatientId].length);
         }
         
-        updateSelectedMenusDisplay(patientId);
+        updateSelectedMenusDisplay(statePatientId);
         updateNextButtonState();
         
         // メニューが選択されたらカレンダーの空き情報を更新
-        if (appState.selectedTreatments[patientId].length > 0) {
-            loadCalendarAvailability(patientId, appState.selectedTreatments[patientId]);
+        if (appState.selectedTreatments[statePatientId].length > 0) {
+            // APIにはactualPatientIdを使用
+            loadCalendarAvailability(actualPatientId, appState.selectedTreatments[statePatientId]);
         }
+        
+        console.log('[MenuSelect] Final state:', {
+            statePatientId: statePatientId,
+            selectedMenus: appState.selectedTreatments[statePatientId]?.length || 0,
+            menuIds: appState.selectedMenuIds[statePatientId] || []
+        });
+        console.log('[MenuSelect] ========== END ==========');
     };
     
     // 会社IDを取得
@@ -571,6 +620,8 @@ async function loadCalendarAvailability(patientId, selectedMenus) {
     const calendar = calendars['calendar'];
     if (!calendar) return;
     
+    console.log('[LoadCalendarAvailability] Called with patientId:', patientId, 'selectedMenus:', selectedMenus);
+    
     // ローディング表示
     const calendarLoadingMsg = document.getElementById('calendar-loading-message');
     if (calendarLoadingMsg) {
@@ -592,14 +643,25 @@ async function loadCalendarAvailability(patientId, selectedMenus) {
     calendar.setLoading(true);
     
     try {
-        // カレンダーの現在表示されている月の初日から30日分の空き情報を取得
-        const currentDate = calendar.currentDate;
-        const startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+        // カレンダーの現在表示されている月の初日を取得
+        const calendarMonth = calendar.currentDate;
+        const monthStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+        
+        // 今日の日付を取得
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // 開始日は月の初日と今日の遅い方を使用
+        const startDate = monthStart > today ? monthStart : today;
         const dateKey = calendar.formatDateKey(startDate);
+        
+        console.log('[LoadCalendarAvailability] Start date:', dateKey, 'Calendar month:', calendarMonth.toISOString());
         
         // 複数メニューの場合、メニューIDの配列と合計時間を準備
         const menuIds = selectedMenus.map(menu => menu.id || menu.menu_id);
         const totalDuration = selectedMenus.reduce((sum, menu) => sum + (menu.duration_minutes || menu.duration || 0), 0);
+        
+        console.log('[LoadCalendarAvailability] Menu IDs:', menuIds, 'Total duration:', totalDuration);
         
         // API呼び出し（複数メニュー対応）
         const result = await getAvailableSlots(patientId, menuIds, dateKey, 30, {

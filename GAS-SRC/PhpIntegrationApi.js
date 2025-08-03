@@ -2461,11 +2461,13 @@ function createCompanyVisitor(requestData) {
     Logger.log('createCompanyVisitor開始');
     Logger.log('リクエストデータ: ' + JSON.stringify(requestData));
     
-    // 必須パラメータの検証
-    const requiredFields = ['last_name', 'first_name', 'last_name_kana', 'first_name_kana', 'publicity_status'];
+    // 必須パラメータの検証（簡素化：visitor_idと会社情報のみ必須）
+    const requiredFields = ['visitor_id', 'company_id', 'full_name'];
     const missingFields = requiredFields.filter(field => !requestData[field]);
     
     if (missingFields.length > 0) {
+      Logger.log('Missing required fields: ' + missingFields.join(', '));
+      Logger.log('Received data keys: ' + Object.keys(requestData).join(', '));
       return {
         status: 'error',
         error: {
@@ -2476,17 +2478,19 @@ function createCompanyVisitor(requestData) {
       };
     }
     
-    // 公開ステータスの検証
-    const validPublicityStatus = ['public', 'private'];
-    if (!validPublicityStatus.includes(requestData.publicity_status)) {
-      return {
-        status: 'error',
-        error: {
-          code: 'INVALID_REQUEST',
-          message: '公開ステータスの値が不正です',
-          details: 'publicity_statusは public または private を指定してください'
-        }
-      };
+    // 公開ステータスの検証（デフォルト値設定）
+    const validPublicityStatus = ['公開', '非公開', 'public', 'private'];
+    let publicityStatus = requestData.publicity_status || '非公開';
+    
+    // 英語形式を日本語形式に変換
+    if (publicityStatus === 'public') {
+      publicityStatus = '公開';
+    } else if (publicityStatus === 'private') {
+      publicityStatus = '非公開';
+    }
+    
+    if (!validPublicityStatus.includes(publicityStatus)) {
+      publicityStatus = '非公開'; // デフォルト値
     }
     
     // 性別の変換（仕様書形式 → Medical Force API形式）
@@ -2527,134 +2531,83 @@ function createCompanyVisitor(requestData) {
       }
     }
     
-    // メールアドレスの重複チェック
-    if (requestData.email) {
-      const visitorService = new VisitorService();
-      const existingVisitors = visitorService.searchVisitors({ email: requestData.email });
-      if (existingVisitors.length > 0) {
-        return {
-          status: 'error',
-          error: {
-            code: 'DUPLICATE_EMAIL',
-            message: 'メールアドレスが既に登録済み',
-            details: `メールアドレス ${requestData.email} は既に使用されています`
-          }
-        };
-      }
-    }
-    
-    // Medical Force API用のデータを準備
-    const apiRequestData = {
-      name: requestData.last_name + ' ' + requestData.first_name,
-      kana: requestData.last_name_kana + ' ' + requestData.first_name_kana,
-      first_name: requestData.first_name,
-      last_name: requestData.last_name,
-      first_name_kana: requestData.first_name_kana,
-      last_name_kana: requestData.last_name_kana,
-      gender: gender,
-      birthday: requestData.birth_date || null,
-      email: requestData.email || '',
-      phone: requestData.phone || '',
-      zipcode: '',
-      address: ''
-    };
-    
-    Logger.log('Medical Force APIリクエストデータ: ' + JSON.stringify(apiRequestData));
-    
-    // VisitorServiceを使用して来院者を登録
-    Logger.log('VisitorService.createVisitor 呼び出し開始');
-    const visitorService = new VisitorService();
-    const createdVisitor = visitorService.createVisitor(apiRequestData);
-    Logger.log('VisitorService.createVisitor 呼び出し完了');
-    Logger.log('作成された来院者: ' + JSON.stringify(createdVisitor));
-    
-    if (!createdVisitor || !createdVisitor.visitor_id) {
-      return {
-        status: 'error',
-        error: {
-          code: 'API_ERROR',
-          message: '来院者の登録に失敗しました',
-          details: 'Medical Force APIからの応答が不正です'
-        }
-      };
-    }
-    
-    const visitorId = createdVisitor.visitor_id;
+    // ユーザー提案のアーキテクチャ：Medical Force API は PHP側で完了済み
+    // GAS側では PHP側から送信された visitor_id と完全なデータを受け取って会社別来院者情報に登録のみ実行
+    const visitorId = requestData.visitor_id;
     Logger.log('来院者登録成功: visitor_id=' + visitorId);
     
-    // 会社情報を取得
-    let companyInfo = null;
-    let companyName = null;
+    // PHP側から送信された完全なデータを使用して会社別来院者情報に登録
+    // ユーザー提供のヘッダー構造に合わせたデータ登録
+    const companyId = requestData.company_id || '';
+    const companyName = requestData.company_name || '';
     
-    if (requestData.company_id) {
-      // 会社IDが指定されている場合、会社情報を取得
-      const companyCacheService = globalCompanyCacheService || new CompanyCacheService();
-      const companies = companyCacheService.getCompanies();
-      const company = companies.find(c => c['会社ID'] === requestData.company_id);
+    if (companyId && companyName) {
+      Logger.log(`会社別来院者登録開始: ${companyId} - ${companyName}`);
       
-      if (!company) {
-        return {
-          status: 'error',
-          error: {
-            code: 'INVALID_COMPANY',
-            message: '指定された会社IDが存在しない',
-            details: `会社ID ${requestData.company_id} は存在しません`
-          }
-        };
-      }
-      
-      companyName = company['会社名'];
-      companyInfo = {
-        company_id: requestData.company_id,
-        company_name: companyName,
-        member_type: requestData.member_type === 'main' ? 'main' : 'sub'
-      };
-      
-      // 会社別来院者管理シートに追加
+      // 会社別来院者管理シートに登録（ユーザー提供のヘッダー構造に対応）
       const companyVisitorService = new CompanyVisitorService();
       const companyVisitorData = {
+        companyId: companyId,
+        companyName: companyName,
         visitorId: visitorId,
-        gender: gender,
-        lineId: '連携無し',
-        memberType: requestData.member_type === 'main' ? '本会員' : 'サブ会員',
-        isPublic: requestData.publicity_status === 'public',
-        position: requestData.notes || ''
+        fullName: requestData.full_name || '',
+        lineId: requestData.line_id || '',
+        memberType: requestData.member_type || 'normal',
+        publicityStatus: publicityStatus,
+        position: requestData.position || '',
+        registrationDate: requestData.registration_date || new Date().toISOString(),
+        updatedDate: requestData.updated_date || new Date().toISOString(),
+        expiryDate: requestData.expiry_date || '',
+        isUsed: requestData.is_used || 'false',
+        lineDisplayName: requestData.line_display_name || '',
+        linkDate: requestData.link_date || new Date().toISOString(),
+        url: requestData.url || '',
+        connectionStatus: requestData.connection_status || 'active',
+        lineConnectionUrl: requestData.line_connection_url || '',
+        status: requestData.status || 'active',
+        createdDate: requestData.created_date || new Date().toISOString(),
+        linkUrl: requestData.link_url || '',
+        notes: requestData.notes || ''
       };
       
-      const addResult = companyVisitorService.addVisitorToCompany(
-        requestData.company_id,
-        companyName,
-        companyVisitorData
-      );
-      
-      if (!addResult.success) {
-        Logger.log('会社別来院者管理への追加失敗: ' + addResult.error);
-        // Medical Force APIには登録済みなので、警告として処理
+      try {
+        const addResult = companyVisitorService.addCompanyVisitorWithFullData(companyVisitorData);
+        if (!addResult.success) {
+          Logger.log('会社別来院者管理への追加失敗: ' + addResult.error);
+          return {
+            status: 'error',
+            error: {
+              code: 'COMPANY_VISITOR_ADD_FAILED',
+              message: '会社別来院者情報の登録に失敗しました',
+              details: addResult.error
+            }
+          };
+        }
+        Logger.log('会社別来院者登録成功');
+      } catch (addError) {
+        Logger.log('会社別来院者登録エラー: ' + addError.toString());
+        // 既存のメソッドが利用できない場合は、従来の方法で登録
+        const fallbackData = {
+          visitorId: visitorId,
+          gender: 'other',
+          lineId: requestData.line_id || '連携無し',
+          memberType: requestData.member_type || 'normal',
+          isPublic: publicityStatus === '公開',
+          position: requestData.position || ''
+        };
+        
+        const fallbackResult = companyVisitorService.addVisitorToCompany(
+          companyId,
+          companyName,
+          fallbackData
+        );
+        
+        if (!fallbackResult.success) {
+          Logger.log('会社別来院者管理への追加失敗（フォールバック）: ' + fallbackResult.error);
+        }
       }
     } else {
-      // 会社IDが指定されていない場合でも、デフォルト会社に同伴者として登録
-      const defaultCompanyId = '1'; // デフォルト会社ID
-      const defaultCompanyName = '一般'; // デフォルト会社名
-      
-      const companyVisitorService = new CompanyVisitorService();
-      const companyVisitorData = {
-        visitorId: visitorId,
-        gender: gender,
-        lineId: '連携無し',
-        memberType: '同伴者',
-        isPublic: requestData.publicity_status === 'public',
-        position: requestData.notes || ''
-      };
-      
-      const addResult = companyVisitorService.addVisitorToCompany(
-        defaultCompanyId,
-        defaultCompanyName,
-        companyVisitorData
-      );
-      
-      if (!addResult.success) {
-        Logger.log('会社別来院者管理への追加失敗: ' + addResult.error);
-      }
+      Logger.log('会社情報が不足しているため、会社別来院者登録をスキップ');
     }
     
     // 成功レスポンス（仕様書形式）
@@ -2662,17 +2615,21 @@ function createCompanyVisitor(requestData) {
       status: 'success',
       data: {
         visitor_id: visitorId,
-        patient_name: requestData.last_name + ' ' + requestData.first_name,
+        patient_name: requestData.full_name || '',
         email: requestData.email || '',
         phone: requestData.phone || '',
-        publicity_status: requestData.publicity_status,
-        created_at: createdVisitor.created_at || new Date().toISOString()
+        publicity_status: publicityStatus,
+        created_at: new Date().toISOString()
       }
     };
     
     // 会社情報がある場合は追加
-    if (companyInfo) {
-      response.data.company_info = companyInfo;
+    if (companyId && companyName) {
+      response.data.company_info = {
+        company_id: companyId,
+        company_name: companyName,
+        member_type: requestData.member_type || 'normal'
+      };
     }
     
     Logger.log('createCompanyVisitor完了: ' + JSON.stringify(response));

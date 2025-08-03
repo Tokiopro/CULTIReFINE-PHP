@@ -12,6 +12,9 @@ export function initPatientSelectionScreen() {
     var description = document.getElementById('patient-selection-description');
 
     if (!pairModeSwitch || !proceedBtn || !addPatientBtn || !description) return;
+    
+    // PHPで生成された患者アイテムにイベントを設定
+    setupPatientItemEvents();
 
     // appStateから会社別来院者データを取得（GAS API経由）
     // appState.allPatientsは既にgas-api.jsのmapGasDataToAppStateで設定されている
@@ -134,6 +137,46 @@ export function updatePatientsList() {
     var container = document.getElementById('patients-list');
     if (!container) return;
     
+    // PHPで生成されたHTMLがある場合は保持
+    var isPhpGenerated = container.hasAttribute('data-php-generated');
+    var hasPhpGeneratedContent = container.querySelector('.patient-item[data-patient-id]');
+    var hasLoadingIndicator = container.querySelector('#loading-company-visitors');
+    
+    // デバッグ情報
+    console.log('[updatePatientsList] 状態確認:', {
+        isPhpGenerated: isPhpGenerated,
+        hasPhpGeneratedContent: !!hasPhpGeneratedContent,
+        hasLoadingIndicator: !!hasLoadingIndicator,
+        isLoadingCompanyVisitors: window.isLoadingCompanyVisitors,
+        companyPatientsEmpty: window.APP_CONFIG ? window.APP_CONFIG.isCompanyPatientsEmpty : 'unknown',
+        allPatientsCount: appState.allPatients.length
+    });
+    
+    // PHPで生成されたコンテンツがあり、かつローディング中でない場合
+    // ただし、ローディング表示しかない場合はJavaScriptで再生成
+    if ((isPhpGenerated || hasPhpGeneratedContent) && !window.isLoadingCompanyVisitors && !hasLoadingIndicator) {
+        console.log('[updatePatientsList] PHP生成コンテンツを保持');
+        
+        // イベントリスナーを設定
+        setupPatientItemEvents();
+        return;
+    }
+    
+    // ローディング表示のみでデータがある場合はJavaScriptで生成
+    if (hasLoadingIndicator && appState.allPatients.length > 0 && !window.isLoadingCompanyVisitors) {
+        console.log('[updatePatientsList] ローディング表示をJavaScript生成コンテンツに置き換え');
+        // JavaScriptで生成するために続行
+    } else if ((isPhpGenerated || hasPhpGeneratedContent || hasLoadingIndicator) && !window.isLoadingCompanyVisitors) {
+        return;
+    }
+    
+    // ローディング中でかつローディングインジケータがある場合も保持
+    if (window.isLoadingCompanyVisitors && hasLoadingIndicator) {
+        console.log('[updatePatientsList] ローディング中のためスキップ');
+        return;
+    }
+    
+    // JavaScriptでの更新が必要な場合のみクリア
     container.innerHTML = '';
 
     // ログインユーザーを最初に追加
@@ -539,6 +582,138 @@ async function updateVisitorPublicStatus(visitorId, isPublic, patientName = '') 
             loadingElement.classList.add('hidden');
         }
     }
+}
+
+/**
+ * PHPで生成された患者アイテムにイベントを設定
+ */
+function setupPatientItemEvents() {
+    console.log('[setupPatientItemEvents] 開始');
+    
+    // 全ての患者アイテムを取得
+    var patientItems = document.querySelectorAll('.patient-item[data-patient-id]');
+    console.log('[setupPatientItemEvents] 患者アイテム数:', patientItems.length);
+    
+    patientItems.forEach(function(item) {
+        var patientId = item.getAttribute('data-patient-id');
+        var checkbox = item.querySelector('.patient-checkbox');
+        
+        if (!item.hasAttribute('data-event-attached')) {
+            item.setAttribute('data-event-attached', 'true');
+            
+            // アイテム全体のクリックイベント
+            item.addEventListener('click', function(e) {
+                // トグルボタンやチェックボックス自体がクリックされた場合はスキップ
+                if (e.target.closest('.toggle-switch') || e.target.classList.contains('patient-checkbox')) {
+                    return;
+                }
+                
+                console.log('[Patient Click] ID:', patientId);
+                
+                // 患者データを構築
+                var patientData = {
+                    id: patientId,
+                    name: item.querySelector('.font-medium').textContent,
+                    kana: '',
+                    gender: '',
+                    is_public: true,
+                    lastVisit: null,
+                    isNew: false,
+                    isVisible: true,
+                    member_type: ''
+                };
+                
+                // member_typeを判定
+                if (item.textContent.includes('(本会員)')) {
+                    patientData.member_type = 'main';
+                } else if (item.textContent.includes('(サブ会員)')) {
+                    patientData.member_type = 'sub';
+                }
+                
+                // appState.allPatientsに追加（存在しない場合）
+                if (!appState.allPatients.find(p => p.id === patientId)) {
+                    appState.allPatients.push(patientData);
+                }
+                
+                // ペアモードの制限チェック
+                var disabled = appState.isPairBookingMode && 
+                              appState.selectedPatientsForBooking.length >= 2 && 
+                              !appState.selectedPatientsForBooking.some(function(p) { return p.id === patientId; });
+                
+                if (disabled) {
+                    alert("ペア予約では2名まで選択できます。");
+                } else {
+                    togglePatientSelection(patientId);
+                    
+                    // チェックボックスの状態を更新
+                    if (checkbox) {
+                        var isSelected = appState.selectedPatientsForBooking.some(p => p.id === patientId);
+                        checkbox.checked = isSelected;
+                    }
+                    
+                    // UIの更新
+                    updatePatientItemUI(item, patientId);
+                }
+            });
+            
+            // チェックボックスの変更イベント
+            if (checkbox) {
+                checkbox.addEventListener('change', function(e) {
+                    e.stopPropagation();
+                    console.log('[Checkbox Change] ID:', patientId);
+                    togglePatientSelection(patientId);
+                    updatePatientItemUI(item, patientId);
+                });
+            }
+        }
+    });
+    
+    // トグルボタンのイベントも設定
+    attachToggleEventListeners();
+}
+
+/**
+ * 患者アイテムのUIを更新
+ */
+function updatePatientItemUI(item, patientId) {
+    var isSelected = appState.selectedPatientsForBooking.some(p => p.id === patientId);
+    
+    if (isSelected) {
+        item.classList.add('selected', 'bg-teal-50', 'border-teal-500');
+        item.classList.remove('border-gray-200', 'hover:bg-slate-50');
+    } else {
+        item.classList.remove('selected', 'bg-teal-50', 'border-teal-500');
+        item.classList.add('border-gray-200', 'hover:bg-slate-50');
+    }
+    
+    updateProceedButton();
+}
+
+/**
+ * トグルボタンのイベントリスナーを設定
+ */
+function attachToggleEventListeners() {
+    // PHPで生成されたトグルボタンにイベントリスナーが設定されているか確認
+    var toggleCheckboxes = document.querySelectorAll('.toggle-checkbox');
+    
+    toggleCheckboxes.forEach(function(checkbox) {
+        // 既にイベントリスナーが設定されているか確認
+        if (!checkbox.hasAttribute('data-listener-attached')) {
+            checkbox.setAttribute('data-listener-attached', 'true');
+            
+            checkbox.addEventListener('click', function(e) {
+                e.stopPropagation(); // 親要素のクリックイベントを防ぐ
+            });
+            
+            checkbox.addEventListener('change', function(e) {
+                var visitorId = this.getAttribute('data-visitor-id');
+                var patientName = this.getAttribute('data-patient-name');
+                var isPublic = this.checked;
+                console.log('Toggle changed:', visitorId, isPublic); // デバッグ用
+                updateVisitorPublicStatus(visitorId, isPublic, patientName);
+            });
+        }
+    });
 }
 
 /**
