@@ -221,7 +221,7 @@ function formatJapaneseDate($isoDate) {
   include_once '../assets/inc/footer.php'; // footer.phpの内容を読み込む
 ?>
 <!-- デバッグ情報（開発環境のみ） -->
-<?php /*if (defined('DEBUG_MODE') && DEBUG_MODE): ?>
+<?php if (defined('DEBUG_MODE') && DEBUG_MODE): ?>
     <div class="fixed bottom-4 right-4 bg-gray-800 text-white p-2 text-xs rounded max-w-sm max-h-96 overflow-y-auto">
         <p><strong>書類一覧デバッグ情報</strong></p>
         <p>LINE ID: <?php echo substr($lineUserId, 0, 10); ?>...</p>
@@ -230,7 +230,7 @@ function formatJapaneseDate($isoDate) {
         <p>Visitor ID: <?php echo $visitorId ? substr($visitorId, 0, 15) . '...' : 'なし'; ?></p>
         <p>書類件数: <?php echo $totalDocuments; ?>件</p>
 		<?php echo "<pre>";
-var_dump($docsInfo);
+var_dump($userInfo);
 echo "</pre>";
 ?>
         <p>エラー: <?php echo $errorMessage ?: 'なし'; ?></p>
@@ -240,7 +240,7 @@ echo "</pre>";
         <pre class="text-xs bg-gray-900 p-2 rounded overflow-auto max-h-32"><?php echo htmlspecialchars(json_encode($folders, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></pre>
         <?php endif; ?>
     </div>
-<?php endif; */?>
+<?php endif; ?>
 <script type="text/javascript" src="document_toggle.js"></script>
 </body>
 </html>

@@ -61,9 +61,9 @@ try {
     
     if (isset($userInfo['status']) && $userInfo['status'] === 'success' && isset($userInfo['data'])) {
 		// 会員情報情報（新形式対応）
-        $membershipInfo = $userInfo['data']['membershipInfo'] ?? $visitor['member_type'] === true ? 'main' : 'sub' ?? null;
+        $membershipInfo = $userInfo['data']['companyVisitors'] ?? null;
 		if ($membershipInfo) {
-            $memberType = $membershipInfo['memberType'] ?? 'main';
+            $memberType = $membershipInfo[0]['memberType'] ?? null;
         }
         // 会社情報（新形式対応）
         $companyData = $userInfo['data']['company'] ?? null;
@@ -77,7 +77,10 @@ try {
         }
         
         // チケット情報を取得（新形式対応）
-        $tickets = $userInfo['data']['ticketInfo'] ?? $userInfo['data']['membership_info']['tickets'] ?? [];
+        $tickets = $userInfo['data']['ticketInfo'] ?? [];
+        
+        // チケット使用履歴を取得（新形式対応）
+        $ticketHistory = $userInfo['data']['ticketHistory'] ?? [];
         
         // デバッグ: チケット情報の構造を確認
         if (DEBUG_MODE && !empty($tickets)) {
@@ -88,7 +91,7 @@ try {
         foreach ($tickets as $ticket) {
             switch ($ticket['treatment_id']) {
                 case 'stem_cell':
-                    $ticketInfo['stem_cell'] = [
+                    $tickets['stem_cell'] = [
                         'name' => '幹細胞培養上清液点滴',
                         'remaining' => $ticket['remaining_count'] ?? 0,
                         'used' => $ticket['used_count'] ?? 0,
@@ -98,7 +101,7 @@ try {
                     ];
                     break;
                 case 'treatment':
-                    $ticketInfo['beauty'] = [
+                    $tickets['beauty'] = [
                         'name' => '美容施術',
                         'remaining' => $ticket['remaining_count'] ?? 0,
                         'used' => $ticket['used_count'] ?? 0,
@@ -108,7 +111,7 @@ try {
                     ];
                     break;
                 case 'drip':
-                    $ticketInfo['injection'] = [
+                    $tickets['injection'] = [
                         'name' => '点滴・注射',
                         'remaining' => $ticket['remaining_count'] ?? 0,
                         'used' => $ticket['used_count'] ?? 0,
@@ -120,8 +123,6 @@ try {
             }
         }
         
-        // 予約履歴を取得（新形式対応）
-        $reservationHistory = $userInfo['data']['ReservationHistory'] ?? $userInfo['data']['reservation_history'] ?? [];
         
     } else {
         $errorMessage = 'チケット情報の取得に失敗しました。';
@@ -135,90 +136,52 @@ try {
 
 // 最終利用日を計算
 $lastUsedDate = null;
-foreach ($ticketInfo as $info) {
-    if ($info['last_used'] && (!$lastUsedDate || $info['last_used'] > $lastUsedDate)) {
-        $lastUsedDate = $info['last_used'];
+foreach ($tickets as $info) {
+    if ($info['last_used_date'] && (!$lastUsedDate || $info['last_used_date'] > $lastUsedDate)) {
+        $lastUsedDate = $info['last_used_date'];
     }
 }
 
 // 予約済み・来院済みの予約を分類
-$reservedReservations = [];
-$usedReservations = [];
+$reservedTickets = [];
+$visitedTickets = [];
 $reservedCounts = [
     'stem_cell' => 0,
     'injection' => 0,
     'beauty' => 0
 ];
-$usedCounts = [
+$visitedCounts = [
     'stem_cell' => 0,
     'injection' => 0,
     'beauty' => 0
 ];
 
-foreach ($reservationHistory as $reservation) {
+foreach ($ticketHistory as $ticketsHis) {
     // 新形式のフィールド名に対応
-    $status = $reservation['reservestatus'] ?? $reservation['status'] ?? '';
-    $menuName = $reservation['reservename'] ?? $reservation['menu_name'] ?? '';
+    $status = $ticketsHis['status'] ?? '';
+    $menuName = $ticketsHis['menu_name'] ?? '';
     
     // 予約データを統一形式に変換
     $normalizedReservation = [
-        'patient_name' => $reservation['reservepatient'] ?? $reservation['patient_name'] ?? '',
-        'date' => $reservation['reservedate'] ?? $reservation['date'] ?? '',
-        'time' => $reservation['reservetime'] ?? $reservation['time'] ?? '',
-        'menu_name' => $menuName,
-        'category' => $reservation['category'] ?? '',
-        'notes' => $reservation['notes'] ?? '',
-        'status' => $status
+		'reservation_date' => $ticketsHis['reservation_date'],//予約時間
+			'company_id' => $ticketsHis['company_id'],//会社ID
+			'menu_name' => $ticketsHis['menu_name'],//メニュー名
+			'reservation_id' => $ticketsHis['reservation_id'],//予約ID
+			'status' => $ticketsHis['status'],//ステータス
+			'ticket_category' => $ticketsHis['ticket_category'],//チケットカテゴリ
+			'ticket_count' => $ticketsHis['ticket_count'],//チケット消費数
+			'visitor_name' => $ticketsHis['visitor_name'],//来院者名
+			'note' => $ticketsHis['note']//備考
     ];
     
-    if ($status === '予約' || $status === '予約済み' || $status === 'reserved') {
-        $reservedReservations[] = $normalizedReservation;
+    if ($status === '予約済み') {
+        $reservedTicketInfo[] = $normalizedReservation;
         // メニュータイプに基づいてカウント
         // TODO: 実際のメニューとチケットタイプのマッピングが必要
-    } elseif ($status === '完了' || $status === '来院済み' || $status === 'visited') {
-        $usedReservations[] = $normalizedReservation;
+    } else if ($status === '来院済み') {
+        $visitedTicketInfo[] = $normalizedReservation;
     }
 }
-
-// プランの総枚数を計算（付与数が無い場合は残数＋使用数で代替）
-$planTotalTickets = [
-    'stem_cell' => isset($ticketInfo['stem_cell']) ? 
-        ($ticketInfo['stem_cell']['granted'] ?: ($ticketInfo['stem_cell']['remaining'] + $ticketInfo['stem_cell']['used'])) : 0,
-    'injection' => isset($ticketInfo['injection']) ? 
-        ($ticketInfo['injection']['granted'] ?: ($ticketInfo['injection']['remaining'] + $ticketInfo['injection']['used'])) : 0,
-    'beauty' => isset($ticketInfo['beauty']) ? 
-        ($ticketInfo['beauty']['granted'] ?: ($ticketInfo['beauty']['remaining'] + $ticketInfo['beauty']['used'])) : 0
-];
-
-// 予約をチケットタイプ別にグループ化する関数
-function groupReservationsByTicketType($reservations) {
-    $grouped = [
-        'stem_cell' => [],
-        'injection' => [],
-        'beauty' => []
-    ];
-    
-    foreach ($reservations as $reservation) {
-        // メニュー名とカテゴリからチケットタイプを判定
-        $menuName = $reservation['menu_name'] ?? '';
-        $category = $reservation['category'] ?? '';
-        
-        if (strpos($menuName, '幹細胞') !== false || strpos($category, '幹細胞') !== false) {
-            $grouped['stem_cell'][] = $reservation;
-        } elseif (strpos($menuName, '点滴') !== false || strpos($menuName, '注射') !== false || 
-                  strpos($category, '点滴') !== false) {
-            $grouped['injection'][] = $reservation;
-        } elseif (strpos($menuName, '美容') !== false || strpos($menuName, '施術') !== false || 
-                  strpos($category, '美容') !== false) {
-            $grouped['beauty'][] = $reservation;
-        }
-    }
-    
-    return $grouped;
-}
-
-$groupedReserved = groupReservationsByTicketType($reservedReservations);
-$groupedUsed = groupReservationsByTicketType($usedReservations);
 
 ?>
 <!DOCTYPE html>
@@ -281,8 +244,7 @@ $groupedUsed = groupReservationsByTicketType($usedReservations);
 <!-- Header -->
 <header class="bg-teal-600 text-white p-4 shadow-md sticky top-0 z-50">
     <div class="container mx-auto flex justify-between items-center">
-        <h1 class="text-xl font-semibold">CLUTIREFINEクリニック<br class="sp">
-            チケット管理</h1>
+        <h1 class="text-xl font-semibold">CLUTIREFINEクリニック<br class="sp">チケット管理</h1>
         
         <!-- デスクトップ: ユーザー情報とナビゲーション -->
             <?php include_once '../assets/inc/navigation.php'; ?>
@@ -299,55 +261,101 @@ $groupedUsed = groupReservationsByTicketType($usedReservations);
           <?php echo htmlspecialchars($errorMessage); ?>
         </div>
       <?php else: ?>
-      <div id="c_name"><?php echo htmlspecialchars($companyName); ?><span><?php echo htmlspecialchars($memberType); ?></span>様</div>
+      <div id="c_name"><?php echo htmlspecialchars($companyName); ?>様</div>
       <div id="c_plan"><?php echo htmlspecialchars($companyPlan); ?></div>
       <a id="open_total">プランに含まれるチケット枚数を確認</a>
       <div class="ticket_cont_available">
         <h3>残り利用可能枚数</h3>
         <ul id="ticket_item1">
           <li>幹細胞培養上清液点滴</li>
-          <li><span><?php echo isset($ticketInfo['stem_cell']) ? $ticketInfo['stem_cell']['remaining'] : 0; ?></span>cc</li>
+          <li><span><?php echo isset($tickets['stem_cell']) ? $tickets['stem_cell']['remaining'] : 0; ?></span>cc</li>
         </ul>
         <ul id="ticket_item2">
           <li>点滴・注射</li>
-          <li><span><?php echo isset($ticketInfo['injection']) ? $ticketInfo['injection']['remaining'] : 0; ?></span>枚</li>
+          <li><span><?php echo isset($tickets['injection']) ? $tickets['injection']['remaining'] : 0; ?></span>枚</li>
         </ul>
         <ul id="ticket_item3">
           <li>美容施術</li>
-          <li><span><?php echo isset($ticketInfo['beauty']) ? $ticketInfo['beauty']['remaining'] : 0; ?></span>枚</li>
+          <li><span><?php echo isset($tickets['beauty']) ? $tickets['beauty']['remaining'] : 0; ?></span>枚</li>
         </ul>
       </div>
 		<?php if($memberType === 'main'): ?>
+		<?php
+// カテゴリー別カウント初期化
+$stemCellReservedCount = 0;
+$injectionReservedCount = 0;
+$beautyReservedCount = 0;
+
+// 配列をループしてカウント
+foreach ($reservedTicketInfo as $item) {
+    if ($item['ticket_category'] === "幹細胞培養上清液点滴") {
+        $stemCellReservedCount += $item['ticket_count'];
+    } elseif ($item['ticket_category'] === "点滴・注射") {
+        $injectionReservedCount += $item['ticket_count'];
+    } elseif ($item['ticket_category'] === "美容施術") {
+        $beautyReservedCount += $item['ticket_count'];
+    }
+}
+?>
       <div class="ticket_cont_reserve">
         <h3>予約済み枚数</h3>
         <ul id="ticket_item4">
           <li>幹細胞培養上清液点滴</li>
-          <li><span><?php echo $reservedCounts['stem_cell']; ?></span>cc</li>
+          <li><span><?php echo $stemCellReservedCount; ?></span>cc</li>
         </ul>
         <ul id="ticket_item5">
           <li>点滴・注射</li>
-          <li><span><?php echo $reservedCounts['injection']; ?></span>枚</li>
+          <li><span><?php echo $injectionReservedCount; ?></span>枚</li>
         </ul>
         <ul id="ticket_item6">
           <li>美容施術</li>
-          <li><span><?php echo $reservedCounts['beauty']; ?></span>枚</li>
+          <li><span><?php echo $beautyReservedCount; ?></span>枚</li>
         </ul>
 		  <a id="open_reserved">利用詳細はこちら</a>
       </div>
+		<?php
+// カテゴリー別カウント初期化
+$stemCellVisitedCount = 0;
+$injectionVisitedCount = 0;
+$beautyVisitedCount = 0;
+
+// 配列をループしてカウント
+foreach ($visitedTicketInfo as $item) {
+    if ($item['ticket_category'] === "幹細胞培養上清液点滴") {
+        $stemCellVisitedCount += $item['ticket_count'];
+    } elseif ($item['ticket_category'] === "点滴・注射") {
+        $injectionVisitedCount += $item['ticket_count'];
+    } elseif ($item['ticket_category'] === "美容施術") {
+        $beautyVisitedCount += $item['ticket_count'];
+    }
+}
+
+    // 全ての予約日を取得
+    $dates = array_column($visitedTicketInfo, 'reservation_date');
+    
+    // 一番古い日付を取得
+    $oldestDate = min($dates);
+    
+    // 日付をフォーマットして表示（例：2025年8月1日）
+    $formattedDate = date('Y年n月j日', strtotime($oldestDate));
+?>
       <div class="ticket_cont_used">
         <h3>来院済み枚数</h3>
-        <p id="lastdate">最終利用日：<span><?php echo $lastUsedDate ? date('Y年n月j日', strtotime($lastUsedDate)) : '未使用'; ?></span></p>
+        <p id="lastdate">最終利用日：<span><?php // $visitedTicketInfoが空でない場合の処理
+if (!empty($visitedTicketInfo)) {echo $formattedDate;} else { // 配列が空の場合
+    echo "未利用";
+} ?></span></p>
         <ul id="ticket_item7">
           <li>幹細胞培養上清液点滴</li>
-          <li><span><?php echo isset($ticketInfo['stem_cell']) ? $ticketInfo['stem_cell']['used'] : 0; ?></span>cc</li>
+          <li><span><?php echo $stemCellVisitedCount; ?></span>cc</li>
         </ul>
         <ul id="ticket_item8">
           <li>点滴・注射</li>
-          <li><span><?php echo isset($ticketInfo['injection']) ? $ticketInfo['injection']['used'] : 0; ?></span>枚</li>
+          <li><span><?php echo $injectionVisitedCount; ?></span>枚</li>
         </ul>
         <ul id="ticket_item9">
           <li>美容施術</li>
-          <li><span><?php echo isset($ticketInfo['beauty']) ? $ticketInfo['beauty']['used'] : 0; ?></span>枚</li>
+          <li><span><?php echo $beautyVisitedCount; ?></span>枚</li>
         </ul>
 		  <a id="open_used">利用詳細はこちら</a>
       </div>
@@ -364,15 +372,15 @@ $groupedUsed = groupReservationsByTicketType($usedReservations);
     <div class="modal_cont">
       <ul>
         <li>幹細胞培養上清液点滴</li>
-		  <li id="total_drip"><span><?php echo $planTotalTickets['stem_cell']; ?></span>cc</li>
+		  <li id="total_drip"><span><?php echo ($tickets['stem_cell']['remaining'] ?? 0) + ($tickets['stem_cell']['used'] ?? 0); ?></span>cc</li>
       </ul>
       <ul>
         <li>点滴・注射</li>
-		  <li id="total_injection"><span><?php echo $planTotalTickets['injection']; ?></span>枚</li>
+		  <li id="total_injection"><span><?php echo ($tickets['injection']['remaining'] ?? 0) + ($tickets['injection']['used'] ?? 0); ?></span>枚</li>
       </ul>
       <ul>
         <li>美容施術</li>
-		  <li id="total_beauty"><span><?php echo $planTotalTickets['beauty']; ?></span>枚</li>
+		  <li id="total_beauty"><span><?php echo ($tickets['beauty']['remaining'] ?? 0) + ($tickets['beauty']['used'] ?? 0); ?></span>枚</li>
       </ul>
 	  <div class="modal_close">
 		<button>閉じる</button>
@@ -388,51 +396,114 @@ $groupedUsed = groupReservationsByTicketType($usedReservations);
     <div class="modal_cont">
 		<div class="modal_toggle_wrap">
 		<?php
-		$ticketTypes = [
-		    'stem_cell' => '幹細胞培養上清液点滴',
-		    'injection' => '点滴・注射',
-		    'beauty' => '美容施術'
-		];
-		
-		foreach ($ticketTypes as $type => $typeName): 
-		    $reservations = $groupedReserved[$type] ?? [];
-		    $count = count($reservations);
-		?>
-		<dl>
-			<dt><?php echo htmlspecialchars($typeName); ?></dt>
-			<dd><div class="total_reserved"><span>総使用枚数</span>: <?php echo $count; ?>枚<br>
+// カテゴリー別に情報を格納する配列
+$stemCellReservedItems = [];
+$injectionReservedItems = [];
+$beautyReservedItems = [];
+
+// 配列をループして各カテゴリーに分類
+foreach ($reservedTicketInfo as $item) {
+    if ($item['ticket_category'] === "幹細胞培養上清液点滴") {
+        $stemCellReservedItems[] = $item;
+    } elseif ($item['ticket_category'] === "点滴・注射") {
+        $injectionReservedItems[] = $item;
+    } elseif ($item['ticket_category'] === "美容施術") {
+        $beautyReservedItems[] = $item;
+    }
+}
+?><dl><dt>幹細胞培養上清液点滴</dt>
+			<dd><div class="total_reserved"><span>総使用枚数</span>: <?php echo $stemCellReservedCount; ?>枚<br>
 				<small>※予約済みのチケットの詳細です。</small></div>
+				<?php foreach ($stemCellReservedItems as $item): ?>
 				<div class="reserved_wrap">
-				    <?php if ($count > 0): ?>
-				        <?php foreach ($reservations as $reservation): ?>
+				    <?php if ($stemCellReservedCount > 0): ?>
 					    <div class="reserved_item">
 						    <div class="reserved_datename">
-						        <div class="reserved_name"><p><?php echo htmlspecialchars($reservation['patient_name'] ?? '名前不明'); ?></p></div>
+						        <div class="reserved_name"><p><?php echo $item['visitor_name']; ?></p></div>
 						        <div class="reserved_date">
-						            <p class="calender"><?php echo isset($reservation['date']) ? date('Y/m/d', strtotime($reservation['date'])) : ''; ?></p>
-						            <p class="clock"><?php echo htmlspecialchars($reservation['time'] ?? ''); ?></p>
+						            <p class="calender"><?php echo date('Y年m月d日 H:i', strtotime($item['reservation_date'])); ?></p>
 						        </div>
 						    </div>
 						    <div class="reserved_details">
 							    <div class="reserved_detail1">施術内容</div>
-							    <div class="reserved_ttl"><?php echo htmlspecialchars($reservation['menu_name'] ?? ''); ?></div>
-							    <div class="reserved_detail1"><?php echo htmlspecialchars($reservation['category'] ?? ''); ?></div>
+							    <div class="reserved_ttl"><?php echo $item['menu_name']; ?></div>
 						    </div>
-						    <?php if (!empty($reservation['notes'])): ?>
+						    <?php if (!empty($item['note'])): ?>
 						    <div class="reserved_moreinfo">
 							    <p>備考</p>
-							    <p><?php echo htmlspecialchars($reservation['notes']); ?></p>
+							    <p><?php echo $item['note']; ?></p>
 						    </div>
 						    <?php endif; ?>
 					    </div>
-				        <?php endforeach; ?>
 				    <?php else: ?>
-				        <p style="padding: 10px; text-align: center; color: #666;">予約された<?php echo htmlspecialchars($typeName); ?>はありません。</p>
+				        <p style="padding: 10px; text-align: center; color: #666;">予約された<?php echo $item['ticket_category']; ?>はありません。</p>
 				    <?php endif; ?>
 				</div>
+				<?php endforeach; ?>
 			</dd>
 		</dl>
-		<?php endforeach; ?>
+			<dl><dt>点滴・注射</dt>
+			<dd><div class="total_reserved"><span>総使用枚数</span>: <?php echo $injectionReservedCount; ?>枚<br>
+				<small>※予約済みのチケットの詳細です。</small></div>
+				<?php foreach ($injectionReservedItems as $item): ?>
+				<div class="reserved_wrap">
+				    <?php if ($injectionReservedCount > 0): ?>
+					    <div class="reserved_item">
+						    <div class="reserved_datename">
+						        <div class="reserved_name"><p><?php echo $item['visitor_name']; ?></p></div>
+						        <div class="reserved_date">
+						            <p class="calender"><?php echo date('Y年m月d日 H:i', strtotime($item['reservation_date'])); ?></p>
+						        </div>
+						    </div>
+						    <div class="reserved_details">
+							    <div class="reserved_detail1">施術内容</div>
+							    <div class="reserved_ttl"><?php echo $item['menu_name']; ?></div>
+						    </div>
+						    <?php if (!empty($item['note'])): ?>
+						    <div class="reserved_moreinfo">
+							    <p>備考</p>
+							    <p><?php echo $item['note']; ?></p>
+						    </div>
+						    <?php endif; ?>
+					    </div>
+				    <?php else: ?>
+				        <p style="padding: 10px; text-align: center; color: #666;">予約された<?php echo $item['ticket_category']; ?>はありません。</p>
+				    <?php endif; ?>
+				</div>
+				<?php endforeach; ?>
+			</dd>
+		</dl>
+			<dl><dt>美容施術</dt>
+			<dd><div class="total_reserved"><span>総使用枚数</span>: <?php echo $beautyReservedCount; ?>枚<br>
+				<small>※予約済みのチケットの詳細です。</small></div>
+				<?php foreach ($beautyReservedItems as $item): ?>
+				<div class="reserved_wrap">
+				    <?php if ($beautyReservedCount > 0): ?>
+					    <div class="reserved_item">
+						    <div class="reserved_datename">
+						        <div class="reserved_name"><p><?php echo $item['visitor_name']; ?></p></div>
+						        <div class="reserved_date">
+						            <p class="calender"><?php echo date('Y年m月d日 H:i', strtotime($item['reservation_date'])); ?></p>
+						        </div>
+						    </div>
+						    <div class="reserved_details">
+							    <div class="reserved_detail1">施術内容</div>
+							    <div class="reserved_ttl"><?php echo $item['menu_name']; ?></div>
+						    </div>
+						    <?php if (!empty($item['note'])): ?>
+						    <div class="reserved_moreinfo">
+							    <p>備考</p>
+							    <p><?php echo $item['note']; ?></p>
+						    </div>
+						    <?php endif; ?>
+					    </div>
+				    <?php else: ?>
+				        <p style="padding: 10px; text-align: center; color: #666;">予約された<?php echo $item['ticket_category']; ?>はありません。</p>
+				    <?php endif; ?>
+				</div>
+				<?php endforeach; ?>
+			</dd>
+		</dl>
 		</div>
 	  <div class="modal_close">
 		<button>閉じる</button>
@@ -447,45 +518,118 @@ $groupedUsed = groupReservationsByTicketType($usedReservations);
     <div class="modal_cont">
 		<div class="modal_toggle_wrap">
 		<?php
-		foreach ($ticketTypes as $type => $typeName): 
-		    $reservations = $groupedUsed[$type] ?? [];
-		    $count = count($reservations);
-		?>
+// カテゴリー別に情報を格納する配列
+$stemCellVisitedItems = [];
+$injectionVisitedItems = [];
+$beautyVisitedItems = [];
+
+// 配列をループして各カテゴリーに分類
+foreach ($visitedTicketInfo as $item) {
+    if ($item['ticket_category'] === "幹細胞培養上清液点滴") {
+        $stemCellIVisitedtems[] = $item;
+    } elseif ($item['ticket_category'] === "点滴・注射") {
+        $injectionVisitedItems[] = $item;
+    } elseif ($item['ticket_category'] === "美容施術") {
+        $beautyVisitedItems[] = $item;
+    }
+}
+?>
 		<dl>
-			<dt><?php echo htmlspecialchars($typeName); ?></dt>
-			<dd><div class="total_reserved"><span>総使用枚数</span>: <?php echo $count; ?>枚<br>
+			<dt>幹細胞培養上清液点滴</dt>
+			<dd><div class="total_reserved"><span>総使用枚数</span>: <?php echo $stemCellVisitedCount; ?>枚<br>
 				<small>※予約済みのチケットの詳細です。</small></div>
+				<?php foreach ($stemCellIVisitedtems as $item): ?>
 				<div class="reserved_wrap">
-				    <?php if ($count > 0): ?>
-				        <?php foreach ($reservations as $reservation): ?>
+				    <?php if ($stemCellVisitedCount > 0): ?>
 					    <div class="reserved_item">
 						    <div class="reserved_datename">
-						        <div class="reserved_name"><p><?php echo htmlspecialchars($reservation['patient_name'] ?? '名前不明'); ?></p></div>
+						        <div class="reserved_name"><p><?php echo $item['visitor_name']; ?></p></div>
 						        <div class="reserved_date">
-						            <p class="calender"><?php echo isset($reservation['date']) ? date('Y/m/d', strtotime($reservation['date'])) : ''; ?></p>
-						            <p class="clock"><?php echo htmlspecialchars($reservation['time'] ?? ''); ?></p>
+						            <p class="calender"><?php echo date('Y年m月d日 H:i', strtotime($item['reservation_date'])); ?></p>
 						        </div>
 						    </div>
 						    <div class="reserved_details">
 							    <div class="reserved_detail1">施術内容</div>
-							    <div class="reserved_ttl"><?php echo htmlspecialchars($reservation['menu_name'] ?? ''); ?></div>
-							    <div class="reserved_detail1"><?php echo htmlspecialchars($reservation['category'] ?? ''); ?></div>
+							    <div class="reserved_ttl"><?php echo $item['menu_name']; ?></div>
 						    </div>
-						    <?php if (!empty($reservation['notes'])): ?>
+						    <?php if (!empty($item['note'])): ?>
 						    <div class="reserved_moreinfo">
 							    <p>備考</p>
-							    <p><?php echo htmlspecialchars($reservation['notes']); ?></p>
+							    <p><?php echo $item['note']; ?></p>
 						    </div>
 						    <?php endif; ?>
 					    </div>
-				        <?php endforeach; ?>
 				    <?php else: ?>
-				        <p style="padding: 10px; text-align: center; color: #666;">予約された<?php echo htmlspecialchars($typeName); ?>はありません。</p>
+				        <p style="padding: 10px; text-align: center; color: #666;">予約された<?php echo $item['ticket_category']; ?>はありません。</p>
 				    <?php endif; ?>
 				</div>
+				<?php endforeach; ?>
 			</dd>
 		</dl>
-		<?php endforeach; ?>
+			<dl>
+			<dt>点滴・注射</dt>
+			<dd><div class="total_reserved"><span>総使用枚数</span>: <?php echo $injectionVisitedCount; ?>枚<br>
+				<small>※予約済みのチケットの詳細です。</small></div>
+				<?php foreach ($injectionVisitedItems as $item): ?>
+				<div class="reserved_wrap">
+				    <?php if ($injectionVisitedCount > 0): ?>
+					    <div class="reserved_item">
+						    <div class="reserved_datename">
+						        <div class="reserved_name"><p><?php echo $item['visitor_name']; ?></p></div>
+						        <div class="reserved_date">
+						            <p class="calender"><?php echo date('Y年m月d日 H:i', strtotime($item['reservation_date'])); ?></p>
+						        </div>
+						    </div>
+						    <div class="reserved_details">
+							    <div class="reserved_detail1">施術内容</div>
+							    <div class="reserved_ttl"><?php echo $item['menu_name']; ?></div>
+						    </div>
+						    <?php if (!empty($item['note'])): ?>
+						    <div class="reserved_moreinfo">
+							    <p>備考</p>
+							    <p><?php echo $item['note']; ?></p>
+						    </div>
+						    <?php endif; ?>
+					    </div>
+				    <?php else: ?>
+				        <p style="padding: 10px; text-align: center; color: #666;">予約された<?php echo $item['ticket_category']; ?>はありません。</p>
+				    <?php endif; ?>
+				</div>
+				<?php endforeach; ?>
+			</dd>
+		</dl>
+			<dl>
+			<dt>美容施術</dt>
+			<dd><div class="total_reserved"><span>総使用枚数</span>: <?php echo $beautyVisitedCount; ?>枚<br>
+				<small>※予約済みのチケットの詳細です。</small></div>
+				<?php foreach ($beautyVisitedItems as $item): ?>
+				<div class="reserved_wrap">
+				    <?php if ($beautyVisitedCount > 0): ?>
+					    <div class="reserved_item">
+						    <div class="reserved_datename">
+						        <div class="reserved_name"><p><?php echo $item['visitor_name']; ?></p></div>
+						        <div class="reserved_date">
+						            <p class="calender"><?php echo date('Y年m月d日 H:i', strtotime($item['reservation_date'])); ?></p>
+						        </div>
+						    </div>
+						    <div class="reserved_details">
+							    <div class="reserved_detail1">施術内容</div>
+							    <div class="reserved_ttl"><?php echo $item['menu_name']; ?></div>
+						    </div>
+						    <?php if (!empty($item['note'])): ?>
+						    <div class="reserved_moreinfo">
+							    <p>備考</p>
+							    <p><?php echo $item['note']; ?></p>
+						    </div>
+						    <?php endif; ?>
+					    </div>
+				    <?php else: ?>
+				        <p style="padding: 10px; text-align: center; color: #666;">予約された<?php echo $item['ticket_category']; ?>はありません。</p>
+				    <?php endif; ?>
+				</div>
+				<?php endforeach; ?>
+			</dd>
+		</dl>
 		</div>
 	  <div class="modal_close">
 		<button>閉じる</button>
@@ -495,7 +639,7 @@ $groupedUsed = groupReservationsByTicketType($usedReservations);
 <!-- Footer -->
 <?php include_once '../assets/inc/footer.php'; ?>
 	<script src="js/modal.js"></script>
-	<?php if (defined('DEBUG_MODE') && DEBUG_MODE): ?>
+	<?php /*if (defined('DEBUG_MODE') && DEBUG_MODE): ?>
     <div class="fixed bottom-4 right-4 bg-gray-800 text-white p-2 text-xs rounded max-w-sm max-h-96 overflow-y-auto">
         <p><strong>書類一覧デバッグ情報</strong></p>
         <p>LINE ID: <?php echo substr($lineUserId, 0, 10); ?>...</p>
@@ -504,11 +648,11 @@ $groupedUsed = groupReservationsByTicketType($usedReservations);
         <p>Visitor ID: <?php echo $visitorId ? substr($visitorId, 0, 15) . '...' : 'なし'; ?></p>
         <p>書類件数: <?php echo $reservation; ?>件</p>
 		<?php echo "<pre>";
-var_dump($reservationHistory);
+var_dump($reservedTicketInfo);
 echo "</pre>";
 ?>
 		<?php echo "<pre>";
-var_dump($membershipInfo);
+var_dump($visitedTicketInfo);
 echo "</pre>";
 ?>
         <p>エラー: <?php echo $errorMessage ?: 'なし'; ?></p>
@@ -518,7 +662,7 @@ echo "</pre>";
         <pre class="text-xs bg-gray-900 p-2 rounded overflow-auto max-h-32"><?php echo htmlspecialchars(json_encode($folders, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></pre>
         <?php endif; ?>
     </div>
-<?php endif; ?>
+<?php endif; */?>
 <script type="text/javascript">
 // sessionStorageキャッシュ確認
 (function() {

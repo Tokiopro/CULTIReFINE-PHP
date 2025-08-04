@@ -413,7 +413,7 @@ try {
     <!-- Header -->
     <header class="bg-teal-600 text-white p-4 shadow-md sticky top-0 z-50">
         <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-semibold">CLUTIREFINEクリニック<br class="sp">予約</h1>
+            <h1 class="text-xl font-semibold">CLUTIREFINEクリニック予約</h1>
             <div class="flex items-center space-x-4">
                 <span id="user-welcome" class="text-sm hidden sm:inline">ようこそ、
                     <?php if ($pictureUrl): ?>

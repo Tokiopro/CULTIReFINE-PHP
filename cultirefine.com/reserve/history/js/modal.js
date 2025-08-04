@@ -8,12 +8,17 @@ document.addEventListener('DOMContentLoaded', function() {
             if (historyItem) {
                 // 各要素の値を取得
                 const visiterName = historyItem.querySelector('.his_visiter_name')?.textContent || '';
+                const rId = historyItem.querySelector('.his_cont_detail_resid span')?.textContent || '';
                 const date = historyItem.querySelector('.his_date')?.textContent || '';
                 const status = historyItem.querySelector('.his_cont_detail_status span')?.textContent || '';
                 const menu = historyItem.querySelector('.his_cont_detail_menu')?.textContent || '';
                 
                 // モーダル内の対応する要素に値を代入
                 const modal = document.getElementById('modal_more');
+                
+                // ReservationID
+                const modalId = modal.querySelector('#reservationId');
+                if (modalId) modalId.textContent = rId;
                 
                 // 施術メニュー
                 const modalMenu = modal.querySelector('.modal_menu p');

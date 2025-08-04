@@ -33,18 +33,12 @@ $(document).ready(function() {
         
         $('.history_item').each(function() {
             var $item = $(this);
-            var visitorName = $item.find('.his_cont_detail_visiter .his_name').text().toLowerCase();
-            var statusClass = '';
             
-            // ステータスクラスを取得
-            var $statusElement = $item.find('.his_cont_detail_status');
-            if ($statusElement.hasClass('canceled')) {
-                statusClass = 'canceled';
-            } else if ($statusElement.hasClass('visited')) {
-                statusClass = 'visited';
-            } else if ($statusElement.hasClass('reserved')) {
-                statusClass = 'reserved';
-            }
+            // 来院者名の取得（実際のHTML構造に合わせて修正）
+            var visitorName = $item.find('.his_cont_detail_visiter .his_visiter_name').text().toLowerCase();
+            
+            // ステータステキストの取得
+            var statusText = $item.find('.his_cont_detail_status span').text().trim();
             
             // フィルタリング条件をチェック
             var showItem = true;
@@ -55,7 +49,7 @@ $(document).ready(function() {
             }
             
             // ステータスでのフィルタリング
-            if (statusFilter !== '' && statusClass !== statusFilter) {
+            if (statusFilter !== '' && statusText !== statusFilter) {
                 showItem = false;
             }
             
@@ -86,69 +80,6 @@ $(document).ready(function() {
         }, 10);
     });
     
-    // Ajax機能（サーバーサイドでの絞り込みが必要な場合）
-    /*function performAjaxFilter() {
-        var formData = {
-            sort_name: $('#sort_name').val(),
-            sort_status: $('#sort_status').val()
-        };
-        
-        $.ajax({
-            url: 'filter_history.php', // サーバーサイドのエンドポイント
-            type: 'POST',
-            data: formData,
-            dataType: 'json',
-            beforeSend: function() {
-                // ローディング表示
-                $('.his_cont_wrap').append('<div id="loading" class="text-center py-4">検索中...</div>');
-            },
-            success: function(response) {
-                // ローディング削除
-                $('#loading').remove();
-                
-                if (response.success) {
-                    // サーバーから返されたHTMLで履歴アイテムを更新
-                    $('.history_item').remove();
-                    $('.his_cont_wrap').append(response.html);
-                    
-                    // 新しい要素にもクラスを付与
-                    addStatusClasses();
-                } else {
-                    alert('検索中にエラーが発生しました: ' + response.message);
-                }
-            },
-            error: function(xhr, status, error) {
-                // ローディング削除
-                $('#loading').remove();
-                console.error('Ajax Error:', error);
-                alert('通信エラーが発生しました。しばらく時間をおいて再度お試しください。');
-            }
-        });
-    }
-    */
-    // Ajaxフィルタリングを使用する場合（オプション）
-    // $('#sort_form').on('submit', function(e) {
-    //     e.preventDefault();
-    //     performAjaxFilter();
-    // });
-    
-    // 検索ボタンを追加する場合
-    /*if ($('#search_button').length === 0) {
-        $('#sort_form .sort_form_wrap').append(
-            '<div class="sort_item">' +
-            '<button type="button" id="search_button" class="sort_input bg-blue-500 text-white hover:bg-blue-600 cursor-pointer">検索</button>' +
-            '</div>'
-        );
-        
-        $('#search_button').on('click', function() {
-            // クライアントサイドフィルタリングの場合
-            filterHistory();
-            
-            // Ajaxフィルタリングの場合（上記のコメントアウトを解除）
-            // performAjaxFilter();
-        });
-    }*/
-    
     // 結果件数を表示する機能
     function updateResultCount() {
         var visibleItems = $('.history_item:visible').length;
@@ -171,56 +102,9 @@ $(document).ready(function() {
     
     // 初期表示時の結果件数
     updateResultCount();
+    
+    // デバッグ用：初期状態の確認
+    console.log('総アイテム数:', $('.history_item').length);
+    console.log('最初のアイテムの来院者名:', $('.history_item').first().find('.his_cont_detail_visiter .his_visiter_name').text());
+    console.log('最初のアイテムのステータス:', $('.history_item').first().find('.his_cont_detail_status span').text());
 });
-
-// 追加のCSS（スタイル調整用）
-// 以下をstyles.cssに追加することを推奨
-/*
-.his_cont_detail_status.canceled {
-    background-color: #fee2e2;
-    color: #dc2626;
-}
-
-.his_cont_detail_status.visited {
-    background-color: #dcfce7;
-    color: #16a34a;
-}
-
-.his_cont_detail_status.reserved {
-    background-color: #dbeafe;
-    color: #2563eb;
-}
-
-.history_item {
-    transition: opacity 0.3s ease;
-}
-
-.history_item:hidden {
-    opacity: 0;
-}
-
-#loading {
-    background-color: rgba(255, 255, 255, 0.8);
-    padding: 20px;
-    border-radius: 8px;
-    margin: 20px 0;
-}
-
-.sort_input {
-    padding: 8px 12px;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    font-size: 14px;
-}
-
-.sort_input[type="reset"], #search_button {
-    background-color: #6b7280;
-    color: white;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.sort_input[type="reset"]:hover {
-    background-color: #4b5563;
-}
-*/
