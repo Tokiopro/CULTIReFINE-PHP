@@ -35,6 +35,73 @@ class Utils {
     
     return Utilities.formatDate(date, Config.getTimeZone(), format);
   }
+
+  /**
+   * 日付をISO 8601形式（タイムゾーン付き）に変換
+   * @param {Date|string} date - 変換する日付
+   * @param {string} time - 時刻（オプショナル、HH:mm形式）
+   * @returns {string} ISO 8601形式の日付時刻文字列
+   */
+  static formatToISO8601(date, time = '00:00') {
+    if (!date) return '';
+    
+    try {
+      const dateObj = new Date(date);
+      
+      // 日付が無効な場合はエラーを投げる
+      if (isNaN(dateObj.getTime())) {
+        throw new Error('Invalid date');
+      }
+      
+      // 時刻が指定されている場合は設定
+      if (time && time !== '00:00') {
+        const [hours, minutes] = time.split(':');
+        dateObj.setHours(parseInt(hours) || 0, parseInt(minutes) || 0, 0, 0);
+      } else {
+        dateObj.setHours(0, 0, 0, 0);
+      }
+      
+      // 日本時間（JST）のタイムゾーンオフセットを取得
+      const offset = dateObj.getTimezoneOffset();
+      const jstOffset = -540; // JST = UTC+9 = -540分
+      
+      // JSTに調整
+      const jstDate = new Date(dateObj.getTime() + (offset - jstOffset) * 60000);
+      
+      // ISO 8601形式で出力（タイムゾーン +09:00 を付加）
+      const isoString = jstDate.toISOString().replace('Z', '+09:00');
+      
+      return isoString;
+    } catch (error) {
+      Logger.log(`ISO 8601変換エラー: ${error.toString()}, 入力値: ${date}, ${time}`);
+      return '';
+    }
+  }
+
+  /**
+   * 過去N か月の開始日をISO 8601形式で取得
+   * @param {number} months - 過去の月数
+   * @returns {string} ISO 8601形式の日付文字列
+   */
+  static getPastMonthsStartISO(months = 6) {
+    const date = new Date();
+    date.setMonth(date.getMonth() - months);
+    date.setDate(1);
+    return this.formatToISO8601(date);
+  }
+
+  /**
+   * 未来N か月の終了日をISO 8601形式で取得
+   * @param {number} months - 未来の月数
+   * @returns {string} ISO 8601形式の日付文字列
+   */
+  static getFutureMonthsEndISO(months = 3) {
+    const date = new Date();
+    date.setMonth(date.getMonth() + months);
+    date.setDate(0); // 前月の最終日
+    date.setHours(23, 59, 59, 999);
+    return this.formatToISO8601(date);
+  }
   
   /**
    * 今日の日付を取得

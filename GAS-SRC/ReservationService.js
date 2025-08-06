@@ -58,17 +58,16 @@ class ReservationService {
     return Utils.executeWithErrorHandling(() => {
       Logger.log('予約情報の同期を開始します');
       
-      // デフォルトパラメータ
-      if (!params.date_from) {
-        params.date_from = Utils.getToday();
+      // デフォルトパラメータ（過去6か月・未来3か月）
+      if (!params.epoch_from) {
+        params.epoch_from = Utils.getPastMonthsStartISO(6);
       }
       
-      // デフォルトは7日後まで（日次同期用、タイムアウト対策で短縮）
-      if (!params.date_to) {
-        const oneWeekLater = new Date();
-        oneWeekLater.setDate(oneWeekLater.getDate() + 7);
-        params.date_to = Utils.formatDate(oneWeekLater);
+      if (!params.epoch_to) {
+        params.epoch_to = Utils.getFutureMonthsEndISO(3);
       }
+      
+      Logger.log(`同期期間: ${params.epoch_from} ～ ${params.epoch_to}`);
       
       const allReservations = [];
       const limit = 300; // ページサイズを最適化（メモリ効率重視）
@@ -79,7 +78,7 @@ class ReservationService {
       // 全データを取得するまでループ
       while (hasMore) {
         Logger.log(`予約情報を取得中... (offset: ${offset})`);
-        Logger.log(`取得期間: ${params.date_from} ～ ${params.date_to}`);
+        Logger.log(`取得期間: ${params.epoch_from} ～ ${params.epoch_to}`);
         
         const requestParams = {
           ...params,
@@ -151,9 +150,11 @@ class ReservationService {
     let hasMore = true;
     
     const params = {
-      date_from: syncStatus.dateFrom || Utils.getToday(),
-      date_to: syncStatus.dateTo || Utils.formatDate(new Date(new Date().setDate(new Date().getDate() + 14)))
+      epoch_from: syncStatus.epochFrom || Utils.getPastMonthsStartISO(6),
+      epoch_to: syncStatus.epochTo || Utils.getFutureMonthsEndISO(3)
     };
+    
+    Logger.log(`内部同期期間: ${params.epoch_from} ～ ${params.epoch_to}`);
     
     while (hasMore) {
       const currentTime = new Date().getTime();
@@ -235,7 +236,17 @@ class ReservationService {
   syncReservationsOptimized(params = {}) {
     return Utils.executeWithErrorHandling(() => {
       Logger.log('=== 最適化版予約同期開始 ===');
-      Logger.log(`同期期間: ${params.date_from} ～ ${params.date_to}`);
+      
+      // デフォルトパラメータ（過去6か月・未来3か月）
+      if (!params.epoch_from) {
+        params.epoch_from = Utils.getPastMonthsStartISO(6);
+      }
+      
+      if (!params.epoch_to) {
+        params.epoch_to = Utils.getFutureMonthsEndISO(3);
+      }
+      
+      Logger.log(`同期期間: ${params.epoch_from} ～ ${params.epoch_to}`);
       
       const startTime = new Date().getTime();
       const allReservations = [];
@@ -353,7 +364,7 @@ class ReservationService {
         success: true,
         totalSynced: allReservations.length,
         executionTime: executionTime,
-        dateRange: `${params.date_from} - ${params.date_to}`,
+        dateRange: `${params.epoch_from} - ${params.epoch_to}`,
         timeBreakdown: timeLog
       };
       

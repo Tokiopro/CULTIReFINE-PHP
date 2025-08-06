@@ -368,6 +368,122 @@
         border: 1px solid #ddd;
         border-radius: 3px;
       }
+      /* ローディングオーバーレイ */
+      .loading-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 9999;
+        justify-content: center;
+        align-items: center;
+      }
+      
+      .loading-overlay.show {
+        display: flex;
+      }
+      
+      .loading-content {
+        background-color: white;
+        padding: 30px;
+        border-radius: 8px;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      
+      .loading-spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #4285f4;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 15px;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      .loading-text {
+        color: #333;
+        font-size: 14px;
+        margin-top: 10px;
+      }
+      
+      /* 通知メッセージ */
+      .notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        z-index: 10000;
+        display: none;
+        animation: slideIn 0.3s ease-out;
+        max-width: 400px;
+      }
+      
+      @keyframes slideIn {
+        from {
+          transform: translateX(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      
+      .notification.show {
+        display: block;
+      }
+      
+      .notification.success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+      
+      .notification.error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+      
+      .notification.info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+      }
+      
+      .notification-title {
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+      
+      .notification-message {
+        font-size: 14px;
+      }
+      
+      .notification-close {
+        position: absolute;
+        top: 5px;
+        right: 10px;
+        cursor: pointer;
+        font-size: 20px;
+        color: inherit;
+        opacity: 0.5;
+      }
+      
+      .notification-close:hover {
+        opacity: 1;
+      }
     </style>
   </head>
   <body>
@@ -375,12 +491,44 @@
       <h2>書類管理</h2>
       
       <div class="tabs">
-        <div class="tab active" onclick="switchTab('folders')">フォルダ管理</div>
+        <div class="tab active" onclick="switchTab('definitions')">フォルダ定義管理</div>
+        <div class="tab" onclick="switchTab('folders')">患者フォルダ管理</div>
         <div class="tab" onclick="switchTab('documents')">書類管理</div>
       </div>
       
+      <!-- フォルダ定義管理タブ -->
+      <div id="definitionsTab" class="tab-content active">
+        <div class="info">
+          すべての患者で使用できるフォルダテンプレートを管理します。ここで定義したフォルダは、新規患者のデフォルトフォルダとして使用されます。
+        </div>
+        
+        <div class="button-group">
+          <button class="btn" onclick="showAddDefinitionModal()">新規フォルダ定義追加</button>
+          <button class="btn btn-secondary" onclick="refreshDefinitions()">更新</button>
+        </div>
+        
+        <div class="loading" id="definitionsLoading">
+          読み込み中...
+        </div>
+        
+        <table id="definitionsTable" style="display: none;">
+          <thead>
+            <tr>
+              <th>フォルダID</th>
+              <th>フォルダ名</th>
+              <th>説明</th>
+              <th>表示順</th>
+              <th>作成日時</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="definitionsTableBody">
+          </tbody>
+        </table>
+      </div>
+      
       <!-- フォルダ管理タブ -->
-      <div id="foldersTab" class="tab-content active">
+      <div id="foldersTab" class="tab-content">
         <div class="info">
           書類を整理するためのフォルダを管理できます。患者ごとに独立したフォルダ構造を作成できます。
         </div>
@@ -487,6 +635,43 @@
       </div>
     </div>
     
+    <!-- フォルダ定義追加/編集モーダル -->
+    <div id="definitionModal" class="modal">
+      <div class="modal-content">
+        <span class="close" onclick="closeDefinitionModal()">&times;</span>
+        <h3 id="definitionModalTitle">新規フォルダ定義</h3>
+        
+        <form id="definitionForm" onsubmit="saveDefinition(event)">
+          <input type="hidden" id="definitionFolderId" name="folderId">
+          
+          <div class="form-group">
+            <label for="definitionFolderName">フォルダ名 <span style="color: red;">*</span></label>
+            <input type="text" id="definitionFolderName" name="folderName" required>
+          </div>
+          
+          <div class="form-group">
+            <label for="definitionDescription">説明</label>
+            <textarea id="definitionDescription" name="description"></textarea>
+          </div>
+          
+          <div class="form-group">
+            <label for="definitionDisplayOrder">表示順</label>
+            <input type="number" id="definitionDisplayOrder" name="displayOrder" value="999">
+          </div>
+          
+          <div class="form-group">
+            <label for="definitionPath">パス</label>
+            <input type="text" id="definitionPath" name="path" placeholder="/フォルダ名">
+          </div>
+          
+          <div class="button-group" style="margin-top: 20px;">
+            <button type="submit" class="btn">保存</button>
+            <button type="button" class="btn btn-secondary" onclick="closeDefinitionModal()">キャンセル</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
     <!-- フォルダ追加/編集モーダル -->
     <div id="folderModal" class="modal">
       <div class="modal-content">
@@ -586,10 +771,12 @@
       let patients = [];
       let searchTimeout = null;
       let expandedFolders = new Set();
+      let folderDefinitions = [];
       
       // 初期化
       function init() {
-        // 初期化時は何もしない（患者選択後に読み込み）
+        // 初期時にフォルダ定義を読み込み
+        loadFolderDefinitions();
       }
       
       // タブ切り替え
@@ -605,7 +792,10 @@
           content.classList.remove('active');
         });
         
-        if (tabName === 'folders') {
+        if (tabName === 'definitions') {
+          document.getElementById('definitionsTab').classList.add('active');
+          loadFolderDefinitions();
+        } else if (tabName === 'folders') {
           document.getElementById('foldersTab').classList.add('active');
           if (selectedFolderPatientId) {
             loadFolders();
@@ -613,6 +803,149 @@
         } else {
           document.getElementById('documentsTab').classList.add('active');
         }
+      }
+      
+      // フォルダ定義を読み込み
+      function loadFolderDefinitions() {
+        document.getElementById('definitionsLoading').style.display = 'block';
+        document.getElementById('definitionsTable').style.display = 'none';
+        
+        google.script.run
+          .withSuccessHandler(function(result) {
+            document.getElementById('definitionsLoading').style.display = 'none';
+            if (result.success) {
+              folderDefinitions = result.data;
+              displayFolderDefinitions();
+            } else {
+              alert('フォルダ定義の読み込みに失敗しました: ' + result.error);
+            }
+          })
+          .withFailureHandler(function(error) {
+            document.getElementById('definitionsLoading').style.display = 'none';
+            alert('エラーが発生しました: ' + error);
+          })
+          .getAllFolderDefinitions();
+      }
+      
+      // フォルダ定義を表示
+      function displayFolderDefinitions() {
+        const tbody = document.getElementById('definitionsTableBody');
+        tbody.innerHTML = '';
+        
+        if (folderDefinitions.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #666;">フォルダ定義がありません</td></tr>';
+        } else {
+          folderDefinitions.forEach(def => {
+            const row = tbody.insertRow();
+            const createdAt = def.createdAt ? formatDate(def.createdAt) : '-';
+            const patientInfo = def.patientId ? `(患者ID: ${def.patientId})` : '(デフォルト)';
+            
+            row.innerHTML = `
+              <td>${def.folderId}</td>
+              <td>${def.folderName} ${patientInfo}</td>
+              <td>${def.description || '-'}</td>
+              <td>${def.displayOrder}</td>
+              <td>${createdAt}</td>
+              <td class="action-buttons">
+                <button class="btn" onclick="editDefinition('${def.folderId}')">編集</button>
+                <button class="btn btn-danger" onclick="deleteDefinition('${def.folderId}', '${def.folderName}')">削除</button>
+              </td>
+            `;
+          });
+        }
+        
+        document.getElementById('definitionsTable').style.display = 'table';
+      }
+      
+      // フォルダ定義追加モーダルを表示
+      function showAddDefinitionModal() {
+        document.getElementById('definitionModalTitle').textContent = '新規フォルダ定義';
+        document.getElementById('definitionForm').reset();
+        document.getElementById('definitionFolderId').value = '';
+        document.getElementById('definitionModal').style.display = 'block';
+      }
+      
+      // フォルダ定義編集モーダルを表示
+      function editDefinition(folderId) {
+        const def = folderDefinitions.find(d => d.folderId === folderId);
+        if (!def) return;
+        
+        document.getElementById('definitionModalTitle').textContent = 'フォルダ定義編集';
+        document.getElementById('definitionFolderId').value = def.folderId;
+        document.getElementById('definitionFolderName').value = def.folderName;
+        document.getElementById('definitionDescription').value = def.description || '';
+        document.getElementById('definitionDisplayOrder').value = def.displayOrder;
+        document.getElementById('definitionPath').value = def.path || '';
+        document.getElementById('definitionModal').style.display = 'block';
+      }
+      
+      // フォルダ定義を保存
+      function saveDefinition(event) {
+        event.preventDefault();
+        
+        const formData = {
+          folderId: document.getElementById('definitionFolderId').value,
+          patientId: '', // デフォルトフォルダとして保存
+          folderName: document.getElementById('definitionFolderName').value.trim(),
+          description: document.getElementById('definitionDescription').value.trim(),
+          displayOrder: parseInt(document.getElementById('definitionDisplayOrder').value) || 999,
+          path: document.getElementById('definitionPath').value.trim() || ('/' + document.getElementById('definitionFolderName').value.trim())
+        };
+        
+        showLoading('フォルダ定義を保存中...');
+        
+        google.script.run
+          .withSuccessHandler(function(result) {
+            hideLoading();
+            
+            if (result.success) {
+              showNotification('success', '成功', result.message);
+              closeDefinitionModal();
+              loadFolderDefinitions();
+            } else {
+              showNotification('error', 'エラー', '保存に失敗しました: ' + result.error);
+            }
+          })
+          .withFailureHandler(function(error) {
+            hideLoading();
+            showNotification('error', 'エラー', 'システムエラーが発生しました: ' + error);
+          })
+          .saveFolderDefinition(formData);
+      }
+      
+      // フォルダ定義を削除
+      function deleteDefinition(folderId, folderName) {
+        if (!confirm(`フォルダ定義「${folderName}」を削除してもよろしいですか？`)) {
+          return;
+        }
+        
+        showLoading('フォルダ定義を削除中...');
+        
+        google.script.run
+          .withSuccessHandler(function(result) {
+            hideLoading();
+            if (result.success) {
+              showNotification('success', '成功', result.message);
+              loadFolderDefinitions();
+            } else {
+              showNotification('error', 'エラー', '削除に失敗しました: ' + result.error);
+            }
+          })
+          .withFailureHandler(function(error) {
+            hideLoading();
+            showNotification('error', 'エラー', 'システムエラーが発生しました: ' + error);
+          })
+          .deleteFolderDefinition(folderId);
+      }
+      
+      // フォルダ定義モーダルを閉じる
+      function closeDefinitionModal() {
+        document.getElementById('definitionModal').style.display = 'none';
+      }
+      
+      // フォルダ定義一覧を更新
+      function refreshDefinitions() {
+        loadFolderDefinitions();
       }
       
       // フォルダ一覧を読み込み
@@ -815,27 +1148,24 @@
           displayOrder: parseInt(document.getElementById('displayOrder').value) || 999
         };
         
-        const button = event.target.querySelector('button[type="submit"]');
-        button.disabled = true;
-        button.textContent = '保存中...';
+        // ローディング表示
+        showLoading('フォルダを保存中...');
         
         google.script.run
           .withSuccessHandler(function(result) {
-            button.disabled = false;
-            button.textContent = '保存';
+            hideLoading();
             
             if (result.success) {
-              alert(result.message);
+              showNotification('success', '成功', result.message);
               closeFolderModal();
               loadFolders();
             } else {
-              alert('保存に失敗しました: ' + result.error);
+              showNotification('error', 'エラー', '保存に失敗しました: ' + result.error);
             }
           })
           .withFailureHandler(function(error) {
-            button.disabled = false;
-            button.textContent = '保存';
-            alert('エラーが発生しました: ' + error);
+            hideLoading();
+            showNotification('error', 'エラー', 'システムエラーが発生しました: ' + error);
           })
           .saveDocumentFolder(formData);
       }
@@ -846,17 +1176,21 @@
           return;
         }
         
+        showLoading('フォルダを削除中...');
+        
         google.script.run
           .withSuccessHandler(function(result) {
+            hideLoading();
             if (result.success) {
-              alert(result.message);
+              showNotification('success', '成功', result.message);
               loadFolders();
             } else {
-              alert('削除に失敗しました: ' + result.error);
+              showNotification('error', 'エラー', '削除に失敗しました: ' + result.error);
             }
           })
           .withFailureHandler(function(error) {
-            alert('エラーが発生しました: ' + error);
+            hideLoading();
+            showNotification('error', 'エラー', 'システムエラーが発生しました: ' + error);
           })
           .deleteDocumentFolder(folderId);
       }
@@ -874,7 +1208,7 @@
       // デフォルトフォルダを作成
       function createDefaultFolders() {
         if (!selectedFolderPatientId) {
-          alert('患者を選択してください');
+          showNotification('error', 'エラー', '患者を選択してください');
           return;
         }
         
@@ -884,17 +1218,21 @@
           }
         }
         
+        showLoading('デフォルトフォルダを作成中...');
+        
         google.script.run
           .withSuccessHandler(function(result) {
+            hideLoading();
             if (result.success) {
-              alert(result.message);
+              showNotification('success', '成功', result.message);
               loadFolders();
             } else {
-              alert('作成に失敗しました: ' + result.error);
+              showNotification('error', 'エラー', '作成に失敗しました: ' + result.error);
             }
           })
           .withFailureHandler(function(error) {
-            alert('エラーが発生しました: ' + error);
+            hideLoading();
+            showNotification('error', 'エラー', 'システムエラーが発生しました: ' + error);
           })
           .createDefaultFoldersForPatient(selectedFolderPatientId);
       }
@@ -1165,27 +1503,23 @@
           remarks: document.getElementById('remarks').value.trim()
         };
         
-        const button = event.target.querySelector('button[type="submit"]');
-        button.disabled = true;
-        button.textContent = '保存中...';
+        showLoading('書類を保存中...');
         
         google.script.run
           .withSuccessHandler(function(result) {
-            button.disabled = false;
-            button.textContent = '保存';
+            hideLoading();
             
             if (result.success) {
-              alert(result.message);
+              showNotification('success', '成功', result.message);
               closeDocumentModal();
               loadDocuments();
             } else {
-              alert('保存に失敗しました: ' + result.error);
+              showNotification('error', 'エラー', '保存に失敗しました: ' + result.error);
             }
           })
           .withFailureHandler(function(error) {
-            button.disabled = false;
-            button.textContent = '保存';
-            alert('エラーが発生しました: ' + error);
+            hideLoading();
+            showNotification('error', 'エラー', 'システムエラーが発生しました: ' + error);
           })
           .saveDocument(formData);
       }
@@ -1196,17 +1530,21 @@
           return;
         }
         
+        showLoading('書類を削除中...');
+        
         google.script.run
           .withSuccessHandler(function(result) {
+            hideLoading();
             if (result.success) {
-              alert(result.message);
+              showNotification('success', '成功', result.message);
               loadDocuments();
             } else {
-              alert('削除に失敗しました: ' + result.error);
+              showNotification('error', 'エラー', '削除に失敗しました: ' + result.error);
             }
           })
           .withFailureHandler(function(error) {
-            alert('エラーが発生しました: ' + error);
+            hideLoading();
+            showNotification('error', 'エラー', 'システムエラーが発生しました: ' + error);
           })
           .deleteDocument(documentId);
       }
@@ -1248,8 +1586,54 @@
         }
       }
       
+      // ローディング表示
+      function showLoading(message = '処理中...') {
+        const overlay = document.getElementById('loadingOverlay');
+        const text = overlay.querySelector('.loading-text');
+        text.textContent = message;
+        overlay.classList.add('show');
+      }
+      
+      // ローディング非表示
+      function hideLoading() {
+        document.getElementById('loadingOverlay').classList.remove('show');
+      }
+      
+      // 通知表示
+      function showNotification(type, title, message) {
+        const notification = document.getElementById('notification');
+        notification.className = 'notification ' + type;
+        notification.querySelector('.notification-title').textContent = title;
+        notification.querySelector('.notification-message').textContent = message;
+        notification.classList.add('show');
+        
+        // 3秒後に自動的に非表示
+        setTimeout(() => {
+          hideNotification();
+        }, 3000);
+      }
+      
+      // 通知非表示
+      function hideNotification() {
+        document.getElementById('notification').classList.remove('show');
+      }
+      
       // 初期化実行
       init();
     </script>
+    <!-- ローディングオーバーレイ -->
+    <div id="loadingOverlay" class="loading-overlay">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">処理中...</div>
+      </div>
+    </div>
+    
+    <!-- 通知メッセージ -->
+    <div id="notification" class="notification">
+      <span class="notification-close" onclick="hideNotification()">&times;</span>
+      <div class="notification-title"></div>
+      <div class="notification-message"></div>
+    </div>
   </body>
 </html>

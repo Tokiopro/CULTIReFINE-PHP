@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      padding: 30px;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 30px;
+      font-size: 24px;
+      border-bottom: 2px solid #00b900;
+      padding-bottom: 10px;
+    }
+    .tabs {
+      display: flex;
+      border-bottom: 2px solid #e0e0e0;
+      margin-bottom: 30px;
+    }
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-size: 16px;
+      color: #666;
+      transition: all 0.3s;
+    }
+    .tab:hover {
+      color: #00b900;
+    }
+    .tab.active {
+      color: #00b900;
+      border-bottom: 3px solid #00b900;
+      margin-bottom: -2px;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .section {
+      margin-bottom: 30px;
+      padding: 20px;
+      background-color: #f9f9f9;
+      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+    }
+    .section-title {
+      font-size: 18px;
+      font-weight: bold;
+      color: #00b900;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    label {
+      display: inline-block;
+      width: 200px;
+      font-weight: 500;
+      color: #555;
+    }
+    input[type="text"], input[type="time"], select, textarea {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      width: 300px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 200px;
+      font-family: monospace;
+      resize: vertical;
+    }
+    input[type="checkbox"] {
+      margin-right: 10px;
+      transform: scale(1.2);
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 24px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #00b900;
+    }
+    input:checked + .slider:before {
+      transform: translateX(26px);
+    }
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 30px;
+      justify-content: center;
+    }
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    .btn-primary {
+      background-color: #00b900;
+      color: white;
+    }
+    .btn-primary:hover {
+      background-color: #009900;
+    }
+    .btn-secondary {
+      background-color: #f1f3f4;
+      color: #5f6368;
+    }
+    .btn-secondary:hover {
+      background-color: #e8eaed;
+    }
+    .btn-danger {
+      background-color: #ea4335;
+      color: white;
+    }
+    .btn-danger:hover {
+      background-color: #d33b2c;
+    }
+    .preview-section {
+      margin-top: 20px;
+      padding: 20px;
+      background-color: #f0f7ff;
+      border-radius: 8px;
+      border: 1px solid #00b900;
+    }
+    .preview-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #00b900;
+      margin-bottom: 15px;
+    }
+    .preview-content {
+      padding: 15px;
+      background-color: white;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+      white-space: pre-wrap;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.6;
+    }
+    .variable-list {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 15px;
+      padding: 15px;
+      background-color: #fff;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+    }
+    .variable-item {
+      padding: 8px;
+      background-color: #f5f5f5;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .variable-item:hover {
+      background-color: #e0f0e0;
+    }
+    .variable-key {
+      font-family: monospace;
+      color: #00b900;
+      font-weight: bold;
+    }
+    .variable-desc {
+      color: #666;
+      font-size: 11px;
+      margin-top: 2px;
+    }
+    .loading {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 9999;
+      justify-content: center;
+      align-items: center;
+    }
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #00b900;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .error {
+      color: #ea4335;
+      font-size: 14px;
+      margin-top: 5px;
+    }
+    .success {
+      color: #34a853;
+      font-size: 14px;
+      margin-top: 5px;
+    }
+    .info {
+      background-color: #e8f0fe;
+      border-left: 4px solid #00b900;
+      padding: 10px 15px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: #00b900;
+    }
+    .help-text {
+      font-size: 12px;
+      color: #999;
+      margin-top: 5px;
+    }
+    .template-editor {
+      display: flex;
+      gap: 20px;
+    }
+    .editor-left {
+      flex: 1;
+    }
+    .editor-right {
+      width: 300px;
+    }
+    .test-button {
+      background-color: #ff9800;
+      color: white;
+      padding: 8px 16px;
+      margin-left: 10px;
+    }
+    .test-button:hover {
+      background-color: #f57c00;
+    }
+  </style>
+</head>
+<body>
+  <div class="loading" id="loading">
+    <div class="loading-spinner"></div>
+  </div>
+
+  <div class="container">
+    <h1>📱 LINE通知管理</h1>
+
+    <div class="info">
+      LINE通知の設定とメッセージテンプレートを管理します。各通知タイプごとに送信タイミングとメッセージ内容をカスタマイズできます。
+    </div>
+
+    <!-- タブメニュー -->
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('config')">通知設定</button>
+      <button class="tab" onclick="switchTab('template')">テンプレート編集</button>
+      <button class="tab" onclick="switchTab('preview')">プレビュー</button>
+    </div>
+
+    <!-- 通知設定タブ -->
+    <div id="configTab" class="tab-content active">
+      <!-- 予約確定通知 -->
+      <div class="section">
+        <div class="section-title">✅ 予約確定時通知</div>
+        
+        <div class="form-group">
+          <div class="form-row">
+            <label>通知を送信</label>
+            <label class="switch">
+              <input type="checkbox" id="confirmEnabled" checked>
+              <span class="slider"></span>
+            </label>
+            <span style="margin-left: 10px; color: #666;">予約確定時に自動送信</span>
+          </div>
+          
+          <div class="form-row">
+            <label>送信対象</label>
+            <select id="confirmTarget">
+              <option value="来院者">来院者のみ</option>
+              <option value="予約者">予約者のみ</option>
+              <option value="両方">来院者と予約者</option>
+            </select>
+          </div>
+          
+          <div class="form-row">
+            <label>チケット情報を含む</label>
+            <input type="checkbox" id="confirmIncludeTicket" checked>
+            <span class="help-text">チケット消化数と残数を表示</span>
+          </div>
+          
+          <div class="form-row">
+            <label>施術注意点を含む</label>
+            <input type="checkbox" id="confirmIncludeNotes" checked>
+            <span class="help-text">施術に関する注意事項を表示</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 前日リマインダー -->
+      <div class="section">
+        <div class="section-title">📅 予約前日通知</div>
+        
+        <div class="form-group">
+          <div class="form-row">
+            <label>通知を送信</label>
+            <label class="switch">
+              <input type="checkbox" id="dayBeforeEnabled" checked>
+              <span class="slider"></span>
+            </label>
+            <input type="time" id="dayBeforeTime" value="11:00" style="margin-left: 10px; width: 100px;">
+            <span style="margin-left: 10px; color: #666;">に送信</span>
+          </div>
+          
+          <div class="form-row">
+            <label>送信対象</label>
+            <select id="dayBeforeTarget">
+              <option value="来院者">来院者のみ</option>
+              <option value="予約者">予約者のみ</option>
+              <option value="両方">来院者と予約者</option>
+            </select>
+          </div>
+          
+          <div class="form-row">
+            <label>チケット情報を含む</label>
+            <input type="checkbox" id="dayBeforeIncludeTicket" checked>
+          </div>
+          
+          <div class="form-row">
+            <label>施術注意点を含む</label>
+            <input type="checkbox" id="dayBeforeIncludeNotes" checked>
+          </div>
+        </div>
+      </div>
+
+      <!-- 当日リマインダー -->
+      <div class="section">
+        <div class="section-title">⏰ 予約当日通知</div>
+        
+        <div class="form-group">
+          <div class="form-row">
+            <label>通知を送信</label>
+            <label class="switch">
+              <input type="checkbox" id="sameDayEnabled" checked>
+              <span class="slider"></span>
+            </label>
+            <input type="time" id="sameDayTime" value="09:00" style="margin-left: 10px; width: 100px;">
+            <span style="margin-left: 10px; color: #666;">に送信</span>
+          </div>
+          
+          <div class="form-row">
+            <label>送信対象</label>
+            <select id="sameDayTarget">
+              <option value="来院者">来院者のみ</option>
+              <option value="予約者">予約者のみ</option>
+              <option value="両方">来院者と予約者</option>
+            </select>
+          </div>
+          
+          <div class="form-row">
+            <label>チケット情報を含む</label>
+            <input type="checkbox" id="sameDayIncludeTicket" checked>
+          </div>
+          
+          <div class="form-row">
+            <label>施術注意点を含む</label>
+            <input type="checkbox" id="sameDayIncludeNotes" checked>
+          </div>
+        </div>
+      </div>
+
+      <!-- 施術後通知 -->
+      <div class="section">
+        <div class="section-title">✨ 施術後通知</div>
+        
+        <div class="form-group">
+          <div class="form-row">
+            <label>通知を送信</label>
+            <label class="switch">
+              <input type="checkbox" id="afterEnabled" checked>
+              <span class="slider"></span>
+            </label>
+            <select id="afterTiming" style="margin-left: 10px; width: 150px;">
+              <option value="1時間後">1時間後</option>
+              <option value="2時間後">2時間後</option>
+              <option value="3時間後">3時間後</option>
+            </select>
+            <span style="margin-left: 10px; color: #666;">に送信</span>
+          </div>
+          
+          <div class="form-row">
+            <label>送信対象</label>
+            <select id="afterTarget">
+              <option value="来院者">来院者のみ</option>
+              <option value="予約者">予約者のみ</option>
+              <option value="両方">来院者と予約者</option>
+            </select>
+          </div>
+          
+          <div class="form-row">
+            <label>チケット情報を含む</label>
+            <input type="checkbox" id="afterIncludeTicket" checked>
+            <span class="help-text">更新後の残数を表示</span>
+          </div>
+          
+          <div class="form-row">
+            <label>施術注意点を含む</label>
+            <input type="checkbox" id="afterIncludeNotes">
+            <span class="help-text">施術後は通常不要</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- テンプレート編集タブ -->
+    <div id="templateTab" class="tab-content">
+      <div class="section">
+        <div class="section-title">📝 メッセージテンプレート編集</div>
+        
+        <div class="form-group">
+          <div class="form-row">
+            <label>通知タイプ</label>
+            <select id="templateType" onchange="loadTemplate()">
+              <option value="予約確定">予約確定</option>
+              <option value="予約前日">予約前日</option>
+              <option value="予約当日">予約当日</option>
+              <option value="施術後">施術後</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="template-editor">
+          <div class="editor-left">
+            <label>メッセージ本文:</label>
+            <textarea id="templateBody" placeholder="メッセージ本文を入力してください..."></textarea>
+            <div class="help-text">
+              変数は ${変数名} の形式で記述してください。条件付き表示は [チケット情報]、[注意事項]、[担当スタッフ] が使用できます。
+            </div>
+          </div>
+          
+          <div class="editor-right">
+            <label>使用可能な変数:</label>
+            <div class="variable-list" id="variableList">
+              <!-- 変数リストが動的に生成される -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- プレビュータブ -->
+    <div id="previewTab" class="tab-content">
+      <div class="section">
+        <div class="section-title">👁️ プレビュー</div>
+        
+        <div class="form-group">
+          <div class="form-row">
+            <label>プレビューする通知</label>
+            <select id="previewType">
+              <option value="予約確定">予約確定</option>
+              <option value="予約前日">予約前日</option>
+              <option value="予約当日">予約当日</option>
+              <option value="施術後">施術後</option>
+            </select>
+            <button class="test-button" onclick="generatePreview()">プレビュー生成</button>
+            <button class="test-button" onclick="sendTestMessage()">テスト送信</button>
+          </div>
+        </div>
+
+        <div class="preview-section" id="previewSection" style="display: none;">
+          <div class="preview-title">📱 メッセージプレビュー</div>
+          <div class="preview-content" id="previewContent">
+            <!-- プレビュー内容がここに表示される -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ボタングループ -->
+    <div class="button-group">
+      <button class="btn-primary" onclick="saveAll()">保存</button>
+      <button class="btn-secondary" onclick="loadAll()">設定を再読み込み</button>
+      <button class="btn-secondary" onclick="initializeTemplates()">テンプレート初期化</button>
+      <button class="btn-secondary" onclick="google.script.host.close()">閉じる</button>
+    </div>
+
+    <div id="message"></div>
+  </div>
+
+  <script>
+    // 初期化
+    window.onload = function() {
+      loadAll();
+      loadVariableList();
+    };
+
+    // タブ切り替え
+    function switchTab(tabName) {
+      // タブボタンの状態を更新
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      event.target.classList.add('active');
+      
+      // タブコンテンツの表示を更新
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      document.getElementById(tabName + 'Tab').classList.add('active');
+    }
+
+    // 全設定を読み込み
+    function loadAll() {
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(data) {
+          showLoading(false);
+          applyConfigs(data.configs);
+          applyTemplates(data.templates);
+          showMessage('設定を読み込みました', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showMessage('設定の読み込みに失敗しました: ' + error, 'error');
+        })
+        .loadLineNotificationSettings();
+    }
+
+    // 設定を画面に反映
+    function applyConfigs(configs) {
+      configs.forEach(config => {
+        switch(config.type) {
+          case '予約確定':
+            document.getElementById('confirmEnabled').checked = config.enabled;
+            document.getElementById('confirmTarget').value = config.target;
+            document.getElementById('confirmIncludeTicket').checked = config.includeTicket;
+            document.getElementById('confirmIncludeNotes').checked = config.includeNotes;
+            break;
+          case '予約前日':
+            document.getElementById('dayBeforeEnabled').checked = config.enabled;
+            document.getElementById('dayBeforeTime').value = config.timing || '11:00';
+            document.getElementById('dayBeforeTarget').value = config.target;
+            document.getElementById('dayBeforeIncludeTicket').checked = config.includeTicket;
+            document.getElementById('dayBeforeIncludeNotes').checked = config.includeNotes;
+            break;
+          case '予約当日':
+            document.getElementById('sameDayEnabled').checked = config.enabled;
+            document.getElementById('sameDayTime').value = config.timing || '09:00';
+            document.getElementById('sameDayTarget').value = config.target;
+            document.getElementById('sameDayIncludeTicket').checked = config.includeTicket;
+            document.getElementById('sameDayIncludeNotes').checked = config.includeNotes;
+            break;
+          case '施術後':
+            document.getElementById('afterEnabled').checked = config.enabled;
+            document.getElementById('afterTiming').value = config.timing || '1時間後';
+            document.getElementById('afterTarget').value = config.target;
+            document.getElementById('afterIncludeTicket').checked = config.includeTicket;
+            document.getElementById('afterIncludeNotes').checked = config.includeNotes;
+            break;
+        }
+      });
+    }
+
+    // テンプレートを画面に反映
+    function applyTemplates(templates) {
+      window.templates = templates;
+      loadTemplate();
+    }
+
+    // 選択されたテンプレートを読み込み
+    function loadTemplate() {
+      const type = document.getElementById('templateType').value;
+      const template = window.templates.find(t => t.type === type);
+      if (template) {
+        document.getElementById('templateBody').value = template.body;
+      }
+    }
+
+    // 変数リストを読み込み
+    function loadVariableList() {
+      google.script.run
+        .withSuccessHandler(function(variables) {
+          const container = document.getElementById('variableList');
+          container.innerHTML = '';
+          
+          variables.forEach(variable => {
+            const item = document.createElement('div');
+            item.className = 'variable-item';
+            item.onclick = function() {
+              insertVariable(variable.key);
+            };
+            item.innerHTML = `
+              <div class="variable-key">${variable.key}</div>
+              <div class="variable-desc">${variable.description}</div>
+            `;
+            container.appendChild(item);
+          });
+        })
+        .withFailureHandler(function(error) {
+          console.error('変数リスト取得エラー:', error);
+        })
+        .getAvailableVariables();
+    }
+
+    // 変数をテキストエリアに挿入
+    function insertVariable(variable) {
+      const textarea = document.getElementById('templateBody');
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      
+      textarea.value = text.substring(0, start) + variable + text.substring(end);
+      textarea.selectionStart = textarea.selectionEnd = start + variable.length;
+      textarea.focus();
+    }
+
+    // 全設定を保存
+    function saveAll() {
+      const configs = [
+        {
+          type: '予約確定',
+          enabled: document.getElementById('confirmEnabled').checked,
+          timing: '即時',
+          target: document.getElementById('confirmTarget').value,
+          includeTicket: document.getElementById('confirmIncludeTicket').checked,
+          includeNotes: document.getElementById('confirmIncludeNotes').checked
+        },
+        {
+          type: '予約前日',
+          enabled: document.getElementById('dayBeforeEnabled').checked,
+          timing: document.getElementById('dayBeforeTime').value,
+          target: document.getElementById('dayBeforeTarget').value,
+          includeTicket: document.getElementById('dayBeforeIncludeTicket').checked,
+          includeNotes: document.getElementById('dayBeforeIncludeNotes').checked
+        },
+        {
+          type: '予約当日',
+          enabled: document.getElementById('sameDayEnabled').checked,
+          timing: document.getElementById('sameDayTime').value,
+          target: document.getElementById('sameDayTarget').value,
+          includeTicket: document.getElementById('sameDayIncludeTicket').checked,
+          includeNotes: document.getElementById('sameDayIncludeNotes').checked
+        },
+        {
+          type: '施術後',
+          enabled: document.getElementById('afterEnabled').checked,
+          timing: document.getElementById('afterTiming').value,
+          target: document.getElementById('afterTarget').value,
+          includeTicket: document.getElementById('afterIncludeTicket').checked,
+          includeNotes: document.getElementById('afterIncludeNotes').checked
+        }
+      ];
+
+      // テンプレートも更新
+      const currentType = document.getElementById('templateType').value;
+      const currentTemplate = window.templates.find(t => t.type === currentType);
+      if (currentTemplate) {
+        currentTemplate.body = document.getElementById('templateBody').value;
+      }
+
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function() {
+          showLoading(false);
+          showMessage('設定を保存しました', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showMessage('設定の保存に失敗しました: ' + error, 'error');
+        })
+        .saveLineNotificationSettings(configs, window.templates);
+    }
+
+    // プレビュー生成
+    function generatePreview() {
+      const type = document.getElementById('previewType').value;
+      
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(preview) {
+          showLoading(false);
+          showPreview(preview);
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showMessage('プレビュー生成に失敗しました: ' + error, 'error');
+        })
+        .generateNotificationPreview(type);
+    }
+
+    // テストメッセージ送信
+    function sendTestMessage() {
+      const type = document.getElementById('previewType').value;
+      
+      if (!confirm(`「${type}」のテストメッセージを送信しますか？`)) {
+        return;
+      }
+      
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showLoading(false);
+          if (result.success) {
+            showMessage('テストメッセージを送信しました', 'success');
+          } else {
+            showMessage('テスト送信に失敗しました: ' + result.error, 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showMessage('テスト送信に失敗しました: ' + error, 'error');
+        })
+        .sendTestNotification(type);
+    }
+
+    // テンプレート初期化
+    function initializeTemplates() {
+      if (!confirm('テンプレートをデフォルトに戻しますか？現在の設定は失われます。')) {
+        return;
+      }
+      
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function() {
+          showLoading(false);
+          loadAll();
+          showMessage('テンプレートを初期化しました', 'success');
+        })
+        .withFailureHandler(function(error) {
+          showLoading(false);
+          showMessage('テンプレート初期化に失敗しました: ' + error, 'error');
+        })
+        .initializeNotificationTemplates();
+    }
+
+    // プレビュー表示
+    function showPreview(content) {
+      document.getElementById('previewSection').style.display = 'block';
+      
+      let previewHtml = '';
+      
+      // テキストメッセージプレビュー
+      if (content.message) {
+        previewHtml += '<h4>📱 テキストメッセージ</h4>';
+        previewHtml += '<div style="padding: 15px; background: #e8f4fd; border-radius: 8px; margin-bottom: 20px; white-space: pre-wrap;">';
+        previewHtml += content.message;
+        previewHtml += '</div>';
+      }
+      
+      // FlexMessageプレビュー
+      if (content.flexMessage) {
+        previewHtml += '<h4>🎨 FlexMessage</h4>';
+        previewHtml += '<div style="margin-bottom: 10px; font-size: 12px; color: #666;">PHPがLINE Messaging APIで送信するFlexMessage形式</div>';
+        previewHtml += '<pre style="margin: 0; white-space: pre-wrap; font-size: 12px; background: #f8f9fa; padding: 15px; border-radius: 8px; overflow-x: auto;">';
+        previewHtml += JSON.stringify(content.flexMessage, null, 2);
+        previewHtml += '</pre>';
+      } else {
+        // 従来のJSON表示
+        previewHtml += '<pre style="margin: 0; white-space: pre-wrap;">';
+        previewHtml += JSON.stringify(content, null, 2);
+        previewHtml += '</pre>';
+      }
+      
+      document.getElementById('previewContent').innerHTML = previewHtml;
+    }
+
+    // ローディング表示
+    function showLoading(show) {
+      document.getElementById('loading').style.display = show ? 'flex' : 'none';
+    }
+
+    // メッセージ表示
+    function showMessage(message, type) {
+      const messageDiv = document.getElementById('message');
+      messageDiv.className = type;
+      messageDiv.textContent = message;
+      setTimeout(() => {
+        messageDiv.textContent = '';
+        messageDiv.className = '';
+      }, 5000);
+    }
+  </script>
+</body>
+</html>

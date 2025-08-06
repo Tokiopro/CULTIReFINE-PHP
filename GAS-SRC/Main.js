@@ -15,6 +15,10 @@ function onOpen() {
     .addSubMenu(ui.createMenu('データ同期')
       .addItem('患者マスタを同期', 'syncVisitorsMenu')
       .addItem('予約情報を同期', 'syncReservationsMenu')
+      .addSubMenu(ui.createMenu('予約同期オプション')
+        .addItem('今日のみ同期（高速）', 'syncReservationsTodayMenu')
+        .addItem('3日間同期（推奨）', 'syncReservations3DaysMenu')
+        .addItem('7日間同期（軽量版）', 'syncReservations7DaysMenu'))
       .addItem('メニュー情報を同期', 'syncMenusMenu')
       .addItem('すべてのデータを同期', 'syncAllDataMenu'))
     .addSeparator()
@@ -46,13 +50,13 @@ function onOpen() {
       .addItem('Messaging API設定ガイド', 'showLineMessagingApiSetupGuideMenu'))
     .addSeparator()
     .addSubMenu(ui.createMenu('GAS管理機能')
-      .addItem('メニュー管理', 'showMenuManagementDialog')
       .addItem('施術・メニュー管理', 'showTreatmentManagementDialog')
       .addItem('会社管理', 'showCompanyManagementDialog')
       .addItem('書類管理', 'showDocumentManagementDialog')
       .addItem('チケット管理', 'showTicketManagementDialog')
       .addItem('施術間隔管理', 'showTreatmentIntervalDialog')
       .addItem('通知管理', 'showNotificationManagementDialog')
+      .addItem('LINE通知管理', 'showLineNotificationConfigDialog')
       .addSeparator()
       .addItem('施術間隔データを移行', 'migrateTreatmentIntervalMenu'))
     .addSeparator()
@@ -128,19 +132,147 @@ function syncVisitorsMenu() {
 }
 
 /**
- * 予約情報を同期（メニュー用）
+ * 予約情報を同期（メニュー用）- 最適化版
  */
 function syncReservationsMenu() {
   const ui = SpreadsheetApp.getUi();
-  const response = ui.alert('予約情報の同期', '予約情報を同期しますか？', ui.ButtonSet.YES_NO);
+  
+  // 同期オプションを選択
+  const options = ui.alert(
+    '予約情報の同期', 
+    '同期する期間を選択してください:\n\n' +
+    '「はい」: 過去6か月・未来3か月（推奨）\n' +
+    '「いいえ」: 今日のみ（最高速）\n' +
+    '「キャンセル」: 同期を中止',
+    ui.ButtonSet.YES_NO_CANCEL
+  );
+  
+  if (options === ui.Button.CANCEL) {
+    return;
+  }
+  
+  try {
+    const service = new ReservationService();
+    let result;
+    
+    if (options === ui.Button.YES) {
+      // 過去6か月・未来3か月の最適化同期
+      ui.alert('同期開始', '過去6か月・未来3か月の予約情報を同期します。\n処理に時間がかかる場合があります...', ui.ButtonSet.OK);
+      result = service.syncReservationsOptimized({
+        epoch_from: Utils.getPastMonthsStartISO(6),
+        epoch_to: Utils.getFutureMonthsEndISO(3)
+      });
+      
+      if (result.success) {
+        ui.alert('同期完了', 
+          `${result.totalSynced}件の予約情報を同期しました。\n` +
+          `実行時間: ${result.executionTime.toFixed(1)}秒\n` +
+          `期間: ${result.dateRange}`, 
+          ui.ButtonSet.OK);
+      }
+    } else if (options === ui.Button.NO) {
+      // 今日のみの高速同期
+      ui.alert('同期開始', '今日の予約情報のみを同期します...', ui.ButtonSet.OK);
+      const count = service.syncTodayOnly();
+      ui.alert('同期完了', `${count}件の予約情報を同期しました。`, ui.ButtonSet.OK);
+    }
+    
+  } catch (error) {
+    Logger.log(`予約同期エラー: ${error.toString()}`);
+    ui.alert('エラー', 
+      `同期中にエラーが発生しました:\n${error.toString()}\n\n` +
+      '代替案:\n' +
+      '1. GASエディタから「syncToday()」を実行\n' +
+      '2. 時間をおいて再試行してください', 
+      ui.ButtonSet.OK);
+  }
+}
+
+/**
+ * 今日のみ予約同期（メニュー用）
+ */
+function syncReservationsTodayMenu() {
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.alert('今日の予約同期', '今日の予約情報のみを同期しますか？\n（最も高速です）', ui.ButtonSet.YES_NO);
   
   if (response === ui.Button.YES) {
     try {
+      ui.alert('同期開始', '今日の予約情報を同期しています...', ui.ButtonSet.OK);
       const service = new ReservationService();
-      const count = service.syncReservations();
-      ui.alert(`${count}件の予約情報を同期しました。`);
+      const count = service.syncTodayOnly();
+      ui.alert('同期完了', `${count}件の予約情報を同期しました。`, ui.ButtonSet.OK);
     } catch (error) {
-      ui.alert('エラー', error.toString(), ui.ButtonSet.OK);
+      Logger.log(`今日同期エラー: ${error.toString()}`);
+      ui.alert('エラー', `同期エラー: ${error.toString()}`, ui.ButtonSet.OK);
+    }
+  }
+}
+
+/**
+ * 3日間予約同期（メニュー用）
+ */
+function syncReservations3DaysMenu() {
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.alert('3日間予約同期', '今後3日間の予約情報を同期しますか？\n（推奨設定）', ui.ButtonSet.YES_NO);
+  
+  if (response === ui.Button.YES) {
+    try {
+      ui.alert('同期開始', '今後3日間の予約情報を同期しています...\n時間がかかる場合があります', ui.ButtonSet.OK);
+      const service = new ReservationService();
+      const result = service.syncReservationsOptimized({
+        date_from: Utils.getToday(),
+        date_to: Utils.formatDate(new Date(new Date().setDate(new Date().getDate() + 3)))
+      });
+      
+      if (result.success) {
+        ui.alert('同期完了',
+          `${result.totalSynced}件の予約情報を同期しました。\n` +
+          `実行時間: ${result.executionTime.toFixed(1)}秒`,
+          ui.ButtonSet.OK);
+      }
+    } catch (error) {
+      Logger.log(`3日間同期エラー: ${error.toString()}`);
+      ui.alert('エラー', `同期エラー: ${error.toString()}`, ui.ButtonSet.OK);
+    }
+  }
+}
+
+/**
+ * 7日間予約同期（メニュー用）- 軽量版
+ */
+function syncReservations7DaysMenu() {
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.alert(
+    '7日間予約同期（軽量版）', 
+    '今後7日間の予約情報を軽量版で同期しますか？\n' +
+    '※会社情報など一部データは省略されます\n' +
+    '※処理時間が長くなる可能性があります', 
+    ui.ButtonSet.YES_NO
+  );
+  
+  if (response === ui.Button.YES) {
+    try {
+      ui.alert('同期開始', '今後7日間の予約情報を軽量版で同期しています...\n時間がかかります', ui.ButtonSet.OK);
+      const service = new ReservationService();
+      const result = service.syncReservationsOptimized({
+        date_from: Utils.getToday(),
+        date_to: Utils.formatDate(new Date(new Date().setDate(new Date().getDate() + 7))),
+        skipCompanyInfo: true  // 会社情報をスキップして軽量化
+      });
+      
+      if (result.success) {
+        ui.alert('同期完了',
+          `${result.totalSynced}件の予約情報を同期しました。\n` +
+          `実行時間: ${result.executionTime.toFixed(1)}秒\n` +
+          '※軽量版のため会社情報は省略されています',
+          ui.ButtonSet.OK);
+      }
+    } catch (error) {
+      Logger.log(`7日間同期エラー: ${error.toString()}`);
+      ui.alert('エラー', 
+        `同期エラー: ${error.toString()}\n\n` +
+        '代替案: GASエディタから「manualReservationSync()」を実行してください', 
+        ui.ButtonSet.OK);
     }
   }
 }
@@ -436,15 +568,7 @@ function searchVisitorDialog() {
   SpreadsheetApp.getUi().showModalDialog(html, '患者検索');
 }
 
-/**
- * メニュー管理ダイアログを表示
- */
-function showMenuManagementDialog() {
-  const html = HtmlService.createHtmlOutputFromFile('MenuManagementDialog')
-    .setWidth(1000)
-    .setHeight(700);
-  SpreadsheetApp.getUi().showModalDialog(html, 'メニュー管理');
-}
+
 
 /**
  * 施術・メニュー管理ダイアログを表示
@@ -681,15 +805,7 @@ function getAvailablePlansForDialogBasic() {
 // - updateCompanyFromDialog
 // - deleteCompanyFromDialog
 
-/**
- * メニュー管理ダイアログを表示
- */
-function showMenuManagementDialog() {
-  const html = HtmlService.createHtmlOutputFromFile('MenuManagementDialog')
-    .setWidth(1200)
-    .setHeight(800);
-  SpreadsheetApp.getUi().showModalDialog(html, 'メニュー管理');
-}
+
 
 /**
  * 施術間隔管理ダイアログを表示
@@ -709,6 +825,16 @@ function showNotificationManagementDialog() {
     .setWidth(1000)
     .setHeight(800);
   SpreadsheetApp.getUi().showModalDialog(html, '通知管理');
+}
+
+/**
+ * LINE通知管理ダイアログを表示
+ */
+function showLineNotificationConfigDialog() {
+  const html = HtmlService.createHtmlOutputFromFile('LineNotificationConfigDialog')
+    .setWidth(1200)
+    .setHeight(800);
+  SpreadsheetApp.getUi().showModalDialog(html, 'LINE通知管理');
 }
 
 /**
@@ -1711,6 +1837,157 @@ function getActiveLinksForCompany(companyId) {
     return service.getActiveLinksForCompany(companyId);
   } catch (error) {
     Logger.log(`アクティブリンク取得エラー: ${error.toString()}`);
+    throw error;
+  }
+}
+
+// LINE通知管理ダイアログ用のヘルパー関数
+
+/**
+ * LINE通知設定を読み込み
+ */
+function loadLineNotificationSettings() {
+  try {
+    const configService = new LineNotificationConfigService();
+    const templateService = new LineNotificationTemplateService();
+    
+    configService.init();
+    templateService.init();
+    
+    const configs = configService.getAllNotificationConfigs();
+    const templates = templateService.getAllTemplates();
+    
+    return {
+      configs: configs,
+      templates: templates
+    };
+  } catch (error) {
+    Logger.log('LINE通知設定読み込みエラー: ' + error.toString());
+    throw error;
+  }
+}
+
+/**
+ * LINE通知設定を保存
+ */
+function saveLineNotificationSettings(configs, templates) {
+  try {
+    const configService = new LineNotificationConfigService();
+    const templateService = new LineNotificationTemplateService();
+    
+    configService.init();
+    templateService.init();
+    
+    // 設定を保存
+    configs.forEach(config => {
+      configService.saveNotificationConfig(config);
+    });
+    
+    // テンプレートを保存
+    templates.forEach(template => {
+      templateService.saveTemplate(template);
+    });
+    
+    return { success: true };
+  } catch (error) {
+    Logger.log('LINE通知設定保存エラー: ' + error.toString());
+    throw error;
+  }
+}
+
+/**
+ * LINE通知テンプレートの変数一覧を取得
+ */
+function getAvailableVariables() {
+  const templateService = new LineNotificationTemplateService();
+  return templateService.getAvailableVariables();
+}
+
+/**
+ * LINE通知のプレビューを生成
+ */
+async function generateNotificationPreview(notificationType) {
+  try {
+    const templateService = new LineNotificationTemplateService();
+    templateService.init();
+    
+    const preview = await templateService.generatePreview(notificationType);
+    
+    // FlexMessageプレビューも生成
+    const configService = new LineNotificationConfigService();
+    configService.init();
+    const config = configService.getNotificationConfig(notificationType);
+    
+    // サンプル予約データ
+    const sampleReservation = {
+      visitor_id: 'SAMPLE-VISITOR-001',
+      患者名: '山田太郎',
+      予約日: Utils.formatDate(new Date()),
+      予約時間: '14:00',
+      メニュー: 'ボトックス注射',
+      担当スタッフ: '田中医師'
+    };
+    
+    // FlexMessageプレビューを生成
+    const messageData = templateService.getDataFromSpreadsheets(sampleReservation, config);
+    const template = templateService.getTemplate(notificationType);
+    const flexMessage = templateService.generateFlexMessage(template, messageData, notificationType);
+    
+    return {
+      ...preview,
+      flexMessage: flexMessage
+    };
+  } catch (error) {
+    Logger.log('プレビュー生成エラー: ' + error.toString());
+    throw error;
+  }
+}
+
+/**
+ * LINE通知のテスト送信
+ */
+async function sendTestNotification(notificationType) {
+  try {
+    const testService = new TestNotificationService();
+    
+    // テスト用のサンプル予約データを作成
+    const sampleReservation = {
+      id: 'TEST-' + new Date().getTime(),
+      visitor_id: 'TEST-VISITOR',
+      visitor_name: 'テスト太郎',
+      menu_id: 'TEST-MENU',
+      menu_name: 'テスト施術',
+      date: Utils.formatDate(new Date()),
+      time: '14:00',
+      staff_name: 'テストスタッフ'
+    };
+    
+    // 自分のLINE IDまたはテスト用IDを設定
+    const testLineId = PropertiesService.getScriptProperties().getProperty('TEST_LINE_ID');
+    if (!testLineId) {
+      return { success: false, error: 'テスト用LINE IDが設定されていません' };
+    }
+    
+    // テスト送信実行
+    const result = await testService.sendTestNotification(notificationType, sampleReservation, testLineId);
+    return result;
+  } catch (error) {
+    Logger.log('テスト送信エラー: ' + error.toString());
+    return { success: false, error: error.toString() };
+  }
+}
+
+/**
+ * LINE通知テンプレートを初期化
+ */
+function initializeNotificationTemplates() {
+  try {
+    const templateService = new LineNotificationTemplateService();
+    templateService.init();
+    templateService.initializeTemplates();
+    return { success: true };
+  } catch (error) {
+    Logger.log('テンプレート初期化エラー: ' + error.toString());
     throw error;
   }
 }
@@ -3618,6 +3895,44 @@ function clearGeneratedMenus() {
 function generateMedicalForceCsv(menus) {
   const treatmentMasterService = new TreatmentMasterService();
   return treatmentMasterService.generateMedicalForceCsv(menus);
+}
+
+/**
+ * 施術CSVを生成
+ */
+function generateTreatmentsCsv(treatments) {
+  const treatmentMasterService = new TreatmentMasterService();
+  return treatmentMasterService.generateTreatmentsCsv(treatments);
+}
+
+/**
+ * MenuTicketMappingシートを初期化
+ */
+function initializeMenuTicketMapping() {
+  return Utils.executeWithErrorHandling(() => {
+    const menuTicketMappingService = new MenuTicketMappingService();
+    return menuTicketMappingService.initializeMenuTicketMappingSheet();
+  });
+}
+
+/**
+ * 全メニューチケット関連付けを取得
+ */
+function getMenuTicketMappings() {
+  return Utils.executeWithErrorHandling(() => {
+    const menuTicketMappingService = new MenuTicketMappingService();
+    return menuTicketMappingService.getAllMappings();
+  });
+}
+
+/**
+ * 基本メニューIDから関連MenuIDを取得
+ */
+function getMenuIdsByBase(baseMenuId) {
+  return Utils.executeWithErrorHandling(() => {
+    const menuTicketMappingService = new MenuTicketMappingService();
+    return menuTicketMappingService.getMenuIdsByBaseId(baseMenuId);
+  });
 }
 
 /**

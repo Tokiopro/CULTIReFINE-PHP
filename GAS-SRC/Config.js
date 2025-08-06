@@ -113,7 +113,10 @@ class Config {
       generatedMenus: '生成メニュー',
       notificationSettings: '通知設定',
       notificationHistory: '通知履歴',
-      staff: 'スタッフ管理'
+      lineNotificationConfig: 'LINE通知設定',
+      lineNotificationTemplates: 'LINE通知テンプレート',
+      staff: 'スタッフ管理',
+      menuTicketMapping: 'メニューチケット関連付け'
     };
   }
   

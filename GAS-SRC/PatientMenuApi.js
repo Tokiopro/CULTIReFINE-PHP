@@ -96,49 +96,70 @@ function getPatientMenus(params) {
  */
 function transformMenuStructure(menus) {
   const result = {
-    '初回メニュー': {
-      '通常メニュー': {},
-      'チケット付与メニュー': {}
+    first_time_menus: {
+      category: '初回メニュー',
+      description: '初めてご来院の方向けのメニューです',
+      subcategories: {}
     },
-    '2回目以降メニュー': {
-      '通常メニュー': {},
-      'チケット付与メニュー': {}
+    repeat_menus: {
+      category: '2回目以降メニュー', 
+      description: 'リピーターの方向けのメニューです',
+      subcategories: {}
+    },
+    ticket_menus: {
+      category: 'チケットメニュー',
+      description: 'チケットをご利用いただけるメニューです',
+      subcategories: {}
     }
   };
-  
-  // 元の構造から新しい構造への変換
-  // 元: 通常メニュー/チケット付与メニュー -> 初回/2回目以降 -> カテゴリ
-  // 新: 初回/2回目以降 -> 通常/チケット -> カテゴリ
-  
-  Object.entries(menus).forEach(([majorCategory, middleCategories]) => {
-    Object.entries(middleCategories).forEach(([middleCategory, categories]) => {
-      const targetMajor = middleCategory; // 初回メニュー or 2回目以降メニュー
-      const targetMiddle = majorCategory; // 通常メニュー or チケット付与メニュー
-      
-      if (result[targetMajor] && result[targetMajor][targetMiddle]) {
-        Object.entries(categories).forEach(([categoryName, menuList]) => {
-          result[targetMajor][targetMiddle][categoryName] = menuList.map(menu => ({
-            menu_id: menu.id,
-            menu_name: menu.name,
-            category: menu.category,
-            price: menu.price || null,
-            duration_minutes: menu.duration,
-            display_order: menu.displayOrder,
-            usage_count: menu.usageCount,
-            last_used_date: menu.lastUsedDate ? 
-              new Date(menu.lastUsedDate).toISOString().split('T')[0] : null,
-            ticket_info: menu.ticketType ? {
-              ticket_type: menu.ticketType,
-              required_tickets: menu.requiredTickets,
-              can_reserve: menu.canReserve
-            } : null,
-            can_reserve: menu.canReserve
-          }));
-        });
-      }
-    });
+
+  // メニューをカテゴリごとにグループ化
+  menus.forEach(menu => {
+    let targetCategory;
+    let subcategoryName = menu.category || '未分類';
+    
+    // メニュータイプによって振り分け
+    if (menu.menu_type === '初回メニュー' || menu.is_first_time) {
+      targetCategory = result.first_time_menus;
+    } else if (menu.is_ticket_menu || menu.menu_type === 'チケットメニュー') {
+      targetCategory = result.ticket_menus;
+    } else {
+      targetCategory = result.repeat_menus;
+    }
+    
+    // サブカテゴリーが存在しない場合は作成
+    if (!targetCategory.subcategories[subcategoryName]) {
+      targetCategory.subcategories[subcategoryName] = {
+        category: subcategoryName,
+        menus: []
+      };
+    }
+    
+    // メニュー情報を整形して追加
+    const transformedMenu = {
+      menu_id: menu.menu_id,
+      base_menu_id: menu.base_menu_id || menu.menu_id,
+      name: menu.name,
+      duration_minutes: menu.duration_minutes,
+      description: menu.description,
+      can_reserve: menu.can_reserve,
+      availability_reason: menu.availability_reason,
+      usage_count: menu.usage_count || 0
+    };
+    
+    // チケットメニューの場合は追加情報
+    if (menu.is_ticket_menu) {
+      transformedMenu.ticket_type = menu.ticket_type;
+      transformedMenu.required_tickets = menu.required_tickets;
+      transformedMenu.ticket_balance = menu.ticket_balance;
+    } else {
+      transformedMenu.price = menu.price || 0;
+      transformedMenu.price_with_tax = menu.price_with_tax || menu.price || 0;
+    }
+    
+    targetCategory.subcategories[subcategoryName].menus.push(transformedMenu);
   });
-  
+
   return result;
 }
 

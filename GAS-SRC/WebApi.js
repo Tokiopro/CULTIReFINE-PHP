@@ -94,6 +94,8 @@ function doPost(e) {
         return handleGetLineTemplates(requestData);
       case 'getLineNotificationStatus':
         return handleGetLineNotificationStatus(requestData);
+      case 'cancelReservation':
+        return handleCancelReservation(requestData);
       default:
         return createErrorResponse('Unknown action: ' + action, 400);
     }
@@ -988,6 +990,65 @@ function getDocumentFoldersByPatient(patientId) {
 }
 
 /**
+ * すべてのフォルダ定義を取得（管理画面用）
+ */
+function getAllFolderDefinitions() {
+  try {
+    const documentService = new DocumentManagerService();
+    const folders = documentService.getAllFolderDefinitions();
+    
+    return {
+      success: true,
+      data: folders
+    };
+  } catch (error) {
+    Logger.log('Error getting all folder definitions: ' + error.toString());
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * フォルダ定義を保存（管理画面用）
+ * @param {Object} folderData - フォルダデータ
+ */
+function saveFolderDefinition(folderData) {
+  try {
+    const documentService = new DocumentManagerService();
+    const result = documentService.saveFolderDefinition(folderData);
+    
+    return result;
+  } catch (error) {
+    Logger.log('Error saving folder definition: ' + error.toString());
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * フォルダ定義を削除（管理画面用）
+ * @param {string} folderId - フォルダID
+ */
+function deleteFolderDefinition(folderId) {
+  try {
+    const documentService = new DocumentManagerService();
+    const result = documentService.deleteFolderDefinition(folderId);
+    
+    return result;
+  } catch (error) {
+    Logger.log('Error deleting folder definition: ' + error.toString());
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
  * 書類フォルダを保存
  */
 function saveDocumentFolder(folderData) {
@@ -1245,6 +1306,58 @@ function getLineGroupIdDebug() {
   }
 }
 
+/**
+ * キャンセル予約情報を処理
+ */
+function handleCancelReservation(requestData) {
+  try {
+    const cancelRequest = requestData.CancelRequest;
+    const timestamp = requestData.timestamp;
+    
+    if (!cancelRequest) {
+      return createErrorResponse('CancelRequest data is required', 400);
+    }
+    
+    // 必須項目のチェック
+    const requiredFields = ['request_date', 'request_reservationId', 'request_name', 'request_menu', 'request_reservedate'];
+    for (const field of requiredFields) {
+      if (!cancelRequest[field]) {
+        return createErrorResponse(`${field} is required`, 400);
+      }
+    }
+    
+    // キャンセル予約サービスを作成してデータを保存
+    const cancelReservationService = new CancelReservationService();
+    const result = cancelReservationService.addCancelReservation({
+      requestDate: cancelRequest.request_date,
+      reservationId: cancelRequest.request_reservationId,
+      patientName: cancelRequest.request_name,
+      menuName: cancelRequest.request_menu,
+      reservationDateTime: cancelRequest.request_reservedate,
+      timestamp: timestamp || new Date().toISOString()
+    });
+    
+    if (!result.success) {
+      return createErrorResponse(result.error || 'Failed to save cancel reservation', 400);
+    }
+    
+    // 成功レスポンス
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      data: {
+        message: 'キャンセル予約情報を保存しました',
+        reservation_id: cancelRequest.request_reservationId,
+        saved_at: new Date().toISOString()
+      },
+      timestamp: new Date().toISOString()
+    })).setMimeType(ContentService.MimeType.JSON);
+    
+  } catch (error) {
+    Logger.log('handleCancelReservation error: ' + error.toString());
+    return createErrorResponse('Failed to process cancel reservation: ' + error.message, 500);
+  }
+}
+
 function call_doGet() {
   const e = {
     parameter: {
@@ -1257,4 +1370,60 @@ function call_doGet() {
   };
   const response = doGet(e);
   Logger.log(response.getContent());
+}
+
+/**
+ * キャンセル予約エンドポイントのテスト関数
+ */
+function test_cancelReservation() {
+  console.log('=== キャンセル予約エンドポイントテスト開始 ===');
+  
+  // テスト用のリクエストデータを作成
+  const e = {
+    postData: {
+      contents: JSON.stringify({
+        action: 'cancelReservation',
+        apiKey: '0123456789',
+        CancelRequest: {
+          request_date: '2025-07-30',
+          request_reservationId: 'test-' + Utilities.getUuid(),
+          request_name: 'テスト太郎',
+          request_menu: '水素吸入',
+          request_reservedate: '2025-08-15 14:30'
+        },
+        timestamp: new Date().toISOString()
+      }),
+      type: 'application/json'
+    },
+    parameter: {}
+  };
+  
+  // エンドポイントを呼び出し
+  const response = doPost(e);
+  const responseContent = response.getContent();
+  const responseData = JSON.parse(responseContent);
+  
+  console.log('レスポンス:', responseData);
+  
+  // 結果を確認
+  if (responseData.success) {
+    console.log('✅ テスト成功！');
+    console.log('保存された予約ID:', responseData.data.reservation_id);
+    
+    // 実際にシートに保存されたか確認
+    const service = new CancelReservationService();
+    const savedData = service.findByReservationId(responseData.data.reservation_id);
+    
+    if (savedData) {
+      console.log('✅ シートへの保存確認OK');
+      console.log('保存データ:', savedData);
+    } else {
+      console.log('❌ シートに保存されていません');
+    }
+  } else {
+    console.log('❌ テスト失敗');
+    console.log('エラー:', responseData.error);
+  }
+  
+  console.log('=== テスト終了 ===');
 }

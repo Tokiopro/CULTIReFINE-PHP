@@ -34,15 +34,18 @@ class DocumentManagerService {
 
     const data = sheet.getDataRange().getValues();
     if (data.length <= 1) {
-      return [];
+      // デフォルトフォルダ定義を返す
+      return this.getDefaultFolderDefinitions();
     }
 
     const folders = [];
+    const defaultFolders = [];
+    
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
-      if (!row[0] || row[1] !== patientId) continue; // フォルダIDが空または患者IDが異なる行はスキップ
-
-      folders.push({
+      if (!row[0]) continue; // フォルダIDが空の行はスキップ
+      
+      const folderData = {
         folderId: row[0],
         patientId: row[1],
         folderName: row[2],
@@ -50,12 +53,194 @@ class DocumentManagerService {
         description: row[4] || '',
         displayOrder: row[5] || 999,
         path: row[6] || '',
-        createdAt: row[7] || new Date()
-      });
+        createdAt: row[7] || new Date(),
+        isDefault: !row[1] || row[1] === '' // 患者IDがない場合はデフォルトフォルダ
+      };
+      
+      // 患者IDが一致するか、デフォルトフォルダの場合
+      if (row[1] === patientId) {
+        folders.push(folderData);
+      } else if (!row[1] || row[1] === '') {
+        // デフォルトフォルダを別配列に保存
+        defaultFolders.push(folderData);
+      }
+    }
+
+    // 患者専用フォルダがない場合はデフォルトフォルダを返す
+    if (folders.length === 0 && defaultFolders.length > 0) {
+      // デフォルトフォルダをテンプレートとして表示（読み取り専用フラグ付き）
+      return defaultFolders.map(folder => ({
+        ...folder,
+        isTemplate: true,
+        folderName: folder.folderName + ' (テンプレート)'
+      }));
     }
 
     // 表示順でソート
     return folders.sort((a, b) => a.displayOrder - b.displayOrder);
+  }
+
+  /**
+   * すべてのフォルダ定義を取得（管理画面用）
+   * @returns {Array} フォルダ定義の配列
+   */
+  getAllFolderDefinitions() {
+    const sheet = Utils.getOrCreateSheet(Config.getSheetNames().documentFolders);
+    if (!sheet) {
+      throw new Error('書類フォルダ定義シートが見つかりません');
+    }
+
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      return [];
+    }
+
+    const folders = [];
+    
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (!row[0]) continue; // フォルダIDが空の行はスキップ
+      
+      const folderData = {
+        folderId: row[0],
+        patientId: row[1] || '',
+        folderName: row[2] || '',
+        parentFolderId: row[3] || '',
+        description: row[4] || '',
+        displayOrder: row[5] || 999,
+        path: row[6] || '',
+        createdAt: row[7] || '',
+        isDefault: !row[1] || row[1] === ''
+      };
+      
+      folders.push(folderData);
+    }
+
+    // 表示順でソート
+    return folders.sort((a, b) => a.displayOrder - b.displayOrder);
+  }
+
+  /**
+   * フォルダ定義を保存（管理画面用）
+   * @param {Object} folderData - フォルダデータ
+   * @returns {Object} 処理結果
+   */
+  saveFolderDefinition(folderData) {
+    const sheet = Utils.getOrCreateSheet(Config.getSheetNames().documentFolders);
+    if (!sheet) {
+      throw new Error('書類フォルダ定義シートが見つかりません');
+    }
+
+    const data = sheet.getDataRange().getValues();
+    let rowIndex = -1;
+
+    // 既存のフォルダを探す
+    if (folderData.folderId) {
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === folderData.folderId) {
+          rowIndex = i + 1; // シートの行番号は1ベース
+          break;
+        }
+      }
+    }
+
+    // データを準備
+    const rowData = [
+      folderData.folderId || Utilities.getUuid(),
+      folderData.patientId || '',
+      folderData.folderName,
+      folderData.parentFolderId || '',
+      folderData.description || '',
+      folderData.displayOrder || 999,
+      folderData.path || '',
+      folderData.createdAt || new Date()
+    ];
+
+    if (rowIndex > 0) {
+      // 既存のフォルダを更新
+      sheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
+      return { success: true, message: 'フォルダ定義を更新しました' };
+    } else {
+      // 新規フォルダを追加
+      sheet.appendRow(rowData);
+      return { success: true, message: 'フォルダ定義を追加しました' };
+    }
+  }
+
+  /**
+   * フォルダ定義を削除（管理画面用）
+   * @param {string} folderId - フォルダID
+   * @returns {Object} 処理結果
+   */
+  deleteFolderDefinition(folderId) {
+    const sheet = Utils.getOrCreateSheet(Config.getSheetNames().documentFolders);
+    if (!sheet) {
+      throw new Error('書類フォルダ定義シートが見つかりません');
+    }
+
+    const data = sheet.getDataRange().getValues();
+    
+    // フォルダを探す
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === folderId) {
+        sheet.deleteRow(i + 1); // シートの行番号は1ベース
+        return { success: true, message: 'フォルダ定義を削除しました' };
+      }
+    }
+
+    throw new Error('指定されたフォルダが見つかりません');
+  }
+
+  /**
+   * デフォルトフォルダ定義を取得
+   */
+  getDefaultFolderDefinitions() {
+    return [
+      {
+        folderId: 'DEFAULT-001',
+        patientId: '',
+        folderName: '同意書 (テンプレート)',
+        parentFolderId: null,
+        description: '各種同意書を管理するフォルダ',
+        displayOrder: 1,
+        path: '/同意書',
+        createdAt: new Date(),
+        isTemplate: true
+      },
+      {
+        folderId: 'DEFAULT-002',
+        patientId: '',
+        folderName: '契約書 (テンプレート)',
+        parentFolderId: null,
+        description: '契約関連の書類を管理するフォルダ',
+        displayOrder: 2,
+        path: '/契約書',
+        createdAt: new Date(),
+        isTemplate: true
+      },
+      {
+        folderId: 'DEFAULT-003',
+        patientId: '',
+        folderName: '診療記録 (テンプレート)',
+        parentFolderId: null,
+        description: '診療に関する記録を管理するフォルダ',
+        displayOrder: 3,
+        path: '/診療記録',
+        createdAt: new Date(),
+        isTemplate: true
+      },
+      {
+        folderId: 'DEFAULT-004',
+        patientId: '',
+        folderName: 'その他 (テンプレート)',
+        parentFolderId: null,
+        description: 'その他の書類を管理するフォルダ',
+        displayOrder: 99,
+        path: '/その他',
+        createdAt: new Date(),
+        isTemplate: true
+      }
+    ];
   }
 
   /**

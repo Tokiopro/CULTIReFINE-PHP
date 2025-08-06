@@ -171,6 +171,24 @@ function routePhpApiPostRequest(requestData) {
     return sendLineNotification(requestData);
   }
   
+  // /api/line/message - FlexMessage生成とPHP連携用
+  if (pathParts.length === 3 && 
+      pathParts[0] === 'api' && 
+      pathParts[1] === 'line' && 
+      pathParts[2] === 'message') {
+    
+    return sendLineMsgPhp(requestData);
+  }
+  
+  // /api/line/config - LINE通知設定取得
+  if (pathParts.length === 3 && 
+      pathParts[0] === 'api' && 
+      pathParts[1] === 'line' && 
+      pathParts[2] === 'config') {
+    
+    return getLineNotificationConfig(requestData);
+  }
+  
   // /api/notifications/line/schedule - LINE通知スケジュール
   if (pathParts.length === 4 && 
       pathParts[0] === 'api' && 
@@ -574,6 +592,13 @@ function getUserFullInfoByLineId(lineUserId) {
     
     Logger.log(`getUserFullInfoByLineId: ステップ7 - 統計情報取得`);
     const statistics = getPhpStatistics(visitorId);
+
+    Logger.log(`getUserFullInfoByLineId: ステップ8 - チケット使用履歴取得`);
+    // 会員情報から会社IDを取得してチケット履歴を取得
+    let ticketHistory = [];
+    if (membershipInfo && membershipInfo.company_id) {
+      ticketHistory = getPhpTicketHistory(visitorId, membershipInfo.company_id);
+    }
     
     // 3. レスポンスを構築
     const response = {
@@ -792,9 +817,24 @@ function getUserFullInfoByLineIdFormatted(lineUserId) {
     } else {
       Logger.log(`会社情報がないため、会社別来院者取得をスキップ`);
     }
+        
+    // 7. チケット使用履歴を取得（今月の会社IDが一致するもののみ）
+    Logger.log(`ステップ7: チケット使用履歴取得開始`);
+    let ticketHistory = [];
+    if (companyData && companyData.companyId) {
+      try {
+        ticketHistory = getPhpTicketHistory(visitorId, companyData.companyId);
+        Logger.log(`チケット使用履歴取得完了 - 件数: ${ticketHistory.length}`);
+      } catch (ticketHistoryError) {
+        Logger.log(`チケット使用履歴取得エラー: ${ticketHistoryError.toString()}`);
+        ticketHistory = [];
+      }
+    } else {
+      Logger.log(`会社情報がないため、チケット使用履歴取得をスキップ`);
+    }
     
-    // 7. 指定された形式でレスポンスを構築
-    Logger.log(`ステップ7: レスポンス構築開始`);
+    // 8. 指定された形式でレスポンスを構築
+    Logger.log(`ステップ8: レスポンス構築開始`);
     
     // member_typeを真偽値に変換
     const memberType = companyData?.memberType === '本会員' ? true : false;
@@ -809,7 +849,8 @@ function getUserFullInfoByLineIdFormatted(lineUserId) {
       ticketInfo: ticketInfo,
       docsinfo: docsinfo,
       ReservationHistory: reservationHistory,
-      companyVisitors: companyVisitors
+      companyVisitors: companyVisitors,
+      ticketHistory: ticketHistory
     };
     
     Logger.log(`最終レスポンス: ${JSON.stringify(response)}`);
@@ -1116,27 +1157,29 @@ function getWebAppUrl() {
  * @return {Array} 変換された予約履歴
  */
 function formatReservationHistoryForJson(reservations) {
+  Logger.log("formatReservationHistoryForJson")
+  Logger.log(JSON.stringify(reservations))
   try {
     return reservations.map(reservation => ({
-      history_id: reservation.history_id || reservation.id,
-      reservename: reservation.reservename || reservation.treatment_name || "施術",
-      reservedate: formatDateString(reservation.reservedate || reservation.reservation_date),
-      reservetime: reservation.reservetime || reservation.reservation_time,
-      reservestatus: reservation.reservestatus || reservation.reservation_status,
-      reservepatient: reservation.reservepatient || reservation.patient_name,
+      history_id: reservation.reservation_id || '',
+      reservename: reservation.メニュー || "施術",
+      reservedate: formatDateString(reservation.予約日),
+      reservetime: reservation.予約時間,
+      reservestatus: reservation.ステータス || '',
+      reservepatient: reservation.患者名 || '',
       patient_id: reservation.patient_id || '',
-      patient_name: reservation.patient_name || '',
-      patient_type: reservation.patient_type || '',
+      patient_name: reservation.患者名 || '',
+      patient_type: reservation.患者属性 || '',
       visitor_id: reservation.visitor_id || '',
-      end_time: reservation.end_time || '',
-      staff: reservation.staff || '',
-      notes: reservation.notes || '',
-      created_at: reservation.created_at || '',
-      updated_at: reservation.updated_at || '',
-      company_id: reservation.company_id || '',
-      company_name: reservation.company_name || '',
-      room_id: reservation.room_id || '',
-      room_name: reservation.room_name || ''
+      end_time: reservation.終了時間 || '',
+      staff: reservation.担当スタッフ || '',
+      notes: reservation.メモ || '',
+      created_at: reservation.作成日時 || '',
+      updated_at: reservation.更新日時 || '',
+      company_id: reservation.会社ID || '',
+      company_name: reservation.会社名 || '',
+      room_id: reservation.部屋ID || '',
+      room_name: reservation.部屋名 || ''
     }));
   } catch (error) {
     Logger.log(`formatReservationHistoryForJson Error: ${error.toString()}`);
@@ -1867,6 +1910,99 @@ function getPhpTicketBalance(companyId) {
       treatment: { balance: 0, granted: 0, used: 0, last_used_date: null },
       drip: { balance: 0, granted: 0, used: 0, last_used_date: null }
     };
+  }
+}
+
+/**
+ * 患者のチケット使用履歴を取得（今月の会社IDが一致するもののみ）
+ * @param {string} visitorId - 来院者ID
+ * @param {string} companyId - 会社ID
+ * @return {Array} チケット使用履歴の配列
+ */
+function getPhpTicketHistory(visitorId, companyId) {
+  try {
+    const ticketHistorySheet = SpreadsheetApp.openById(Config.getSpreadsheetId())
+      .getSheetByName('チケット使用履歴');
+    
+    if (!ticketHistorySheet || ticketHistorySheet.getLastRow() <= 1) {
+      return [];
+    }
+    
+    const data = ticketHistorySheet.getDataRange().getValues();
+    const headers = data[0];
+    const history = [];
+
+    // 今月の開始日と終了日を取得
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const thisMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    
+    Logger.log(`getPhpTicketHistory: 今月の期間 ${thisMonthStart.toISOString()} - ${thisMonthEnd.toISOString()}`);
+    Logger.log(`getPhpTicketHistory: 検索条件 - visitorId: ${visitorId}, companyId: ${companyId}`);
+    
+    // ヘッダーのインデックスを取得
+    const reservationDateIdx = headers.indexOf('予約日時') !== -1 ? headers.indexOf('予約日時') : 0;
+    const companyIdIdx = headers.indexOf('会社ID') !== -1 ? headers.indexOf('会社ID') : 1;
+    const menuIdx = headers.indexOf('予約メニュー') !== -1 ? headers.indexOf('予約メニュー') : 2;
+    const reservationIdIdx = headers.indexOf('予約ID') !== -1 ? headers.indexOf('予約ID') : 3;
+    const statusIdx = headers.indexOf('ステータス') !== -1 ? headers.indexOf('ステータス') : 4;
+    const ticketCategoryIdx = headers.indexOf('チケットカテゴリ') !== -1 ? headers.indexOf('チケットカテゴリ') : 5;
+    const ticketCountIdx = headers.indexOf('チケット消費枚数') !== -1 ? headers.indexOf('チケット消費枚数') : 6;
+    const visitorNameIdx = headers.indexOf('来院者') !== -1 ? headers.indexOf('来院者') : 7;
+    const noteIdx = headers.indexOf('備考') !== -1 ? headers.indexOf('備考') : 8;
+    const usageDateIdx = headers.indexOf('使用日時') !== -1 ? headers.indexOf('使用日時') : 9;
+    
+    // 会社IDが一致し、今月のデータのみを取得
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      
+      // 会社IDが一致しない場合はスキップ
+      if (row[companyIdIdx] !== companyId) {
+        continue;
+      }
+      
+      // 日付を確認（使用日時または予約日時）
+      const dateToCheck = row[reservationDateIdx];
+      if (!dateToCheck) {
+        continue;
+      }
+      
+      const recordDate = new Date(dateToCheck);
+      
+      // 今月のデータでない場合はスキップ
+      if (recordDate < thisMonthStart || recordDate > thisMonthEnd) {
+        continue;
+      }
+      
+      // データを追加
+      history.push({
+        reservation_date: formatDateTimeISO(row[reservationDateIdx]),
+        company_id: row[companyIdIdx] || '',
+        menu_name: row[menuIdx] || '',
+        reservation_id: row[reservationIdIdx] || '',
+        status: row[statusIdx] || '',
+        ticket_category: row[ticketCategoryIdx] || '',
+        ticket_count: row[ticketCountIdx] || 0,
+        visitor_name: row[visitorNameIdx] || '',
+        note: row[noteIdx] || '',
+        usage_date: formatDateTimeISO(row[usageDateIdx])
+      });
+    }
+    
+    // 使用日時の新しい順にソート
+    history.sort((a, b) => {
+      const dateA = new Date(a.usage_date || a.reservation_date || '1900-01-01');
+      const dateB = new Date(b.usage_date || b.reservation_date || '1900-01-01');
+      return dateB - dateA;
+    });
+    
+    Logger.log(`getPhpTicketHistory: ${history.length}件のチケット履歴を取得`);
+    
+    return history;
+    
+  } catch (error) {
+    Logger.log(`getPhpTicketHistory Error: ${error.toString()}`);
+    return [];
   }
 }
 
@@ -3696,6 +3832,146 @@ function getLineNotificationStatus(notificationId) {
       error: {
         code: 'STATUS_FETCH_FAILED',
         message: '通知ステータスの取得に失敗しました',
+        details: error.toString()
+      }
+    };
+  }
+}
+
+/**
+ * PHP連携用LINE FlexMessage生成API
+ * @param {Object} requestData - リクエストデータ
+ * @return {Object} FlexMessageオブジェクト
+ */
+function sendLineMsgPhp(requestData) {
+  try {
+    Logger.log('sendLineMsgPhp called with data: ' + JSON.stringify(requestData));
+    
+    // 必須パラメータの検証
+    if (!requestData.notification_type) {
+      return {
+        status: 'error',
+        error: {
+          code: 'MISSING_NOTIFICATION_TYPE',
+          message: '通知タイプが指定されていません',
+          details: 'notification_type parameter is required'
+        }
+      };
+    }
+    
+    if (!requestData.reservation_data) {
+      return {
+        status: 'error',
+        error: {
+          code: 'MISSING_RESERVATION_DATA',
+          message: '予約データが指定されていません',
+          details: 'reservation_data parameter is required'
+        }
+      };
+    }
+    
+    // 予約データをパース（JSON文字列の場合）
+    let reservationData = requestData.reservation_data;
+    if (typeof reservationData === 'string') {
+      try {
+        reservationData = JSON.parse(reservationData);
+      } catch (e) {
+        return {
+          status: 'error',
+          error: {
+            code: 'INVALID_RESERVATION_DATA',
+            message: '予約データの形式が正しくありません',
+            details: e.toString()
+          }
+        };
+      }
+    }
+    
+    // 通知設定を取得（基本設定）
+    const configService = new LineNotificationConfigService();
+    configService.init();
+    const config = configService.getNotificationConfig(requestData.notification_type);
+    
+    // テンプレートサービスを初期化
+    const templateService = new LineNotificationTemplateService();
+    templateService.init();
+    
+    // スプレッドシートからメッセージデータを準備
+    const messageData = templateService.getDataFromSpreadsheets(reservationData, config);
+    
+    // テンプレートを取得
+    const template = templateService.getTemplate(requestData.notification_type);
+    
+    // FlexMessageを生成
+    const flexMessage = templateService.generateFlexMessage(template, messageData, requestData.notification_type);
+    
+    // PHPが処理しやすい形式でレスポンスを返す
+    return {
+      status: 'success',
+      data: {
+        message_type: 'flex',
+        message_content: flexMessage,
+        text_fallback: templateService.generateMessage(template, messageData),
+        notification_type: requestData.notification_type,
+        recipient_data: {
+          visitor_id: reservationData.visitor_id || reservationData.患者ID,
+          line_id: messageData.lineId || null,
+          patient_name: messageData.patientName
+        },
+        meta: {
+          generated_at: new Date().toISOString(),
+          template_version: '1.0',
+          clinic_name: messageData.clinicName
+        }
+      }
+    };
+    
+  } catch (error) {
+    Logger.log('sendLineMsgPhp error: ' + error.toString());
+    return {
+      status: 'error',
+      error: {
+        code: 'MESSAGE_GENERATION_FAILED',
+        message: 'FlexMessageの生成に失敗しました',
+        details: error.toString()
+      }
+    };
+  }
+}
+
+/**
+ * LINE通知設定の取得API（PHP連携用）
+ * @param {Object} requestData - リクエストデータ
+ * @return {Object} 通知設定
+ */
+function getLineNotificationConfig(requestData) {
+  try {
+    const configService = new LineNotificationConfigService();
+    configService.init();
+    
+    if (requestData.notification_type) {
+      // 特定の通知タイプの設定を取得
+      const config = configService.getNotificationConfig(requestData.notification_type);
+      return {
+        status: 'success',
+        data: config
+      };
+    } else {
+      // 全ての通知設定を取得
+      const configs = configService.getAllNotificationConfigs();
+      return {
+        status: 'success',
+        data: configs
+      };
+    }
+    
+  } catch (error) {
+    Logger.log('getLineNotificationConfig error: ' + error.toString());
+    return {
+      status: 'error',
+      error: {
+        code: 'CONFIG_FETCH_FAILED',
+        message: '通知設定の取得に失敗しました',
         details: error.toString()
       }
     };

@@ -175,19 +175,28 @@ class CompanyVisitorService {
     // 現在日時
     const now = new Date();
     
-    // データを準備
+    // データを準備（20列のヘッダーに合わせる）
     const rowData = [
-      companyId,
-      companyName,
-      visitorData.visitorId,
-      visitorName,
-      visitorData.gender || '',
-      visitorData.lineId || '',
-      visitorData.memberType || 'サブ会員',
-      visitorData.isPublic !== false,
-      visitorData.position || '',
-      now,
-      now
+      companyId,                          // 会社ID
+      companyName,                        // 会社名
+      visitorData.visitorId,              // visitor_id
+      visitorName,                        // 氏名
+      visitorData.lineId || '',           // LINE_ID
+      visitorData.memberType || 'サブ会員', // 会員種別
+      visitorData.isPublic !== false,     // 公開設定
+      visitorData.position || '',         // 役職
+      now,                                // 登録日時
+      now,                                // 更新日時
+      '',                                 // 有効期限
+      '',                                 // 使用済み
+      '',                                 // LINE表示名
+      '',                                 // 紐付け日時
+      '',                                 // URL
+      '',                                 // 連携ステータス
+      '',                                 // LINE連携用URLリンク
+      '',                                 // ステータス
+      now,                                // 作成日時
+      ''                                  // リンクURL
     ];
     
     // シートに追加
@@ -510,12 +519,11 @@ class CompanyVisitorService {
       companyName,                        // 会社名
       data.visitorId,                     // 来院者ID
       data.visitorName || '',             // 来院者名
-      data.gender || '',                  // 性別
-      data.lineId || '',                  // LINE ID
+      data.lineId || '',                  // LINE ID (注意: 順番が正しい)
       data.memberType || 'サブ会員',      // 会員種別
-      data.isPublic !== false,            // 公開フラグ
+      data.isPublic !== false,            // 公開設定
       data.position || '',                // 役職
-      now,                                // 作成日時
+      now,                                // 登録日時
       now,                                // 更新日時
       '',                                 // 有効期限
       '',                                 // 使用済み
@@ -523,7 +531,10 @@ class CompanyVisitorService {
       '',                                 // 紐付け日時
       '',                                 // URL
       '',                                 // 連携ステータス
-      ''                                  // LINE連携用URLリンク
+      '',                                 // LINE連携用URLリンク
+      '',                                 // ステータス
+      now,                                // 作成日時
+      ''                                  // リンクURL
     ];
   }
 

@@ -234,6 +234,7 @@
         <button class="tab-button" onclick="switchTab('menu-creation')">メニュー作成</button>
         <button class="tab-button" onclick="switchTab('generated-menus')">生成済みメニュー</button>
         <button class="tab-button" onclick="switchTab('categories')">カテゴリ管理</button>
+        <button class="tab-button" onclick="switchTab('web-reservation-menu')">Web予約メニュー</button>
       </div>
     </div>
 
@@ -427,6 +428,59 @@
         </div>
       </div>
     </div>
+
+    <!-- Web予約メニュータブ -->
+    <div id="web-reservation-menu-tab" class="tab-content">
+      <div class="section">
+        <div class="section-title">Web予約メニュー階層管理</div>
+        <div class="btn-group">
+          <button class="action-btn" onclick="showAddWebCategoryModal()">新規カテゴリ追加</button>
+          <button class="action-btn secondary" onclick="refreshWebCategories()">更新</button>
+          <button class="action-btn" onclick="saveWebMenuAssignments()">変更を保存</button>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-col">
+            <div class="section">
+              <div class="section-title">カテゴリ階層</div>
+              <div id="web-category-tree" class="category-tree">
+                <div class="loading">
+                  <div class="spinner"></div>
+                  <p>カテゴリを読み込み中...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-col">
+            <div class="section">
+              <div class="section-title">メニュー一覧</div>
+              <div class="search-box">
+                <input type="text" class="search-input" placeholder="メニューを検索..." onkeyup="searchWebMenus(this.value)">
+              </div>
+              <div id="web-menu-list" style="height: 400px; overflow-y: auto;">
+                <div class="loading">
+                  <div class="spinner"></div>
+                  <p>メニューを読み込み中...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">選択中のカテゴリに含まれるメニュー</div>
+        <div id="selected-category-info" style="margin-bottom: 10px; color: #666;">
+          カテゴリを選択してください
+        </div>
+        <div id="selected-category-menus" style="height: 300px; overflow-y: auto;">
+          <p style="color: #999;">カテゴリを選択すると、そのカテゴリに含まれるメニューが表示されます</p>
+        </div>
+      </div>
+    </div>
+  </div>
+    </div>
   </div>
 
   <!-- メッセージ表示エリア -->
@@ -456,7 +510,20 @@
     document.addEventListener('DOMContentLoaded', function() {
       loadCategories();
       loadGeneratedMenus();
+      initializeMenuTicketMappingIfNeeded();
     });
+
+    // MenuTicketMappingの初期化（必要に応じて）
+    function initializeMenuTicketMappingIfNeeded() {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          console.log('MenuTicketMapping初期化完了:', result);
+        })
+        .withFailureHandler(function(error) {
+          console.warn('MenuTicketMapping初期化に失敗（既に存在する可能性があります）:', error);
+        })
+        .initializeMenuTicketMapping();
+    }
 
     // タブ切り替え
     function switchTab(tabName) {
@@ -477,6 +544,8 @@
         loadGeneratedMenus();
       } else if (tabName === 'categories') {
         loadCategories();
+      } else if (tabName === 'web-reservation-menu') {
+        loadWebReservationMenu();
       }
     }
 
@@ -1336,6 +1405,341 @@
         displayTreatmentList();
         showMessage('施術リストをクリアしました', 'success');
       }
+    }
+    
+    // Web予約メニュー管理機能
+    let webCategories = [];
+    let webMenus = [];
+    let selectedWebCategory = null;
+    let webMenuAssignments = {};
+    
+    // Web予約メニューデータ読み込み
+    function loadWebReservationMenu() {
+      loadWebCategories();
+      loadWebMenus();
+    }
+    
+    // Webカテゴリ読み込み
+    function loadWebCategories() {
+      google.script.run
+        .withSuccessHandler(function(categories) {
+          webCategories = categories || [];
+          displayWebCategoryTree();
+        })
+        .withFailureHandler(handleError)
+        .getWebCategories();
+    }
+    
+    // Webメニュー読み込み
+    function loadWebMenus() {
+      google.script.run
+        .withSuccessHandler(function(menus) {
+          webMenus = menus || [];
+          displayWebMenuList();
+        })
+        .withFailureHandler(handleError)
+        .getWebMenus();
+    }
+    
+    // カテゴリツリー表示
+    function displayWebCategoryTree() {
+      const container = document.getElementById('web-category-tree');
+      if (!webCategories || webCategories.length === 0) {
+        container.innerHTML = '<p>カテゴリがありません。新規カテゴリを追加してください。</p>';
+        return;
+      }
+      
+      // 階層構造を構築
+      const tree = buildCategoryTree(webCategories);
+      container.innerHTML = renderCategoryTree(tree);
+    }
+    
+    // カテゴリツリー構築
+    function buildCategoryTree(categories) {
+      const tree = [];
+      const map = {};
+      
+      // まずマップを作成
+      categories.forEach(cat => {
+        map[cat.id] = { ...cat, children: [] };
+      });
+      
+      // 親子関係を構築
+      categories.forEach(cat => {
+        if (cat.parentId && map[cat.parentId]) {
+          map[cat.parentId].children.push(map[cat.id]);
+        } else if (!cat.parentId) {
+          tree.push(map[cat.id]);
+        }
+      });
+      
+      return tree;
+    }
+    
+    // カテゴリツリーレンダリング
+    function renderCategoryTree(tree, level = 0) {
+      let html = '<ul style="list-style: none; padding-left: ' + (level * 20) + 'px;">';
+      
+      tree.forEach(node => {
+        const isSelected = selectedWebCategory === node.id;
+        html += '<li>';
+        html += `<div style="padding: 5px; cursor: pointer; ${isSelected ? 'background: #e3f2fd;' : ''}" 
+                      onclick="selectWebCategory('${node.id}')" 
+                      ondrop="dropMenu(event, '${node.id}')" 
+                      ondragover="allowDrop(event)">`;
+        html += `<span>${node.name}</span>`;
+        html += ` <span style="color: #999;">(${node.menuCount || 0})</span>`;
+        html += '</div>';
+        
+        if (node.children && node.children.length > 0) {
+          html += renderCategoryTree(node.children, level + 1);
+        }
+        
+        html += '</li>';
+      });
+      
+      html += '</ul>';
+      return html;
+    }
+    
+    // カテゴリ選択
+    function selectWebCategory(categoryId) {
+      selectedWebCategory = categoryId;
+      displayWebCategoryTree();
+      loadCategoryMenus(categoryId);
+      
+      const category = findCategory(categoryId);
+      if (category) {
+        document.getElementById('selected-category-info').innerHTML = 
+          `選択中: <strong>${category.name}</strong>`;
+      }
+    }
+    
+    // カテゴリ検索
+    function findCategory(categoryId, tree = webCategories) {
+      for (let cat of tree) {
+        if (cat.id === categoryId) return cat;
+        if (cat.children) {
+          const found = findCategory(categoryId, cat.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+    
+    // カテゴリ内メニュー読み込み
+    function loadCategoryMenus(categoryId) {
+      const container = document.getElementById('selected-category-menus');
+      const categoryMenus = webMenuAssignments[categoryId] || [];
+      
+      if (categoryMenus.length === 0) {
+        container.innerHTML = '<p style="color: #999;">このカテゴリにはメニューがありません</p>';
+        return;
+      }
+      
+      let html = '<ul style="list-style: none; padding: 0;">';
+      categoryMenus.forEach(menuId => {
+        const menu = webMenus.find(m => m.id === menuId);
+        if (menu) {
+          html += `<li style="padding: 5px; border-bottom: 1px solid #eee;">`;
+          html += `${menu.name}`;
+          html += ` <button onclick="removeMenuFromCategory('${menuId}', '${categoryId}')" 
+                           style="float: right; background: #f44336; color: white; border: none; 
+                                  padding: 2px 8px; border-radius: 3px; cursor: pointer;">削除</button>`;
+          html += '</li>';
+        }
+      });
+      html += '</ul>';
+      
+      container.innerHTML = html;
+    }
+    
+    // メニューリスト表示
+    function displayWebMenuList(filter = '') {
+      const container = document.getElementById('web-menu-list');
+      let filteredMenus = webMenus;
+      
+      if (filter) {
+        filteredMenus = webMenus.filter(menu => 
+          menu.name.toLowerCase().includes(filter.toLowerCase())
+        );
+      }
+      
+      if (filteredMenus.length === 0) {
+        container.innerHTML = '<p>メニューがありません</p>';
+        return;
+      }
+      
+      let html = '<ul style="list-style: none; padding: 0;">';
+      filteredMenus.forEach(menu => {
+        html += `<li draggable="true" ondragstart="dragMenu(event, '${menu.id}')" 
+                     style="padding: 8px; border: 1px solid #ddd; margin-bottom: 5px; 
+                            cursor: move; background: white; border-radius: 4px;">`;
+        html += `${menu.name}`;
+        html += `<span style="color: #666; font-size: 12px; margin-left: 10px;">`;
+        html += `${menu.duration}分 / ¥${(menu.price || 0).toLocaleString()}`;
+        html += `</span>`;
+        html += '</li>';
+      });
+      html += '</ul>';
+      
+      container.innerHTML = html;
+    }
+    
+    // メニュー検索
+    function searchWebMenus(keyword) {
+      displayWebMenuList(keyword);
+    }
+    
+    // ドラッグ&ドロップ処理
+    let draggedMenuId = null;
+    
+    function dragMenu(event, menuId) {
+      draggedMenuId = menuId;
+      event.dataTransfer.effectAllowed = 'copy';
+    }
+    
+    function allowDrop(event) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+    }
+    
+    function dropMenu(event, categoryId) {
+      event.preventDefault();
+      
+      if (!draggedMenuId) return;
+      
+      // カテゴリにメニューを追加
+      if (!webMenuAssignments[categoryId]) {
+        webMenuAssignments[categoryId] = [];
+      }
+      
+      if (!webMenuAssignments[categoryId].includes(draggedMenuId)) {
+        webMenuAssignments[categoryId].push(draggedMenuId);
+        
+        // カテゴリのメニュー数を更新
+        const category = findCategory(categoryId);
+        if (category) {
+          category.menuCount = webMenuAssignments[categoryId].length;
+        }
+        
+        // 表示を更新
+        displayWebCategoryTree();
+        if (selectedWebCategory === categoryId) {
+          loadCategoryMenus(categoryId);
+        }
+        
+        showMessage('メニューをカテゴリに追加しました', 'success');
+      }
+      
+      draggedMenuId = null;
+    }
+    
+    // メニューをカテゴリから削除
+    function removeMenuFromCategory(menuId, categoryId) {
+      if (webMenuAssignments[categoryId]) {
+        const index = webMenuAssignments[categoryId].indexOf(menuId);
+        if (index > -1) {
+          webMenuAssignments[categoryId].splice(index, 1);
+          
+          // カテゴリのメニュー数を更新
+          const category = findCategory(categoryId);
+          if (category) {
+            category.menuCount = webMenuAssignments[categoryId].length;
+          }
+          
+          displayWebCategoryTree();
+          loadCategoryMenus(categoryId);
+          showMessage('メニューをカテゴリから削除しました', 'success');
+        }
+      }
+    }
+    
+    // Webカテゴリ追加モーダル
+    function showAddWebCategoryModal() {
+      const modalContent = `
+        <form id="web-category-form" onsubmit="addWebCategory(event)">
+          <div class="form-group">
+            <label class="form-label">カテゴリ名 *</label>
+            <input type="text" id="web-category-name" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">親カテゴリ</label>
+            <select id="web-category-parent" class="form-control">
+              <option value="">なし（最上位）</option>
+              ${renderCategoryOptions()}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">表示順</label>
+            <input type="number" id="web-category-order" class="form-control" min="1" value="1">
+          </div>
+          <div class="form-group">
+            <label class="form-label">説明</label>
+            <textarea id="web-category-description" class="form-control" rows="3"></textarea>
+          </div>
+          <div class="btn-group">
+            <button type="submit" class="action-btn">追加</button>
+            <button type="button" class="action-btn secondary" onclick="closeModal()">キャンセル</button>
+          </div>
+        </form>
+      `;
+      
+      showModal('Web予約カテゴリ追加', modalContent);
+    }
+    
+    // カテゴリオプションレンダリング
+    function renderCategoryOptions(parentId = null, level = 0) {
+      let html = '';
+      const categories = parentId ? 
+        webCategories.filter(c => c.parentId === parentId) :
+        webCategories.filter(c => !c.parentId);
+      
+      categories.forEach(cat => {
+        html += `<option value="${cat.id}">`;
+        html += '　'.repeat(level) + cat.name;
+        html += '</option>';
+        html += renderCategoryOptions(cat.id, level + 1);
+      });
+      
+      return html;
+    }
+    
+    // Webカテゴリ追加
+    function addWebCategory(event) {
+      event.preventDefault();
+      
+      const categoryData = {
+        name: document.getElementById('web-category-name').value,
+        parentId: document.getElementById('web-category-parent').value || null,
+        order: parseInt(document.getElementById('web-category-order').value),
+        description: document.getElementById('web-category-description').value
+      };
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          showMessage('カテゴリを追加しました', 'success');
+          closeModal();
+          loadWebCategories();
+        })
+        .withFailureHandler(handleError)
+        .addWebCategory(categoryData);
+    }
+    
+    // Web予約メニュー更新
+    function refreshWebCategories() {
+      loadWebCategories();
+      showMessage('カテゴリを更新しました', 'success');
+    }
+    
+    // 変更を保存
+    function saveWebMenuAssignments() {
+      google.script.run
+        .withSuccessHandler(function() {
+          showMessage('変更を保存しました', 'success');
+        })
+        .withFailureHandler(handleError)
+        .saveWebMenuAssignments(webMenuAssignments);
     }
   </script>
 </body>

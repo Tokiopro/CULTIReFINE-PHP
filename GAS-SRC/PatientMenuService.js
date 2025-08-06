@@ -4,12 +4,11 @@
  */
 class PatientMenuService {
   constructor() {
-    this.spreadsheetManager = new SpreadsheetManager();
-    this.menuService = new MenuService();
-    this.ticketManagementService = new TicketManagementService();
-    this.companyVisitorService = new CompanyVisitorService();
     this.reservationService = new ReservationService();
-    this.companyCacheService = globalCompanyCacheService || new CompanyCacheService();
+    this.companyVisitorService = new CompanyVisitorService();
+    this.ticketManagementService = new TicketManagementService();
+    this.menuTicketMappingService = new MenuTicketMappingService();
+    this.sheetManager = new SpreadsheetManager();
   }
 
   /**
@@ -132,8 +131,22 @@ class PatientMenuService {
       const menuName = reservation['メニュー名'];
       
       if (menuId || menuName) {
-        const key = menuId || menuName;
-        const usage = menuUsageMap.get(key) || { count: 0, lastUsedDate: null };
+        // MenuIDから基本MenuIDを抽出
+        let baseMenuId = menuId;
+        if (menuId) {
+          // 新しい形式のMenuID（menu_xxx_first, menu_xxx_repeat, menu_xxx_ticket）から基本IDを抽出
+          if (menuId.includes('_first') || menuId.includes('_repeat') || menuId.includes('_ticket')) {
+            const parts = menuId.split('_');
+            if (parts.length >= 3) {
+              baseMenuId = parts.slice(0, -1).join('_'); // 最後の部分（first/repeat/ticket）を除去
+            }
+          }
+        } else if (menuName) {
+          // MenuIDがない場合はメニュー名から基本名を抽出
+          baseMenuId = menuName.replace(/（初回）|（2回目以降）|（2回目）|（チケット使用）/g, '').trim();
+        }
+        
+        const usage = menuUsageMap.get(baseMenuId) || { count: 0, lastUsedDate: null };
         usage.count++;
         
         const reservationDate = new Date(reservation['予約日時']);
@@ -141,7 +154,7 @@ class PatientMenuService {
           usage.lastUsedDate = reservationDate;
         }
         
-        menuUsageMap.set(key, usage);
+        menuUsageMap.set(baseMenuId, usage);
       }
     });
     
@@ -264,91 +277,90 @@ class PatientMenuService {
   categorizeMenusByHistory(menus, menuUsageMap, ticketBalance) {
     const filteredMenus = [];
 
-    menus.forEach(menu => {
-      const menuId = menu['メニューID'];
-      const menuName = menu['メニュー名'];
-      const category = menu['カテゴリ'] || '未分類';
-      const ticketType = menu['チケットタイプ'];
-      
-      // メニューの使用履歴を確認
-      const usage = menuUsageMap.get(menuId) || menuUsageMap.get(menuName) || { count: 0 };
+    // MenuTicketMappingServiceから基本メニューIDを取得
+    const baseMenuIds = this.menuTicketMappingService.getBaseMenuIds();
+    
+    baseMenuIds.forEach(baseMenuId => {
+      // このbaseMenuIdに対する使用履歴をチェック
+      const usage = menuUsageMap.get(baseMenuId) || { count: 0 };
       const isFirstTime = usage.count === 0;
       
-      // 正規表現でメニュー名から初回/2回目以降を判定（削除された実装から復活）
-      const isFirstTimeMenu = /初回|初診|カウンセリング|初めて/.test(menuName);
-      const isRepeatMenu = /2回目|２回目|以降/.test(menuName);
+      // 利用可能なMenuIDを取得
+      const availableMenus = this.menuTicketMappingService.getAvailableMenuIds(
+        baseMenuId, 
+        isFirstTime, 
+        ticketBalance
+      );
       
-      // 表示条件の判定（削除された実装のロジック）
-      let shouldDisplay = true;
-      
-      // 初回メニューは初回のみ表示
-      if (isFirstTimeMenu && !isFirstTime) {
-        shouldDisplay = false;
-      }
-      // 通常メニューで「2回目以降」などの表記がある場合は、初回は非表示
-      else if (isRepeatMenu && isFirstTime) {
-        shouldDisplay = false;
-      }
-      
-      // チケット付与メニューかどうかを判定
-      const isTicketMenu = ticketType && ticketType !== 'なし' && ticketType !== '';
-      
-      // メニューデータを作成
-      const menuData = {
-        menu_id: menuId,
-        name: menuName,
-        category: category,
-        category_id: menu['カテゴリID'] || '',
-        menu_order: menu['表示順'] || 999,
-        duration_minutes: menu['所要時間'] || 60,
-        description: menu['説明'] || '',
-        
-        // 判定フラグ
-        is_first_time: isFirstTime,
-        menu_type: isFirstTime ? '初回メニュー' : '2回目以降メニュー',
-        is_ticket_menu: isTicketMenu,
-        should_display: shouldDisplay,
-        
-        // 履歴情報
-        usage_count: usage.count,
-        last_used_date: usage.lastUsedDate,
-        
-        // 表示優先度（初回メニューを優先）
-        display_priority: isFirstTimeMenu && isFirstTime ? 1 : 2
-      };
+      // 各利用可能メニューを結果に追加
+      availableMenus.forEach(menu => {
+        if (menu.canReserve || menu.menuType === 'ticket') { // チケットメニューは残高不足でも表示
+          const menuData = {
+            menu_id: menu.menuId,
+            base_menu_id: baseMenuId,
+            name: menu.menuName,
+            category: menu.category,
+            menu_order: 999, // デフォルト値
+            duration_minutes: 60, // デフォルト値（後で実際のメニューデータから取得）
+            description: '',
+            
+            // 判定フラグ
+            is_first_time: isFirstTime,
+            menu_type: menu.menuType === 'first_time' ? '初回メニュー' : 
+                      menu.menuType === 'repeat' ? '2回目以降メニュー' : 'チケットメニュー',
+            is_ticket_menu: menu.menuType === 'ticket',
+            should_display: true,
+            can_reserve: menu.canReserve,
+            
+            // 履歴情報
+            usage_count: usage.count,
+            last_used_date: usage.lastUsedDate,
+            
+            // 表示理由
+            availability_reason: menu.reason
+          };
 
-      // チケット/料金情報を追加
-      if (isTicketMenu) {
-        menuData.ticket_type = ticketType;
-        menuData.required_tickets = menu['必要チケット数'] || 1;
-        menuData.ticket_balance = ticketBalance[ticketType] || 0;
-        menuData.can_reserve = (ticketBalance[ticketType] || 0) >= menuData.required_tickets;
-      } else {
-        menuData.price = menu['料金'] || 0;
-        menuData.price_with_tax = menu['税込価格'] || menuData.price;
-        menuData.can_reserve = true;
-      }
-      
-      // 表示すべきメニューのみを配列に追加
-      if (shouldDisplay) {
-        filteredMenus.push(menuData);
-      }
+          // チケット/料金情報を追加
+          if (menu.menuType === 'ticket') {
+            menuData.ticket_type = menu.ticketType;
+            menuData.required_tickets = menu.requiredTickets;
+            menuData.ticket_balance = menu.ticketBalance;
+          } else {
+            // 通常メニューの場合、実際のメニューマスターから料金情報を取得
+            const actualMenu = menus.find(m => 
+              m['メニュー名'] && menu.menuName.includes(m['メニュー名'].replace(/[（）()]/g, '').split('（')[0])
+            );
+            if (actualMenu) {
+              menuData.price = actualMenu['料金'] || 0;
+              menuData.price_with_tax = actualMenu['税込価格'] || menuData.price;
+              menuData.duration_minutes = actualMenu['所要時間'] || 60;
+              menuData.description = actualMenu['説明'] || '';
+              menuData.menu_order = actualMenu['表示順'] || 999;
+            }
+          }
+          
+          filteredMenus.push(menuData);
+        }
+      });
     });
 
-    // 表示優先度でソート（初回メニューを上位に）
+    // メニュータイプと表示順でソート
     filteredMenus.sort((a, b) => {
-      if (a.display_priority !== b.display_priority) {
-        return a.display_priority - b.display_priority;
+      // 初回メニューを最優先
+      if (a.is_first_time && a.menu_type === '初回メニュー' && !b.is_first_time) return -1;
+      if (b.is_first_time && b.menu_type === '初回メニュー' && !a.is_first_time) return 1;
+      
+      // 予約可能なものを優先
+      if (a.can_reserve !== b.can_reserve) {
+        return b.can_reserve ? 1 : -1;
       }
-      // 同じ優先度の場合はカテゴリ順、メニュー名順
+      
+      // 同じ条件の場合はカテゴリ順、メニュー名順
       if (a.category !== b.category) {
         return (a.category || '').localeCompare(b.category || '', 'ja');
       }
       return (a.name || '').localeCompare(b.name || '', 'ja');
     });
-    
-    // display_priorityフィールドを削除（内部的な並び替え用）
-    filteredMenus.forEach(menu => delete menu.display_priority);
 
     return filteredMenus;
   }
