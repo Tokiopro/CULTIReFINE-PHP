@@ -74,9 +74,12 @@ class ExternalApi
                 
                 // ユーザー未発見の場合はnullを返す（正常なケース）
                 if ($errorCode === 'USER_NOT_FOUND' || $errorCode === 'NOT_FOUND' || 
-                    strpos($errorMessage, '指定されたLINE IDのユーザーが見つかりません') !== false) {
+                    $errorCode === 'INVALID_RESPONSE_FORMAT' ||  // 追加: 予期しないレスポンス形式もユーザー未発見として扱う
+                    strpos($errorMessage, '指定されたLINE IDのユーザーが見つかりません') !== false ||
+                    strpos($errorMessage, 'GAS APIからの予期しないレスポンス形式です') !== false) {
                     if (defined('DEBUG_MODE') && DEBUG_MODE) {
                         error_log('[ExternalApi] User not found in GAS API (normal case): ' . $lineUserId);
+                        error_log('[ExternalApi] Error details - Code: ' . $errorCode . ', Message: ' . $errorMessage);
                     }
                     return null;
                 }
@@ -92,8 +95,10 @@ class ExternalApi
                 if (defined('DEBUG_MODE') && DEBUG_MODE) {
                     error_log('[ExternalApi] Invalid response: missing data field');
                     error_log('[ExternalApi] Full result: ' . json_encode($result));
+                    error_log('[ExternalApi] Treating as user not found (improved handling)');
                 }
-                throw new Exception('GAS API returned invalid data structure');
+                // データ構造が期待通りでない場合もユーザー未発見として扱う（例外を投げずnullを返す）
+                return null;
             }
             
             $gasData = $result['data'];

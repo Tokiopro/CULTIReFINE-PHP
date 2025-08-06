@@ -19,7 +19,7 @@ class NotificationSettingsService {
    */
   getSettings() {
     try {
-      const sheet = this.spreadsheetManager.getSheet(this.settingsSheetName);
+      const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName($1);
       
       if (!sheet) {
         // シートが存在しない場合はデフォルト設定を返す
@@ -360,7 +360,7 @@ class NotificationSettingsService {
    */
   isNotificationSent(reservationId, notificationType) {
     try {
-      const sheet = this.spreadsheetManager.getSheet(this.historySheetName);
+      const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName($1);
       
       if (!sheet || sheet.getLastRow() <= 1) {
         return false;

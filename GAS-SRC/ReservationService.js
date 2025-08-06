@@ -927,7 +927,7 @@ class ReservationService {
    * 既存の予約IDセットを取得（最適化版）
    */
   _getExistingReservationIds() {
-    const sheet = this.spreadsheetManager.getSheet(this.sheetName);
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.sheetName);
     if (!sheet || sheet.getLastRow() <= 1) {
       return new Set();
     }
@@ -1208,7 +1208,7 @@ class ReservationService {
    * 予約ステータスを更新
    */
   _updateReservationStatus(reservationId, newStatus) {
-    const sheet = this.spreadsheetManager.getSheet(this.sheetName);
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.sheetName);
     const data = sheet.getDataRange().getValues();
     const headers = data[0];
     

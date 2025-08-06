@@ -119,12 +119,28 @@ function syncVisitorsMenu() {
     try {
       const service = new VisitorService();
       const count = service.syncVisitors(30); // 過去30日間の更新患者を取得
-      ui.alert(
-        '同期完了',
-        `${count}件の患者情報を同期しました。\n\n` +
-        `詳細はログで確認してください。`,
-        ui.ButtonSet.OK
+      
+      // 同期完了後、LINE連携情報の追加同期を確認
+      const lineResponse = ui.alert(
+        'LINE連携情報の同期',
+        `${count}件の患者情報を同期しました。\n\n続けてLINE連携情報も取得しますか？\n（患者コードを使用してLINE IDを取得します）`,
+        ui.ButtonSet.YES_NO
       );
+      
+      if (lineResponse === ui.Button.YES) {
+        const lineCount = service.syncLineConnectionInfo();
+        ui.alert(
+          '同期完了',
+          `患者情報: ${count}件\nLINE ID更新: ${lineCount}件\n\n詳細はログで確認してください。`,
+          ui.ButtonSet.OK
+        );
+      } else {
+        ui.alert(
+          '同期完了',
+          `${count}件の患者情報を同期しました。\n\n詳細はログで確認してください。`,
+          ui.ButtonSet.OK
+        );
+      }
     } catch (error) {
       ui.alert('エラー', error.toString(), ui.ButtonSet.OK);
     }
@@ -282,15 +298,63 @@ function syncReservations7DaysMenu() {
  */
 function syncMenusMenu() {
   const ui = SpreadsheetApp.getUi();
-  const response = ui.alert('メニュー情報の同期', 'メニュー情報を同期しますか？', ui.ButtonSet.YES_NO);
+  const response = ui.alert('メニュー情報の同期', 'メニュー情報を同期しますか？\n\n※処理に時間がかかる場合があります。', ui.ButtonSet.YES_NO);
   
   if (response === ui.Button.YES) {
     try {
+      // 処理開始のログ
+      Logger.log('=== メニュー同期開始 ===');
+      Logger.log('実行時刻: ' + new Date().toISOString());
+      
+      // clinic_idの確認
+      try {
+        const clinicId = Config.getClinicId();
+        Logger.log('使用するclinic_id: ' + clinicId);
+      } catch (configError) {
+        ui.alert('設定エラー', 'clinic_idが設定されていません。\nスクリプトプロパティでCLINIC_IDを設定してください。', ui.ButtonSet.OK);
+        return;
+      }
+      
+      // トークンの確認
+      try {
+        const token = TokenManager.getAccessToken();
+        Logger.log('アクセストークン取得成功');
+      } catch (tokenError) {
+        ui.alert('認証エラー', 'アクセストークンの取得に失敗しました。\n' + tokenError.toString(), ui.ButtonSet.OK);
+        return;
+      }
+      
+      // メニュー同期の実行
+      ui.alert('処理中', 'メニュー情報を同期中です。\nしばらくお待ちください...', ui.ButtonSet.OK);
+      
       const service = new MenuService();
       const count = service.syncMenus();
-      ui.alert(`${count}件のメニュー情報を同期しました。`);
+      
+      Logger.log('メニュー同期完了: ' + count + '件');
+      ui.alert('同期完了', `${count}件のメニュー情報を同期しました。`, ui.ButtonSet.OK);
+      
     } catch (error) {
-      ui.alert('エラー', error.toString(), ui.ButtonSet.OK);
+      // エラーの詳細をログに記録
+      Logger.log('=== メニュー同期エラー ===');
+      Logger.log('エラーメッセージ: ' + error.toString());
+      Logger.log('スタックトレース: ' + error.stack);
+      
+      // ユーザーに詳細なエラー情報を表示
+      const errorMessage = [
+        'メニュー同期中にエラーが発生しました。',
+        '',
+        '【エラー内容】',
+        error.toString(),
+        '',
+        '【対処方法】',
+        '1. clinic_idが正しく設定されているか確認',
+        '2. アクセストークンが有効か確認',
+        '3. Medical Force APIが利用可能か確認',
+        '',
+        '詳細はログを確認してください。'
+      ].join('\n');
+      
+      ui.alert('エラー', errorMessage, ui.ButtonSet.OK);
     }
   }
 }

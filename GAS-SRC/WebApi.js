@@ -96,6 +96,18 @@ function doPost(e) {
         return handleGetLineNotificationStatus(requestData);
       case 'cancelReservation':
         return handleCancelReservation(requestData);
+      case 'syncTodayReservations':
+        return handleSyncTodayReservations(requestData);
+      case 'sync3DaysReservations':
+        return handleSync3DaysReservations(requestData);
+      case 'getStructuredMenus':
+        return handleGetStructuredMenus(requestData);
+      case 'getMenusByCategory':
+        return handleGetMenusByCategory(requestData);
+      case 'syncMenus':
+        return handleSyncMenus(requestData);
+      case 'getMenus':
+        return handleGetMenus(requestData);
       default:
         return createErrorResponse('Unknown action: ' + action, 400);
     }
@@ -1355,6 +1367,202 @@ function handleCancelReservation(requestData) {
   } catch (error) {
     Logger.log('handleCancelReservation error: ' + error.toString());
     return createErrorResponse('Failed to process cancel reservation: ' + error.message, 500);
+  }
+}
+
+/**
+ * 今日の予約同期を処理
+ */
+function handleSyncTodayReservations(requestData) {
+  try {
+    Logger.log('handleSyncTodayReservations: 今日の予約同期を開始');
+    
+    const service = new ReservationService();
+    const count = service.syncTodayOnly();
+    
+    // APIレスポンスの詳細を取得
+    const apiResponse = {
+      status: 'success',
+      dataCount: count,
+      endpoint: '/developer/reservations'
+    };
+    
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      count: count,
+      message: `${count}件の予約情報を同期しました`,
+      apiResponse: apiResponse,
+      timestamp: new Date().toISOString()
+    })).setMimeType(ContentService.MimeType.JSON);
+    
+  } catch (error) {
+    Logger.log('handleSyncTodayReservations error: ' + error.toString());
+    return createErrorResponse('Failed to sync today reservations: ' + error.message, 500);
+  }
+}
+
+/**
+ * 3日間の予約同期を処理
+ */
+function handleSync3DaysReservations(requestData) {
+  try {
+    Logger.log('handleSync3DaysReservations: 3日間の予約同期を開始');
+    
+    const service = new ReservationService();
+    const today = new Date();
+    const threeDaysLater = new Date();
+    threeDaysLater.setDate(threeDaysLater.getDate() + 3);
+    
+    const result = service.syncReservationsOptimized({
+      date_from: Utils.formatDate(today),
+      date_to: Utils.formatDate(threeDaysLater)
+    });
+    
+    // APIレスポンスの詳細を取得
+    const apiResponse = {
+      status: result.success ? 'success' : 'error',
+      dataCount: result.totalSynced || 0,
+      apiCalls: result.timeBreakdown?.apiCalls || 0,
+      endpoint: '/developer/reservations'
+    };
+    
+    if (result.success) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        totalSynced: result.totalSynced,
+        executionTime: result.executionTime,
+        dateRange: result.dateRange,
+        timeBreakdown: result.timeBreakdown,
+        apiResponse: apiResponse,
+        message: `${result.totalSynced}件の予約情報を同期しました`,
+        timestamp: new Date().toISOString()
+      })).setMimeType(ContentService.MimeType.JSON);
+    } else {
+      return createErrorResponse('同期処理が失敗しました', 500);
+    }
+    
+  } catch (error) {
+    Logger.log('handleSync3DaysReservations error: ' + error.toString());
+    return createErrorResponse('Failed to sync 3 days reservations: ' + error.message, 500);
+  }
+}
+
+/**
+ * 階層構造化されたメニュー情報を取得
+ */
+function handleGetStructuredMenus(requestData) {
+  try {
+    Logger.log('handleGetStructuredMenus: 階層構造メニュー取得開始');
+    
+    const service = new MenuApiService();
+    const result = service.getStructuredMenus();
+    
+    if (result.success) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        data: result.data,
+        timestamp: new Date().toISOString()
+      })).setMimeType(ContentService.MimeType.JSON);
+    } else {
+      return createErrorResponse(result.error || 'Failed to get structured menus', 500);
+    }
+    
+  } catch (error) {
+    Logger.log('handleGetStructuredMenus error: ' + error.toString());
+    return createErrorResponse('Failed to get structured menus: ' + error.message, 500);
+  }
+}
+
+/**
+ * カテゴリ別メニュー取得
+ */
+function handleGetMenusByCategory(requestData) {
+  try {
+    const { categoryLevel, categoryName } = requestData;
+    
+    if (!categoryLevel || !categoryName) {
+      return createErrorResponse('Category level and name are required', 400);
+    }
+    
+    Logger.log(`handleGetMenusByCategory: ${categoryLevel}/${categoryName}`);
+    
+    const service = new MenuApiService();
+    const result = service.getMenusByCategory(categoryLevel, categoryName);
+    
+    if (result.success) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        data: result.data,
+        timestamp: new Date().toISOString()
+      })).setMimeType(ContentService.MimeType.JSON);
+    } else {
+      return createErrorResponse(result.error || 'Failed to get menus by category', 500);
+    }
+    
+  } catch (error) {
+    Logger.log('handleGetMenusByCategory error: ' + error.toString());
+    return createErrorResponse('Failed to get menus by category: ' + error.message, 500);
+  }
+}
+
+/**
+ * メニュー同期処理
+ */
+function handleSyncMenus(requestData) {
+  try {
+    Logger.log('handleSyncMenus: メニュー同期を開始');
+    
+    const service = new MenuService();
+    const count = service.syncMenus();
+    
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      count: count,
+      message: `${count}件のメニュー情報を同期しました`,
+      apiResponse: {
+        status: 'success',
+        dataCount: count,
+        endpoint: '/developer/menus'
+      },
+      timestamp: new Date().toISOString()
+    })).setMimeType(ContentService.MimeType.JSON);
+    
+  } catch (error) {
+    Logger.log('handleSyncMenus error: ' + error.toString());
+    return createErrorResponse('Failed to sync menus: ' + error.message, 500);
+  }
+}
+
+/**
+ * メニュー一覧取得処理
+ */
+function handleGetMenus(requestData) {
+  try {
+    Logger.log('handleGetMenus: メニュー一覧取得開始');
+    
+    const { per_page, page, sort_column, order } = requestData;
+    
+    const apiClient = new ApiClient();
+    const response = apiClient.getMenus({
+      per_page: per_page || 100,
+      page: page || 1,
+      sort_column: sort_column || 'name',
+      order: order || 'ASC'
+    });
+    
+    if (!response.success) {
+      return createErrorResponse(response.error || 'Failed to get menus', 500);
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      data: response.data,
+      timestamp: new Date().toISOString()
+    })).setMimeType(ContentService.MimeType.JSON);
+    
+  } catch (error) {
+    Logger.log('handleGetMenus error: ' + error.toString());
+    return createErrorResponse('Failed to get menus: ' + error.message, 500);
   }
 }
 

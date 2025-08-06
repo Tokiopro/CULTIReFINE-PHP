@@ -409,7 +409,7 @@ class CompanyMemberNotificationService {
    */
   async checkReservationVisibility(reservation, visitor) {
     // 会社別来院者管理シートから公開設定を確認
-    const sheet = this.spreadsheetManager.getSheet(Config.getSheetNames().companyVisitors);
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName($1);
     const data = sheet.getDataRange().getValues();
     
     for (let i = 1; i < data.length; i++) {

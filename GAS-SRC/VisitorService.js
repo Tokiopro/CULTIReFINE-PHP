@@ -41,7 +41,13 @@ class VisitorService {
             if (visitors.length > 0) {
               // LINE_ID情報をログ出力
               visitors.forEach((visitor, index) => {
-                const lineId = visitor.line_id || visitor.LINE_ID || visitor.line_user_id || '';
+                let lineId = '';
+                // line_ids配列を最優先でチェック
+                if (visitor.line_ids && Array.isArray(visitor.line_ids) && visitor.line_ids.length > 0) {
+                  lineId = visitor.line_ids[0];
+                } else {
+                  lineId = visitor.line_id || visitor.LINE_ID || visitor.line_user_id || '';
+                }
                 if (lineId) {
                   Logger.log(`${dateStr} - 患者[${index}]: ID=${visitor.visitor_id || visitor.id}, LINE_ID=${lineId}`);
                 }
@@ -73,6 +79,100 @@ class VisitorService {
       
       return uniqueVisitors.length;
     }, '患者情報同期');
+  }
+
+  /**
+   * LINE連携情報を同期
+   * 患者コードを使用してLINE IDを取得し、スプレッドシートを更新
+   */
+  syncLineConnectionInfo() {
+    return Utils.executeWithErrorHandling(() => {
+      Logger.log('LINE連携情報の同期を開始します');
+      
+      // Utilsを使用してシートを取得
+      const sheet = Utils.getOrCreateSheet(Config.getSheetNames().visitors);
+      if (!sheet) {
+        throw new Error('患者マスターシートが見つかりません');
+      }
+      
+      const data = sheet.getDataRange().getValues();
+      if (!data || data.length < 2) {
+        Logger.log('処理対象のデータがありません');
+        return 0;
+      }
+      
+      const headers = data[0];
+      
+      // 必要なカラムのインデックスを取得
+      const visitorIdIndex = headers.indexOf('visitor_id');
+      const patientCodeIndex = headers.indexOf('患者コード');
+      const lineIdIndex = headers.indexOf('LINE_ID');
+      
+      if (patientCodeIndex === -1) {
+        throw new Error('患者コード列が見つかりません');
+      }
+      
+      if (lineIdIndex === -1) {
+        throw new Error('LINE_ID列が見つかりません');
+      }
+      
+      let updatedCount = 0;
+      let errorCount = 0;
+      const batchSize = 10; // APIリクエストのバッチサイズ
+      
+      Logger.log(`処理対象行数: ${data.length - 1}`);
+      
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const patientCode = row[patientCodeIndex];
+        const currentLineId = row[lineIdIndex];
+        
+        // 患者コードがあり、LINE IDが空の場合のみ処理
+        if (patientCode && !currentLineId) {
+          try {
+            // /developer/visitors APIを呼び出し
+            const response = this.apiClient.get('/developer/visitors', {
+              clinic_id: Config.getClinicId(),
+              code: patientCode
+            });
+            
+            if (response.success && response.data && response.data.items && response.data.items.length > 0) {
+              const visitor = response.data.items[0];
+              
+              // LINE IDを取得（配列の場合は最初の要素）
+              let lineId = '';
+              if (visitor.line_ids && Array.isArray(visitor.line_ids) && visitor.line_ids.length > 0) {
+                lineId = visitor.line_ids[0];
+              } else if (visitor.line_id) {
+                lineId = visitor.line_id;
+              }
+              
+              if (lineId) {
+                // スプレッドシートを更新
+                sheet.getRange(i + 1, lineIdIndex + 1).setValue(lineId);
+                updatedCount++;
+                Logger.log(`患者コード ${patientCode} のLINE ID を更新: ${lineId}`);
+              }
+            }
+            
+            // API制限を考慮して待機
+            if (i % batchSize === 0) {
+              Utilities.sleep(1000); // 1秒待機
+            }
+          } catch (error) {
+            errorCount++;
+            Logger.log(`患者コード ${patientCode} の処理中にエラー: ${error.toString()}`);
+            // エラーが多い場合は処理を中断
+            if (errorCount > 10) {
+              throw new Error(`エラーが多すぎます（${errorCount}件）。処理を中断します。`);
+            }
+          }
+        }
+      }
+      
+      Logger.log(`LINE連携情報の同期完了: ${updatedCount}件更新, ${errorCount}件エラー`);
+      return updatedCount;
+    }, 'LINE連携情報同期');
   }
   
   /**
@@ -235,7 +335,13 @@ class VisitorService {
     
     // データを配列に変換（updated-brand-visitorsのフィールドに対応）
     const data = visitors.map((visitor, index) => {
-      const lineId = visitor.line_id || visitor.LINE_ID || visitor.line_user_id || '';
+      let lineId = '';
+      // line_ids配列を最優先でチェック
+      if (visitor.line_ids && Array.isArray(visitor.line_ids) && visitor.line_ids.length > 0) {
+        lineId = visitor.line_ids[0];
+      } else {
+        lineId = visitor.line_id || visitor.LINE_ID || visitor.line_user_id || '';
+      }
       if (lineId) {
         Logger.log(`_writeVisitorsToSheet - 患者[${index}]: ID=${visitor.visitor_id || visitor.id}, LINE_ID=${lineId}`);
       }
@@ -505,8 +611,14 @@ class VisitorService {
       
       // LINE_IDフィールドの詳細ログ
       if (header === 'LINE_ID') {
-        const lineId = visitor.line_id || visitor.LINE_ID || visitor.line_user_id || '';
-        Logger.log(`_visitorToRowDynamic - ヘッダー: LINE_ID, 患者ID: ${visitor.visitor_id || visitor.id}, 値: ${value}, 元データ: line_id=${visitor.line_id}, LINE_ID=${visitor.LINE_ID}, line_user_id=${visitor.line_user_id}`);
+        let lineId = '';
+        // line_ids配列を最優先でチェック
+        if (visitor.line_ids && Array.isArray(visitor.line_ids) && visitor.line_ids.length > 0) {
+          lineId = visitor.line_ids[0];
+        } else {
+          lineId = visitor.line_id || visitor.LINE_ID || visitor.line_user_id || '';
+        }
+        Logger.log(`_visitorToRowDynamic - ヘッダー: LINE_ID, 患者ID: ${visitor.visitor_id || visitor.id}, 値: ${value}, 元データ: line_ids=${JSON.stringify(visitor.line_ids)}, line_id=${visitor.line_id}, LINE_ID=${visitor.LINE_ID}, line_user_id=${visitor.line_user_id}`);
       }
       
       // 日時フィールドの場合はフォーマット
@@ -550,7 +662,7 @@ class VisitorService {
       '来院経路': ['inflow_source', 'inflow_source_name'],
       '来院経路ラベル': ['inflow_source_label'],
       '招待コード': ['invitation_code'],
-      'LINE_ID': ['line_id', 'LINE_ID', 'line_user_id'],
+      'LINE_ID': ['line_ids', 'line_id', 'LINE_ID', 'line_user_id'],
       'api_collaborator_id': ['api_collaborator_id'],
       'api_collaborator_customer_id': ['api_collaborator_customer_id'],
       '削除日時': ['deleted_at'],
@@ -563,6 +675,10 @@ class VisitorService {
     if (possibleFields) {
       for (const field of possibleFields) {
         if (obj[field] !== undefined && obj[field] !== null) {
+          // LINE_IDの特別処理: 配列の場合は最初の要素を取得
+          if (header === 'LINE_ID' && Array.isArray(obj[field])) {
+            return obj[field].length > 0 ? obj[field][0] : '';
+          }
           return obj[field];
         }
       }
@@ -570,6 +686,10 @@ class VisitorService {
     
     // 直接フィールド名でも検索
     if (obj[header] !== undefined && obj[header] !== null) {
+      // LINE_IDの特別処理: 配列の場合は最初の要素を取得
+      if (header === 'LINE_ID' && Array.isArray(obj[header])) {
+        return obj[header].length > 0 ? obj[header][0] : '';
+      }
       return obj[header];
     }
     

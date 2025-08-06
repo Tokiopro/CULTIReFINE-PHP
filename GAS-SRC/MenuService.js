@@ -15,7 +15,15 @@ class MenuService {
   syncMenus() {
     return Utils.executeWithErrorHandling(() => {
       Logger.log('メニュー情報の同期を開始します');
-      Logger.log(`使用するclinic_id: ${Config.getClinicId()}`);
+      
+      // clinic_idの確認とログ出力
+      const clinicId = Config.getClinicId();
+      Logger.log(`使用するclinic_id: ${clinicId}`);
+      
+      // APIクライアントの確認
+      if (!this.apiClient) {
+        throw new Error('APIクライアントが初期化されていません');
+      }
       
       const allMenus = [];
       const perPage = 100;  // 一度に取得する件数
@@ -26,46 +34,72 @@ class MenuService {
       while (hasMore) {
         Logger.log(`メニュー情報を取得中... (page: ${page})`);
         
-        // APIからメニュー情報を取得
-        const response = this.apiClient.getMenus({
-          per_page: perPage,
-          page: page,
-          sort_column: 'name',
-          order: 'ASC'
-        });
-        
-        if (!response.success || !response.data) {
-          throw new Error('メニュー情報の取得に失敗しました');
-        }
-        
-        // APIレスポンスは { items: [...], count: N } の形式
-        const menus = response.data.items || [];
-        const totalCount = parseInt(response.data.count) || 0;
-        
-        Logger.log(`${menus.length}件を取得 (全${totalCount}件中)`);
-        
-        if (menus.length === 0) {
-          hasMore = false;
-        } else {
-          allMenus.push(...menus);
-          page++;
+        try {
+          // APIからメニュー情報を取得
+          const response = this.apiClient.getMenus({
+            per_page: perPage,
+            page: page,
+            sort_column: 'name',
+            order: 'ASC'
+          });
           
-          // 取得した件数が全件数に達したか、perPageより少ない場合は終了
-          if (allMenus.length >= totalCount || menus.length < perPage) {
-            hasMore = false;
+          Logger.log('APIレスポンス受信: ' + JSON.stringify(response).substring(0, 200) + '...');
+          
+          if (!response.success) {
+            // APIエラーの詳細をログ
+            Logger.log('APIエラー: ' + JSON.stringify(response.error));
+            throw new Error('メニュー情報の取得に失敗しました: ' + (response.error || 'Unknown error'));
           }
-        }
-        
-        // APIのレート制限対策
-        if (hasMore) {
-          Utilities.sleep(100);
+          
+          if (!response.data) {
+            Logger.log('レスポンスにdataフィールドがありません');
+            throw new Error('APIレスポンスが不正です（dataフィールドなし）');
+          }
+          
+          // APIレスポンスは { items: [...], count: N } の形式
+          const menus = response.data.items || [];
+          const totalCount = parseInt(response.data.count) || 0;
+          
+          Logger.log(`${menus.length}件を取得 (全${totalCount}件中)`);
+          
+          if (menus.length === 0) {
+            hasMore = false;
+          } else {
+            allMenus.push(...menus);
+            page++;
+            
+            // 取得した件数が全件数に達したか、perPageより少ない場合は終了
+            if (allMenus.length >= totalCount || menus.length < perPage) {
+              hasMore = false;
+            }
+          }
+          
+          // APIのレート制限対策
+          if (hasMore) {
+            Utilities.sleep(100);
+          }
+          
+        } catch (apiError) {
+          Logger.log('API呼び出しエラー（page: ' + page + '）: ' + apiError.toString());
+          throw new Error('メニュー情報の取得中にエラーが発生しました: ' + apiError.message);
         }
       }
       
       Logger.log(`合計${allMenus.length}件のメニュー情報を取得しました`);
       
+      if (allMenus.length === 0) {
+        Logger.log('警告: 取得したメニュー情報が0件です');
+        return 0;
+      }
+      
       // データをスプレッドシートに保存
-      this._saveMenusToSheet(allMenus);
+      try {
+        this._saveMenusToSheet(allMenus);
+        Logger.log('スプレッドシートへの保存が完了しました');
+      } catch (saveError) {
+        Logger.log('スプレッドシート保存エラー: ' + saveError.toString());
+        throw new Error('メニュー情報の保存中にエラーが発生しました: ' + saveError.message);
+      }
       
       return allMenus.length;
     });

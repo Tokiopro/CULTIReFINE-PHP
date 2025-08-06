@@ -153,7 +153,55 @@ class GasApiClient
             ];
         }
         
-        // その他の場合はエラーとして扱う
+        // その他の場合も可能な限り解釈を試みる
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Unknown response format, attempting flexible interpretation");
+            error_log("[GAS API] Response structure: " . json_encode($response, JSON_UNESCAPED_UNICODE));
+        }
+        
+        // 空のレスポンスや null の場合はユーザー未発見として扱う
+        if (empty($response) || $response === null) {
+            return [
+                'status' => 'error',
+                'error' => [
+                    'code' => 'USER_NOT_FOUND',
+                    'message' => '指定されたLINE IDのユーザーが見つかりません',
+                    'details' => 'Empty or null response'
+                ]
+            ];
+        }
+        
+        // 配列形式でない場合やエラーを示すキーワードが含まれる場合
+        if (!is_array($response)) {
+            $responseStr = (string)$response;
+            if (strpos($responseStr, 'not found') !== false || 
+                strpos($responseStr, '見つかりません') !== false ||
+                strpos($responseStr, 'ユーザーが存在しません') !== false) {
+                return [
+                    'status' => 'error',
+                    'error' => [
+                        'code' => 'USER_NOT_FOUND',
+                        'message' => '指定されたLINE IDのユーザーが見つかりません',
+                        'details' => $responseStr
+                    ]
+                ];
+            }
+        }
+        
+        // 最後の手段：予期しない形式だが、可能な限り成功として処理
+        // データがある場合は取得成功と判断し、フォールバック処理を行う
+        if (is_array($response) && !empty($response)) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Treating unknown format as success with fallback processing");
+            }
+            
+            return [
+                'status' => 'success',
+                'data' => $response
+            ];
+        }
+        
+        // 本当に解釈不可能な場合のみエラー
         return [
             'status' => 'error',
             'error' => [

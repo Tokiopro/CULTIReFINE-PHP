@@ -21,6 +21,20 @@ class ApiClient {
     
     return this._request(url, options);
   }
+
+  /**
+   * clinic_idをヘッダーに含めてGETリクエストを送信
+   */
+  getWithClinicId(endpoint, params = {}, clinicId = null) {
+    const url = this._buildUrl(endpoint, params);
+    const options = {
+      method: 'get',
+      headers: this._getHeadersWithClinicId(clinicId),
+      muteHttpExceptions: true
+    };
+    
+    return this._request(url, options);
+  }
   
   /**
    * POSTリクエストを送信
@@ -114,6 +128,26 @@ class ApiClient {
       'Accept': 'application/json'
     };
   }
+
+  /**
+   * clinic_idを含むヘッダーを生成
+   */
+  _getHeadersWithClinicId(clinicId = null) {
+    // OAuth 2.0アクセストークンを取得（自動更新される）
+    const accessToken = TokenManager.getAccessToken();
+    const headers = {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+    
+    // clinic_idが指定されている場合はヘッダーに追加
+    if (clinicId) {
+      headers['clinic_id'] = clinicId;
+    }
+    
+    return headers;
+  }
   
   /**
    * URLを構築
@@ -180,8 +214,12 @@ class ApiClient {
    * メニュー一覧を取得
    */
   getMenus(params = {}) {
-    params.clinic_id = params.clinic_id || Config.getClinicId();
-    return this.get(this.config.endpoints.menus, params);
+    // clinic_idはヘッダーで送信する必要があるため、パラメータから除外
+    const clinicId = params.clinic_id || Config.getClinicId();
+    delete params.clinic_id;
+    
+    // ヘッダーにclinic_idを含めてリクエスト
+    return this.getWithClinicId(this.config.endpoints.menus, params, clinicId);
   }
   
   /**
