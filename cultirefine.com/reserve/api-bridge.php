@@ -96,6 +96,97 @@ try {
             $result = handleUpdateVisitorPublicStatus($gasApi, $lineUserId, getJsonInput());
             break;
             
+        case 'getAllStructuredMenus':
+            // 全メニューを階層構造で取得
+            if (!$gasApi) {
+                throw new Exception('GAS API client not initialized');
+            }
+            
+            $apiResult = $gasApi->getAllStructuredMenus();
+            
+            if ($apiResult['status'] !== 'success') {
+                throw new Exception($apiResult['error'] ?? 'メニュー取得に失敗しました');
+            }
+            
+            // 共通レスポンス処理で使用する$result変数に設定
+            $result = $apiResult;
+            break;
+            
+        case 'getMenusWithCategories':
+            // getMenusWithCategoriesを処理（患者別メニューAPIに変更）
+            if (!$gasApi) {
+                throw new Exception('GAS API client not initialized');
+            }
+            
+            // セッションから患者IDを取得
+            $visitorId = $_SESSION['visitor_id'] ?? null;
+            if (!$visitorId) {
+                error_log('[API Bridge] getMenusWithCategories: visitor_id not found in session');
+                $result = [
+                    'success' => false,
+                    'error' => '患者IDが見つかりません。ログインし直してください。'
+                ];
+                break;
+            }
+            
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[API Bridge] getMenusWithCategories called for visitor: {$visitorId}");
+            }
+            
+            // 患者別メニューAPIを呼び出し（動作確認済み）
+            $apiResult = $gasApi->getMenusWithCategories($visitorId);
+            
+            // 共通レスポンス処理で使用する$result変数に設定
+            $result = $apiResult;
+            break;
+            
+        case 'determineMenuIds':
+            // 来院者の過去予約からメニューIDを決定
+            if (!$gasApi) {
+                throw new Exception('GAS API client not initialized');
+            }
+            
+            $data = json_decode(file_get_contents('php://input'), true);
+            $visitorId = $data['params']['visitor_id'] ?? null;
+            $menuNames = $data['params']['menu_names'] ?? [];
+            
+            if (!$visitorId || empty($menuNames)) {
+                throw new Exception('必須パラメータが不足しています');
+            }
+            
+            $apiResult = $gasApi->determineMenuIds($visitorId, $menuNames);
+            
+            if ($apiResult['status'] !== 'success') {
+                throw new Exception($apiResult['error'] ?? 'メニューID決定に失敗しました');
+            }
+            
+            // 共通レスポンス処理で使用する$result変数に設定
+            $result = $apiResult;
+            break;
+            
+        case 'getVacancies':
+            // Medical Force API経由で空き情報を取得
+            if (!$gasApi) {
+                throw new Exception('GAS API client not initialized');
+            }
+            
+            $data = json_decode(file_get_contents('php://input'), true);
+            $requestBody = $data['params'] ?? [];
+            
+            if (empty($requestBody['epoch_from_keydate']) || empty($requestBody['epoch_to_keydate']) || empty($requestBody['menus'])) {
+                throw new Exception('必須パラメータが不足しています');
+            }
+            
+            $apiResult = $gasApi->getVacanciesFromMedicalForce($requestBody);
+            
+            if (!$apiResult['success']) {
+                throw new Exception($apiResult['error'] ?? '空き情報取得に失敗しました');
+            }
+            
+            // 共通レスポンス処理で使用する$result変数に設定
+            $result = $apiResult;
+            break;
+            
         case 'getPatientMenus':
             $result = handleGetPatientMenus($gasApi, $_GET);
             break;
@@ -204,7 +295,7 @@ try {
                 'DEBUG_MODE' => DEBUG_MODE,
                 'MOCK_MODE' => MOCK_MODE,
                 'MOCK_MEDICAL_FORCE' => MOCK_MEDICAL_FORCE,
-                'CLINIC_ID' => getenv('CLINIC_ID') ?: 'NOT_SET',
+                'MEDICAL_FORCE_CLINIC_ID' => getenv('MEDICAL_FORCE_CLINIC_ID') ?: 'NOT_SET',
                 'MEDICAL_FORCE_API_URL' => MEDICAL_FORCE_API_URL,
                 'MEDICAL_FORCE_CLIENT_ID' => !empty(MEDICAL_FORCE_CLIENT_ID) ? 'SET (' . strlen(MEDICAL_FORCE_CLIENT_ID) . ' chars)' : 'NOT_SET',
                 'MEDICAL_FORCE_CLIENT_SECRET' => !empty(MEDICAL_FORCE_CLIENT_SECRET) ? 'SET' : 'NOT_SET'
@@ -225,7 +316,7 @@ try {
             'company_info' => $_SESSION['company_info'] ?? 'not_set'
         ]));
         error_log('[API_BRIDGE_ERROR] Environment Variables:');
-        error_log('[API_BRIDGE_ERROR]   - CLINIC_ID: ' . (getenv('CLINIC_ID') ?: 'NOT_SET'));
+        error_log('[API_BRIDGE_ERROR]   - MEDICAL_FORCE_CLINIC_ID: ' . (getenv('MEDICAL_FORCE_CLINIC_ID') ?: 'NOT_SET'));
         error_log('[API_BRIDGE_ERROR]   - MEDICAL_FORCE_CLIENT_ID: ' . (!empty(MEDICAL_FORCE_CLIENT_ID) ? 'SET' : 'NOT_SET'));
         error_log('[API_BRIDGE_ERROR]   - MEDICAL_FORCE_CLIENT_SECRET: ' . (!empty(MEDICAL_FORCE_CLIENT_SECRET) ? 'SET' : 'NOT_SET'));
         error_log('[API_BRIDGE_ERROR] Stack Trace:');
@@ -394,7 +485,7 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
             MEDICAL_FORCE_API_KEY,
             MEDICAL_FORCE_CLIENT_ID,
             MEDICAL_FORCE_CLIENT_SECRET,
-            getenv('CLINIC_ID') ?: ''
+            MEDICAL_FORCE_CLINIC_ID  // 修正: config.phpで定義された定数を使用
         );
         
         // Medical Force API用のデータを構築（互換性のため）
@@ -458,6 +549,10 @@ function handleCreateVisitor(GasApiClient $gasApi, string $lineUserId, array $vi
             'visitor_id' => $visitorId, // Medical Forceから受け取ったID
             'company_id' => $companyId, // 会社ID
             'company_name' => $companyName, // 会社名
+            'last_name' => $lastName, // 姓（個別フィールド）
+            'first_name' => $firstName, // 名（個別フィールド）
+            'last_name_kana' => $lastNameKana, // 姓カナ（個別フィールド）
+            'first_name_kana' => $firstNameKana, // 名カナ（個別フィールド）
             'full_name' => $fullName, // 氏名（結合済み）
             'line_id' => $lineUserId, // LINE_ID
             'member_type' => $memberType === 'main' ? 'メイン会員' : 'サブ会員', // 会員種別
@@ -964,7 +1059,7 @@ function handleMenuAvailability($menuIds, array $params): array
             
             // getenv() を使った環境変数の確認
             error_log('[DEBUG_MENU_AVAILABILITY] Environment Variables (getenv):');
-            error_log('[DEBUG_MENU_AVAILABILITY]   - CLINIC_ID (getenv): ' . (getenv('CLINIC_ID') ?: 'NOT SET'));
+            error_log('[DEBUG_MENU_AVAILABILITY]   - MEDICAL_FORCE_CLINIC_ID (getenv): ' . (getenv('MEDICAL_FORCE_CLINIC_ID') ?: 'NOT SET'));
             error_log('[DEBUG_MENU_AVAILABILITY]   - MEDICAL_FORCE_API_URL (getenv): ' . (getenv('MEDICAL_FORCE_API_URL') ?: 'NOT SET'));
             error_log('[DEBUG_MENU_AVAILABILITY]   - MEDICAL_FORCE_CLIENT_ID (getenv): ' . (getenv('MEDICAL_FORCE_CLIENT_ID') ? 'SET' : 'NOT SET'));
             
@@ -972,19 +1067,19 @@ function handleMenuAvailability($menuIds, array $params): array
         }
         
         // Medical Force APIクライアントを初期化
-        $clinicId = getenv('CLINIC_ID') ?: '';
+        // config.phpで定義されたMEDICAL_FORCE_CLINIC_IDを使用
         
         if (defined('DEBUG_MODE') && DEBUG_MODE) {
-            error_log('[DEBUG_MENU_AVAILABILITY] CLINIC_ID value: "' . $clinicId . '"');
-            error_log('[DEBUG_MENU_AVAILABILITY] CLINIC_ID length: ' . strlen($clinicId));
-            error_log('[DEBUG_MENU_AVAILABILITY] CLINIC_ID empty check: ' . (empty($clinicId) ? 'EMPTY' : 'NOT EMPTY'));
+            error_log('[DEBUG_MENU_AVAILABILITY] MEDICAL_FORCE_CLINIC_ID value: "' . MEDICAL_FORCE_CLINIC_ID . '"');
+            error_log('[DEBUG_MENU_AVAILABILITY] MEDICAL_FORCE_CLINIC_ID length: ' . strlen(MEDICAL_FORCE_CLINIC_ID));
+            error_log('[DEBUG_MENU_AVAILABILITY] MEDICAL_FORCE_CLINIC_ID empty check: ' . (empty(MEDICAL_FORCE_CLINIC_ID) ? 'EMPTY' : 'NOT EMPTY'));
             
             error_log('[DEBUG_MENU_AVAILABILITY] Creating Medical Force API client with parameters:');
             error_log('[DEBUG_MENU_AVAILABILITY]   - API URL: ' . MEDICAL_FORCE_API_URL);
             error_log('[DEBUG_MENU_AVAILABILITY]   - API Key length: ' . strlen(MEDICAL_FORCE_API_KEY ?? ''));
             error_log('[DEBUG_MENU_AVAILABILITY]   - Client ID length: ' . strlen(MEDICAL_FORCE_CLIENT_ID ?? ''));
             error_log('[DEBUG_MENU_AVAILABILITY]   - Client Secret set: ' . (!empty(MEDICAL_FORCE_CLIENT_SECRET) ? 'YES' : 'NO'));
-            error_log('[DEBUG_MENU_AVAILABILITY]   - Clinic ID: "' . $clinicId . '"');
+            error_log('[DEBUG_MENU_AVAILABILITY]   - Clinic ID: "' . MEDICAL_FORCE_CLINIC_ID . '"');
         }
         
         $medicalForceApi = new MedicalForceApiClient(
@@ -992,7 +1087,7 @@ function handleMenuAvailability($menuIds, array $params): array
             MEDICAL_FORCE_API_KEY ?? '',
             MEDICAL_FORCE_CLIENT_ID ?? '',
             MEDICAL_FORCE_CLIENT_SECRET ?? '',
-            $clinicId
+            MEDICAL_FORCE_CLINIC_ID
         );
         
         if (defined('DEBUG_MODE') && DEBUG_MODE) {
@@ -1099,7 +1194,7 @@ function handleCreateReservations(array $params): array
             MEDICAL_FORCE_API_KEY ?? '',
             MEDICAL_FORCE_CLIENT_ID ?? '',
             MEDICAL_FORCE_CLIENT_SECRET ?? '',
-            getenv('CLINIC_ID') ?: ''
+            MEDICAL_FORCE_CLINIC_ID
         );
         
         // 単一予約か複数予約かを判定
@@ -1310,7 +1405,7 @@ function handleTestMedicalForceConnection(): array
             MEDICAL_FORCE_API_KEY,
             MEDICAL_FORCE_CLIENT_ID,
             MEDICAL_FORCE_CLIENT_SECRET,
-            getenv('CLINIC_ID') ?: ''
+            getenv('MEDICAL_FORCE_CLINIC_ID') ?: ''
         );
         $result = $medicalForceApi->testConnection();
         
@@ -1462,7 +1557,7 @@ function handleSyncMedicalForceReservations(array $params): array
             '', // APIキーは使用しない
             MEDICAL_FORCE_CLIENT_ID,
             MEDICAL_FORCE_CLIENT_SECRET,
-            getenv('CLINIC_ID') ?: ''
+            MEDICAL_FORCE_CLINIC_ID
         );
         
         // 同期サービス初期化
@@ -1525,7 +1620,7 @@ function handleCheckMedicalForceSyncStatus(): array
             '', // APIキーは使用しない
             MEDICAL_FORCE_CLIENT_ID,
             MEDICAL_FORCE_CLIENT_SECRET,
-            getenv('CLINIC_ID') ?: ''
+            MEDICAL_FORCE_CLINIC_ID
         );
         
         // 同期サービス初期化

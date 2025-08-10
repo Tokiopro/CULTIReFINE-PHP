@@ -809,7 +809,6 @@ try {
                         生年月日 <span class="text-gray-400">(任意)</span>
                     </label>
                     <input type="date" id="new-patient-birthday" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
-                    <p class="text-xs text-gray-500 mt-1">施術の予約間隔計算に使用されます。</p>
                 </div>
                 
                 <!-- エラーメッセージ表示エリア -->

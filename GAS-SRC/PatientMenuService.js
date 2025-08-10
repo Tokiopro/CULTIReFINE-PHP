@@ -79,8 +79,7 @@ class PatientMenuService {
             name: companyInfo.name,
             plan: companyInfo.plan
           } : null,
-          ticket_balance: ticketBalance,
-          total_menus: categorizedMenus.length
+          ticket_balance: ticketBalance
         }
       };
       
@@ -401,23 +400,178 @@ class PatientMenuService {
     
     return result;
   }
-}
 
-/**
- * PatientMenuServiceのテスト関数
- */
-function testPatientMenuService() {
-  console.log('=== PatientMenuService テスト開始 ===');
-  
-  const service = new PatientMenuService();
-  
-  try {
-    // テストデータで実行
-    const result = service.getPatientMenus('1001', '1');
-    console.log('取得結果:', JSON.stringify(result, null, 2));
-  } catch (error) {
-    console.error('テストエラー:', error);
+  /**
+   * 来院者の過去予約からメニューIDを決定
+   * 単体予約用の新しいAPIメソッド
+   * @param {string} visitorId - 来院者ID
+   * @param {Array<string>} menuNames - メニュー名の配列
+   * @return {Object} メニューIDと初回/2回目以降の判定結果
+   */
+  determineMenuIds(visitorId, menuNames) {
+    try {
+      Logger.log(`=== メニューID決定処理開始 ===`);
+      Logger.log(`来院者ID: ${visitorId}`);
+      Logger.log(`メニュー名: ${JSON.stringify(menuNames)}`);
+      
+      // 来院者情報を取得
+      const visitorData = this.visitorService.getVisitorById(visitorId);
+      if (!visitorData) {
+        throw new Error(`来院者が見つかりません: ${visitorId}`);
+      }
+      
+      // 過去の予約履歴を取得
+      const reservationHistory = this.getPatientReservationHistory(visitorId);
+      
+      // 施術履歴をメニュー名で集計
+      const menuHistoryMap = {};
+      reservationHistory.forEach(reservation => {
+        const menuName = reservation.menu_name || reservation.treatment_name;
+        if (menuName) {
+          menuHistoryMap[menuName] = (menuHistoryMap[menuName] || 0) + 1;
+        }
+      });
+      
+      // 全メニューを取得
+      const allMenus = this.menuService.getAllMenus();
+      
+      // 各メニューについて初回/2回目以降を判定しMenuIDを決定
+      const menuResults = menuNames.map(menuName => {
+        // 過去の利用回数を取得
+        const usageCount = menuHistoryMap[menuName] || 0;
+        const isFirstTime = usageCount === 0;
+        
+        // メニューIDを検索（初回/2回目以降で異なるIDを返す可能性がある）
+        const menuInfo = this._findBestMatchingMenu(menuName, isFirstTime, allMenus);
+        
+        if (!menuInfo) {
+          Logger.log(`警告: メニューが見つかりません: ${menuName}`);
+          return {
+            menu_name: menuName,
+            menu_id: null,
+            is_first_time: isFirstTime,
+            usage_count: usageCount,
+            duration: 30, // デフォルト30分
+            error: 'メニューが見つかりません'
+          };
+        }
+        
+        return {
+          menu_name: menuName,
+          menu_id: menuInfo.menu_id,
+          is_first_time: isFirstTime,
+          usage_count: usageCount,
+          duration: menuInfo.duration || 30,
+          price: menuInfo.price || 0,
+          ticket_type: menuInfo.ticket_type || '',
+          required_tickets: menuInfo.required_tickets || 0
+        };
+      });
+      
+      // 合計時間を計算
+      const totalDuration = menuResults.reduce((sum, m) => sum + (m.duration || 0), 0);
+      
+      Logger.log(`メニューID決定結果: ${JSON.stringify(menuResults)}`);
+      
+      return {
+        success: true,
+        data: {
+          visitor_id: visitorId,
+          visitor_name: visitorData.name,
+          menus: menuResults,
+          total_duration: totalDuration,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+    } catch (error) {
+      Logger.log(`メニューID決定エラー: ${error.toString()}`);
+      return {
+        success: false,
+        error: error.message,
+        details: error.stack
+      };
+    }
   }
-  
-  console.log('=== テスト完了 ===');
+
+  /**
+   * メニュー名に最も適合するメニューを検索
+   * @private
+   */
+  _findBestMatchingMenu(menuName, isFirstTime, allMenus) {
+    // 完全一致を優先
+    let matchedMenu = allMenus.find(menu => {
+      const nameMatch = menu.name === menuName || menu.display_name === menuName;
+      if (!nameMatch) return false;
+      
+      // 初回/2回目以降の条件をチェック
+      if (isFirstTime) {
+        // 初回の場合、「初回」を含むメニューを優先
+        return menu.name.includes('初回') || menu.name.includes('初診');
+      } else {
+        // 2回目以降の場合、「初回」を含まないメニューを優先
+        return !menu.name.includes('初回') && !menu.name.includes('初診');
+      }
+    });
+    
+    // 完全一致が見つからない場合は、条件を緩めて再検索
+    if (!matchedMenu) {
+      matchedMenu = allMenus.find(menu => {
+        return menu.name === menuName || menu.display_name === menuName;
+      });
+    }
+    
+    // それでも見つからない場合は部分一致を試みる
+    if (!matchedMenu) {
+      matchedMenu = allMenus.find(menu => {
+        return menu.name.includes(menuName) || 
+               menu.display_name.includes(menuName) ||
+               menuName.includes(menu.name) ||
+               menuName.includes(menu.display_name);
+      });
+    }
+    
+    return matchedMenu;
+  }
+
+  /**
+   * Medical Force API用の空き情報取得パラメータを生成
+   * @param {string} visitorId - 来院者ID
+   * @param {Array} menuIds - メニューIDの配列
+   * @param {string} startDate - 開始日
+   * @param {string} endDate - 終了日
+   * @return {Object} Medical Force API用のパラメータ
+   */
+  generateVacancyParams(visitorId, menuIds, startDate, endDate) {
+    try {
+      // メニュー情報を取得
+      const allMenus = this.menuService.getAllMenus();
+      const selectedMenus = menuIds.map(menuId => {
+        return allMenus.find(m => m.menu_id === menuId);
+      }).filter(m => m);
+      
+      // Medical Force API形式のパラメータを生成
+      const params = {
+        epoch_from_keydate: startDate,
+        epoch_to_keydate: endDate,
+        time_spacing: "10", // 10分間隔
+        menus: selectedMenus.map(menu => ({
+          menu_id: menu.menu_id,
+          staff_ids: [] // スタッフ指定なし（全スタッフ対象）
+        }))
+      };
+      
+      return {
+        success: true,
+        data: params
+      };
+      
+    } catch (error) {
+      Logger.log(`空き情報パラメータ生成エラー: ${error.toString()}`);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
 }

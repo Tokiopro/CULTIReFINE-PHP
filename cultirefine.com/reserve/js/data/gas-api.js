@@ -40,7 +40,7 @@ async function apiCall(action, params = {}, method = 'GET', data = null) {
             'Content-Type': 'application/json',
         },
         credentials: 'same-origin', // セッションCookieを含める
-        signal: AbortSignal.timeout(30000) // 30秒タイムアウト
+        signal: AbortSignal.timeout(60000) // 60秒タイムアウト
     };
     
     // POSTデータを追加
@@ -628,6 +628,277 @@ export async function getPatientMenus(visitorId, companyId = null) {
         return {
             success: false,
             message: error.message || 'メニュー情報の取得に失敗しました',
+            error: error
+        };
+    }
+}
+
+/**
+ * 全メニューを階層構造で取得（チケット有無で分類）
+ * @returns {Promise<Object>} APIレスポンス
+ */
+export async function getAllStructuredMenus() {
+    console.log('[GAS API] Getting all structured menus');
+    
+    try {
+        const url = new URL(API_BASE_URL);
+        // GAS側の既存エンドポイント getMenusWithCategories を使用
+        url.searchParams.set('action', 'getMenusWithCategories');
+        
+        const response = await fetch(url.toString(), {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin'
+        });
+        
+        console.log('[GAS API] Response status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('[GAS API] Menus with categories received:', result);
+        
+        // エラーチェック
+        if (result.success === false) {
+            throw new Error(result.message || 'メニュー情報の取得に失敗しました');
+        }
+        
+        // GASの getMenusWithCategories レスポンスを構造化メニュー形式に変換
+        const structuredData = convertToStructuredMenus(result.data || result);
+        
+        return {
+            success: true,
+            data: structuredData
+        };
+        
+    } catch (error) {
+        console.error('[GAS API] Error getting all structured menus:', error);
+        return {
+            success: false,
+            message: error.message || 'メニュー情報の取得に失敗しました',
+            error: error
+        };
+    }
+}
+
+/**
+ * メニュー名が括弧を含むかチェック
+ * @param {string} menuName - メニュー名
+ * @returns {boolean} true: 括弧を含む（除外対象）, false: 括弧を含まない（表示対象）
+ */
+function hasParentheses(menuName) {
+    if (!menuName || typeof menuName !== 'string') {
+        return false;
+    }
+    // 日本語の括弧（全角・半角）をチェック
+    return /[（）()]/.test(menuName);
+}
+
+/**
+ * GASのgetMenusWithCategoriesレスポンスを構造化メニュー形式に変換
+ * 括弧付きメニュー（初回、２回目など）は除外する
+ */
+function convertToStructuredMenus(data) {
+    console.log('[GAS API] Converting menu data to structured format:', data);
+    
+    // エラーレスポンスの場合は早期リターン
+    if (data && data.error) {
+        console.error('[GAS API] Error in menu data:', data.error);
+        return {
+            withTicket: [],
+            withoutTicket: []
+        };
+    }
+    
+    // statusがerrorの場合も早期リターン
+    if (data && data.status === 'error') {
+        console.error('[GAS API] Error status in menu data:', data);
+        return {
+            withTicket: [],
+            withoutTicket: []
+        };
+    }
+    
+    // データが配列の場合（メニューリスト）
+    if (Array.isArray(data)) {
+        // チケット付与ありとなしで分類
+        const withTicket = [];
+        const withoutTicket = [];
+        
+        data.forEach(menu => {
+            // 括弧付きメニュー名は除外
+            if (hasParentheses(menu.name || menu.menu_name)) {
+                console.log('[GAS API] Filtering out menu with parentheses:', menu.name || menu.menu_name);
+                return;
+            }
+            
+            // ticket_typeやhas_ticketでチケット付与を判定
+            if (menu.ticket_type || menu.has_ticket) {
+                withTicket.push(menu);
+            } else {
+                withoutTicket.push(menu);
+            }
+        });
+        
+        return {
+            withTicket: withTicket,
+            withoutTicket: withoutTicket
+        };
+    }
+    
+    // カテゴリ構造を持つ場合
+    if (data.categories || data.menu_categories) {
+        const categories = data.categories || data.menu_categories || [];
+        const withTicket = [];
+        const withoutTicket = [];
+        
+        categories.forEach(category => {
+            const menus = category.menus || [];
+            menus.forEach(menu => {
+                // 括弧付きメニュー名は除外
+                if (hasParentheses(menu.name || menu.menu_name)) {
+                    console.log('[GAS API] Filtering out menu with parentheses:', menu.name || menu.menu_name);
+                    return;
+                }
+                
+                // カテゴリ情報を追加
+                menu.category = category.name || category.category_name;
+                menu.category_id = category.id || category.category_id;
+                
+                // チケット判定のロジックを更新（ticketTypeがあればチケット付き）
+                if (menu.ticketType && menu.ticketType !== '' && menu.ticketType !== null) {
+                    withTicket.push(menu);
+                } else if (menu.ticket_type || menu.has_ticket) {
+                    withTicket.push(menu);
+                } else {
+                    withoutTicket.push(menu);
+                }
+            });
+        });
+        
+        return {
+            withTicket: withTicket,
+            withoutTicket: withoutTicket
+        };
+    }
+    
+    // その他の形式の場合はそのまま返す
+    const menus = data.menus || [];
+    const filteredMenus = menus.filter(menu => !hasParentheses(menu.name || menu.menu_name));
+    
+    return {
+        withTicket: [],
+        withoutTicket: filteredMenus
+    };
+}
+
+/**
+ * 来院者の過去予約からメニューIDを決定
+ * @param {string} visitorId - 来院者ID
+ * @param {Array<string>} menuNames - メニュー名の配列
+ * @returns {Promise<Object>} メニューIDと初回/2回目以降の判定結果
+ */
+export async function determineMenuIds(visitorId, menuNames) {
+    console.log('[GAS API] Determining menu IDs for:', visitorId, menuNames);
+    
+    try {
+        const url = new URL(API_BASE_URL);
+        url.searchParams.set('action', 'determineMenuIds');
+        
+        const response = await fetch(url.toString(), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                params: {
+                    visitor_id: visitorId,
+                    menu_names: menuNames
+                }
+            })
+        });
+        
+        console.log('[GAS API] Response status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('[GAS API] Menu IDs determined:', result);
+        
+        // エラーチェック
+        if (result.success === false || result.status === 'error') {
+            throw new Error(result.message || result.error?.message || 'メニューID決定に失敗しました');
+        }
+        
+        return {
+            success: true,
+            data: result.data || result
+        };
+        
+    } catch (error) {
+        console.error('[GAS API] Error determining menu IDs:', error);
+        return {
+            success: false,
+            message: error.message || 'メニューID決定に失敗しました',
+            error: error
+        };
+    }
+}
+
+/**
+ * Medical Force API経由で空き情報を取得
+ * @param {Object} requestBody - Medical Force API形式のリクエストボディ
+ * @returns {Promise<Object>} 空き情報
+ */
+export async function getVacanciesFromMedicalForce(requestBody) {
+    console.log('[GAS API] Getting vacancies from Medical Force:', requestBody);
+    
+    try {
+        const url = new URL(API_BASE_URL);
+        url.searchParams.set('action', 'getVacancies');
+        
+        const response = await fetch(url.toString(), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                params: requestBody
+            })
+        });
+        
+        console.log('[GAS API] Response status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('[GAS API] Vacancies received:', result);
+        
+        // エラーチェック
+        if (result.success === false) {
+            throw new Error(result.message || result.error || '空き情報の取得に失敗しました');
+        }
+        
+        return {
+            success: true,
+            data: result.data || result
+        };
+        
+    } catch (error) {
+        console.error('[GAS API] Error getting vacancies:', error);
+        return {
+            success: false,
+            message: error.message || '空き情報の取得に失敗しました',
             error: error
         };
     }

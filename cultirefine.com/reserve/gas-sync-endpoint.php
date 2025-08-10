@@ -190,7 +190,7 @@ function handleSyncReservations(array $params): array {
             MEDICAL_FORCE_API_KEY,
             MEDICAL_FORCE_CLIENT_ID,
             MEDICAL_FORCE_CLIENT_SECRET,
-            getenv('CLINIC_ID') ?: ''
+            MEDICAL_FORCE_CLINIC_ID
         );
         
         // 同期サービスを初期化
@@ -272,7 +272,7 @@ function handleCheckSyncStatus(): array {
             MEDICAL_FORCE_API_KEY,
             MEDICAL_FORCE_CLIENT_ID,
             MEDICAL_FORCE_CLIENT_SECRET,
-            getenv('CLINIC_ID') ?: ''
+            MEDICAL_FORCE_CLINIC_ID
         );
         
         $syncService = new MedicalForceSyncService($medicalForceClient);

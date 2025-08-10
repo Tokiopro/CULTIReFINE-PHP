@@ -107,7 +107,6 @@ function handleGetPatientMenusSimple(patientId) {
         patient_id: patientId,
         patient_name: patientName,
         menus: filteredMenus,
-        total_count: filteredMenus.length,
         history_start_date: Utils.subtractMonths(Utils.getToday(), 6),
         history_end_date: Utils.getToday()
       }

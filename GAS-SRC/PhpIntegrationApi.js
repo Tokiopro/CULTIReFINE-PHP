@@ -489,6 +489,16 @@ function routePhpApiRequest(e) {
     return handleGetPatientMenus(visitorId);
   }
   
+  // /api/menus/all-structured - 全メニューを階層構造で取得
+  if (pathParts.length === 3 && 
+      pathParts[0] === 'api' && 
+      pathParts[1] === 'menus' && 
+      pathParts[2] === 'all-structured') {
+    
+    Logger.log('全メニュー階層構造API呼び出し');
+    return getAllStructuredMenus();
+  }
+  
   // /api/patients/{visitorId}/available-slots - 患者別予約可能スロット
   if (pathParts.length === 4 && 
       pathParts[0] === 'api' && 
@@ -2128,10 +2138,203 @@ function formatDateTimeISO(datetime) {
 }
 
 /**
- * 患者IDからメニュー情報を取得（施術履歴に基づく初回判定付き）
- * @param {string} patientId - 患者ID
- * @return {Object} メニュー情報と履歴
+ * 全メニューを階層構造で取得
+ * @returns {Object} 階層構造のメニューデータ
  */
+/**
+ * 全メニューを階層構造で取得
+ * カテゴリごとにグループ化されたメニュー一覧を返却
+ * 
+ * @returns {Object} APIレスポンス
+ * @returns {boolean} returns.success - 処理の成功/失敗フラグ
+ * @returns {Object} returns.data - レスポンスデータ（成功時のみ）
+ * @returns {Array<Object>} returns.data.categories - カテゴリ配列
+ * @returns {string} returns.data.categories[].id - カテゴリID
+ * @returns {string} returns.data.categories[].name - カテゴリ名
+ * @returns {number} returns.data.categories[].display_order - カテゴリ表示順
+ * @returns {Array<Object>} returns.data.categories[].menus - カテゴリ内のメニュー配列
+ * @returns {string} returns.data.categories[].menus[].id - メニューID
+ * @returns {string} returns.data.categories[].menus[].name - メニュー名
+ * @returns {number} returns.data.categories[].menus[].duration - 施術時間（分）
+ * @returns {number} returns.data.categories[].menus[].price - 料金
+ * @returns {string} returns.data.categories[].menus[].description - メニュー説明
+ * @returns {boolean} returns.data.categories[].menus[].is_active - 有効フラグ
+ * @returns {number} returns.data.categories[].menus[].display_order - メニュー表示順
+ * @returns {string} returns.data.categories[].menus[].category_id - 所属カテゴリID
+ * @returns {string} returns.data.categories[].menus[].category_name - 所属カテゴリ名
+ * @returns {Object} returns.data.statistics - 統計情報
+ * @returns {number} returns.data.statistics.total_menus - 全メニュー数
+ * @returns {number} returns.data.statistics.active_menus - アクティブメニュー数
+ * @returns {number} returns.data.statistics.total_categories - カテゴリ数（メニューがあるもののみ）
+ * @returns {string} returns.data.generated_at - データ生成時刻（ISO 8601形式）
+ * @returns {string} returns.error - エラーメッセージ（失敗時のみ）
+ * @returns {string} returns.message - 詳細メッセージ（失敗時のみ）
+ * @returns {string} returns.details - エラー詳細（失敗時のみ）
+ * 
+ * @example
+ * // 成功時のレスポンス例
+ * {
+ *   "success": true,
+ *   "data": {
+ *     "categories": [
+ *       {
+ *         "id": "cat_001",
+ *         "name": "ヘアケア",
+ *         "display_order": 1,
+ *         "menus": [
+ *           {
+ *             "id": "menu_001",
+ *             "name": "カット",
+ *             "duration": 30,
+ *             "price": 3000,
+ *             "description": "スタイリングカット",
+ *             "is_active": true,
+ *             "display_order": 1,
+ *             "category_id": "cat_001",
+ *             "category_name": "ヘアケア"
+ *           }
+ *         ]
+ *       },
+ *       {
+ *         "id": "uncategorized",
+ *         "name": "未分類",
+ *         "display_order": 999,
+ *         "menus": []
+ *       }
+ *     ],
+ *     "statistics": {
+ *       "total_menus": 15,
+ *       "active_menus": 12,
+ *       "total_categories": 5
+ *     },
+ *     "generated_at": "2025-01-07T12:34:56.789Z"
+ *   }
+ * }
+ * 
+ * @example
+ * // エラー時のレスポンス例
+ * {
+ *   "success": false,
+ *   "error": "メニュー情報の取得中にエラーが発生しました",
+ *   "message": "メニュー情報の取得中にエラーが発生しました",
+ *   "details": "TypeError: Cannot read property 'id' of undefined"
+ * }
+ */
+function getAllStructuredMenus() {
+  try {
+    Logger.log('getAllStructuredMenus: 全メニューの階層構造取得開始');  
+
+    // MenuServiceのインスタンスを作成
+    const menuService = new MenuService();
+    
+    // カテゴリ付きメニュー一覧を取得
+    const menusWithCategories = menuService.getMenusWithCategories();
+    Logger.log(`全メニュー数: ${menusWithCategories.length}`);
+    
+    // カテゴリ一覧を取得
+    const categories = menuService.getMenuCategories();
+    Logger.log(`カテゴリ数: ${categories.length}`);
+    
+    // カテゴリごとにメニューをグループ化
+    const menusByCategory = {};
+    
+    // カテゴリ情報を初期化
+    categories.forEach(category => {
+      menusByCategory[category.id] = {
+        id: category.id,
+        name: category.name,
+        display_order: category.displayOrder || 0,
+        menus: []
+      };
+    });
+    
+    // カテゴリなしの特別カテゴリを追加
+    menusByCategory['uncategorized'] = {
+      id: 'uncategorized',
+      name: '未分類',
+      display_order: 999,
+      menus: []
+    };
+    
+    // メニューをカテゴリごとに振り分け
+    menusWithCategories.forEach(menu => {
+      const categoryId = menu.categoryId || 'uncategorized';
+      
+      // メニューデータをフォーマット
+      const formattedMenu = {
+        id: menu.id,
+        name: menu.name,
+        duration: menu.duration || 0,
+        price: menu.price || 0,
+        description: menu.description || '',
+        is_active: menu.isActive !== false,
+        display_order: menu.displayOrder || 0,
+        category_id: menu.categoryId,
+        category_name: menu.categoryName
+      };
+      
+      if (menusByCategory[categoryId]) {
+        menusByCategory[categoryId].menus.push(formattedMenu);
+      } else {
+        // カテゴリが見つからない場合は未分類に追加
+        menusByCategory['uncategorized'].menus.push(formattedMenu);
+      }
+    });
+    
+    // カテゴリごとにメニューを表示順でソート
+    Object.values(menusByCategory).forEach(category => {
+      category.menus.sort((a, b) => {
+        // まず表示順でソート
+        if (a.display_order !== b.display_order) {
+          return a.display_order - b.display_order;
+        }
+        // 表示順が同じ場合は名前でソート
+        return a.name.localeCompare(b.name, 'ja');
+      });
+    });
+    
+    // カテゴリを配列に変換して表示順でソート
+    const categoriesArray = Object.values(menusByCategory)
+      .filter(category => category.menus.length > 0) // メニューがないカテゴリは除外
+      .sort((a, b) => {
+        // まず表示順でソート
+        if (a.display_order !== b.display_order) {
+          return a.display_order - b.display_order;
+        }
+        // 表示順が同じ場合は名前でソート
+        return a.name.localeCompare(b.name, 'ja');
+      });
+    
+    // 統計情報を生成
+    const totalMenus = menusWithCategories.length;
+    const activeMenus = menusWithCategories.filter(m => m.isActive !== false).length;
+    const totalCategories = categoriesArray.length;
+    
+    return {
+      success: true,
+      data: {
+        categories: categoriesArray,
+        statistics: {
+          total_menus: totalMenus,
+          active_menus: activeMenus,
+          total_categories: totalCategories
+        },
+        generated_at: new Date().toISOString()
+      }
+    };
+    
+  } catch (error) {
+    Logger.log(`getAllStructuredMenus Error: ${error.toString()}`);
+    Logger.log(`getAllStructuredMenus Error Stack: ${error.stack}`);
+    return {
+      success: false,
+      error: 'メニュー情報の取得中にエラーが発生しました',
+      message: 'メニュー情報の取得中にエラーが発生しました',
+      details: error.toString()
+    };
+  }
+}
+
 function handleGetPatientMenus(patientId) {
   try {
     Logger.log(`handleGetPatientMenus: 患者ID ${patientId} のメニュー情報取得開始`);
@@ -2235,7 +2438,6 @@ function handleGetPatientMenus(patientId) {
         patient_id: patientId,
         patient_name: visitor.name || '',
         menus: filteredMenus,
-        total_count: filteredMenus.length,
         history_start_date: sixMonthsAgo,
         history_end_date: Utils.getToday()
       }
@@ -3977,4 +4179,3 @@ function getLineNotificationConfig(requestData) {
     };
   }
 }
-

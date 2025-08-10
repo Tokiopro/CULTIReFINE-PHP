@@ -38,6 +38,7 @@ define('MEDICAL_FORCE_API_URL', getenv('MEDICAL_FORCE_API_URL') ?: 'https://api.
 define('MEDICAL_FORCE_API_KEY', getenv('MEDICAL_FORCE_API_KEY') ?: '');
 define('MEDICAL_FORCE_CLIENT_ID', getenv('MEDICAL_FORCE_CLIENT_ID') ?: '');
 define('MEDICAL_FORCE_CLIENT_SECRET', getenv('MEDICAL_FORCE_CLIENT_SECRET') ?: '');
+define('MEDICAL_FORCE_CLINIC_ID', getenv('MEDICAL_FORCE_CLINIC_ID') ?: ''); // クリニックID（必須）
 
 // クリニック営業時間設定
 define('CLINIC_OPEN_TIME', getenv('CLINIC_OPEN_TIME') ?: '09:00');

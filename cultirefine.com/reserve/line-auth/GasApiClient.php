@@ -464,8 +464,8 @@ class GasApiClient
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 60,  // 60秒タイムアウト（GAS処理時間を考慮）
+            CURLOPT_CONNECTTIMEOUT => 15,  // 接続タイムアウトも延長
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 3
@@ -925,6 +925,136 @@ class GasApiClient
         
         return $result;
     }
+    
+    /**
+     * 全メニューを階層構造で取得
+     * チケット有無を最上位カテゴリーとして分類
+     */
+    public function getAllStructuredMenus(): array
+    {
+        $cacheKey = "all_structured_menus";
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] getAllStructuredMenus called");
+        }
+        
+        // キャッシュチェック（30分）
+        if ($cachedData = $this->getFromCache($cacheKey, 1800)) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Returning cached structured menus");
+            }
+            return $cachedData;
+        }
+        
+        $path = "api/menus/all-structured";
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Making request to path: {$path}");
+        }
+        
+        $result = $this->makeRequest('GET', $path);
+        
+        // デバッグ: レスポンス内容を確認
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] All structured menus response status: " . ($result['status'] ?? 'no_status'));
+            if (isset($result['data'])) {
+                error_log("[GAS API] Response has withTicket: " . (isset($result['data']['withTicket']) ? 'yes' : 'no'));
+                error_log("[GAS API] Response has withoutTicket: " . (isset($result['data']['withoutTicket']) ? 'yes' : 'no'));
+            }
+        }
+        
+        if (isset($result['status']) && $result['status'] === 'success') {
+            $this->saveToCache($cacheKey, $result, 1800);
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * 来院者の過去予約からメニューIDを決定
+     * @param string $visitorId 来院者ID
+     * @param array $menuNames メニュー名の配列
+     * @return array メニューIDと初回/2回目以降の判定結果
+     */
+    public function determineMenuIds(string $visitorId, array $menuNames): array
+    {
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] determineMenuIds called - visitorId: {$visitorId}");
+            error_log("[GAS API] Menu names: " . json_encode($menuNames));
+        }
+        
+        $path = "api/patients/{$visitorId}/determine-menu-ids";
+        
+        $requestData = [
+            'menu_names' => $menuNames
+        ];
+        
+        $result = $this->makeRequest('POST', $path, $requestData);
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Menu IDs determination result: " . json_encode($result));
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * Medical Force API経由で空き情報を取得
+     * @param array $requestBody Medical Force API形式のリクエストボディ
+     * @return array 空き情報
+     */
+    public function getVacanciesFromMedicalForce(array $requestBody): array
+    {
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] getVacanciesFromMedicalForce called");
+            error_log("[GAS API] Request body: " . json_encode($requestBody));
+        }
+        
+        // Medical Force API Clientのインスタンスを取得または作成
+        $medicalForceClient = $this->getMedicalForceClient();
+        
+        try {
+            // Medical Force APIを呼び出し
+            $vacancies = $medicalForceClient->getVacancies($requestBody);
+            
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Vacancies received from Medical Force: " . json_encode($vacancies));
+            }
+            
+            return [
+                'success' => true,
+                'data' => $vacancies
+            ];
+            
+        } catch (Exception $e) {
+            error_log("[GAS API] Error getting vacancies from Medical Force: " . $e->getMessage());
+            
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+    
+    /**
+     * Medical Force API Clientのインスタンスを取得
+     * @return MedicalForceApiClient
+     */
+    private function getMedicalForceClient(): MedicalForceApiClient
+    {
+        if (!class_exists('MedicalForceApiClient')) {
+            require_once __DIR__ . '/MedicalForceApiClient.php';
+        }
+        
+        $baseUrl = getenv('MEDICAL_FORCE_API_URL') ?: 'https://api.medical-force.com';
+        $apiKey = getenv('MEDICAL_FORCE_API_KEY') ?: '';
+        $clientId = getenv('MEDICAL_FORCE_CLIENT_ID') ?: '';
+        $clientSecret = getenv('MEDICAL_FORCE_CLIENT_SECRET') ?: '';
+        $clinicId = getenv('MEDICAL_FORCE_CLINIC_ID') ?: getenv('CLINIC_ID') ?: '';
+        
+        return new MedicalForceApiClient($baseUrl, $apiKey, $clientId, $clientSecret, $clinicId);
+    }
+    
     /**
      * API接続テスト
      */
@@ -1022,5 +1152,140 @@ class GasApiClient
                strlen($deploymentId) >= 50 && 
                strlen($deploymentId) <= 100 &&
                preg_match('/^[A-Za-z0-9_-]+$/', $deploymentId);
+    }
+    
+    /**
+     * カテゴリー付きメニュー一覧を取得
+     * GAS APIのgetMenusWithCategoriesエンドポイントを呼び出す
+     */
+    public function getMenusWithCategories($visitorId = null): array
+    {
+        $cacheKey = "menus_with_categories";
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] getMenusWithCategories called (using getAllStructuredMenus)");
+        }
+        
+        // キャッシュチェック（30分）
+        if ($cachedData = $this->getFromCache($cacheKey, 1800)) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Returning cached all structured menus");
+            }
+            return $cachedData;
+        }
+        
+        // 全メニューを取得するAPIを使用
+        $result = $this->getAllStructuredMenus();
+        
+        // デバッグ: レスポンス内容を確認
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] All structured menus response status: " . ($result['status'] ?? 'no_status'));
+            if (isset($result['data'])) {
+                error_log("[GAS API] Response data structure: " . json_encode(array_keys($result['data'])));
+            }
+        }
+        
+        // 括弧付きメニューを除外（PHP側フィルタリング）
+        if (isset($result['status']) && $result['status'] === 'success' && isset($result['data'])) {
+            $result['data'] = $this->filterMenusWithParentheses($result['data']);
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Filtered menus with parentheses");
+            }
+        }
+        
+        if (isset($result['status']) && $result['status'] === 'success') {
+            $this->saveToCache($cacheKey, $result, 1800);
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * 括弧付きメニューを除外するフィルタリング処理
+     * （初回）や（２回目）などの括弧が付いているメニューを除外
+     */
+    private function filterMenusWithParentheses(array $data): array
+    {
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Filtering menus with parentheses");
+        }
+        
+        // データ構造に応じたフィルタリング
+        if (isset($data['categories']) && is_array($data['categories'])) {
+            // カテゴリ構造の場合
+            foreach ($data['categories'] as &$category) {
+                if (isset($category['menus']) && is_array($category['menus'])) {
+                    $originalCount = count($category['menus']);
+                    $category['menus'] = array_filter($category['menus'], function($menu) {
+                        return $this->isValidMenuName($menu['name'] ?? '');
+                    });
+                    // 配列のキーを再構築
+                    $category['menus'] = array_values($category['menus']);
+                    
+                    if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                        $filteredCount = count($category['menus']);
+                        error_log("[GAS API] Category '{$category['name']}': {$originalCount} -> {$filteredCount} menus");
+                    }
+                }
+            }
+        } elseif (isset($data['withTicket']) || isset($data['withoutTicket'])) {
+            // チケット分類構造の場合
+            if (isset($data['withTicket'])) {
+                $originalCount = count($data['withTicket']);
+                $data['withTicket'] = array_filter($data['withTicket'], function($menu) {
+                    return $this->isValidMenuName($menu['name'] ?? '');
+                });
+                $data['withTicket'] = array_values($data['withTicket']);
+                
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    $filteredCount = count($data['withTicket']);
+                    error_log("[GAS API] WithTicket menus: {$originalCount} -> {$filteredCount}");
+                }
+            }
+            
+            if (isset($data['withoutTicket'])) {
+                $originalCount = count($data['withoutTicket']);
+                $data['withoutTicket'] = array_filter($data['withoutTicket'], function($menu) {
+                    return $this->isValidMenuName($menu['name'] ?? '');
+                });
+                $data['withoutTicket'] = array_values($data['withoutTicket']);
+                
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    $filteredCount = count($data['withoutTicket']);
+                    error_log("[GAS API] WithoutTicket menus: {$originalCount} -> {$filteredCount}");
+                }
+            }
+        } elseif (is_array($data) && isset($data[0]['name'])) {
+            // 単純な配列の場合
+            $originalCount = count($data);
+            $data = array_filter($data, function($menu) {
+                return $this->isValidMenuName($menu['name'] ?? '');
+            });
+            $data = array_values($data);
+            
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                $filteredCount = count($data);
+                error_log("[GAS API] Simple array menus: {$originalCount} -> {$filteredCount}");
+            }
+        }
+        
+        return $data;
+    }
+    
+    /**
+     * メニュー名が有効かどうかをチェック
+     * 括弧が含まれている場合は無効とする
+     */
+    private function isValidMenuName(string $menuName): bool
+    {
+        // 日本語の括弧（）と英語の括弧()の両方をチェック
+        $hasParentheses = (strpos($menuName, '（') !== false && strpos($menuName, '）') !== false) ||
+                         (strpos($menuName, '(') !== false && strpos($menuName, ')') !== false);
+        
+        if ($hasParentheses && defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Filtering out menu with parentheses: {$menuName}");
+        }
+        
+        return !$hasParentheses;
     }
 }

@@ -91,6 +91,24 @@ export function initPatientSelectionScreen() {
     proceedBtn.addEventListener('click', function() {
         var selected = appState.selectedPatientsForBooking;
         
+        // 選択された患者データの整合性をチェック
+        console.log('[proceedBtn] Selected patients before validation:', selected);
+        
+        // 無効な患者データ（idが未定義）を除去
+        var validSelected = selected.filter(function(patient) {
+            if (!patient || !patient.id) {
+                console.error('[proceedBtn] Invalid patient data found:', patient);
+                return false;
+            }
+            return true;
+        });
+        
+        if (validSelected.length !== selected.length) {
+            console.warn('[proceedBtn] Removed invalid patients, updating selectedPatientsForBooking');
+            appState.selectedPatientsForBooking = validSelected;
+            selected = validSelected;
+        }
+        
         if (appState.isPairBookingMode && selected.length !== 2) {
             alert("ペア予約では、ちょうど2名の来院者を選択してください。");
             return;
@@ -100,7 +118,8 @@ export function initPatientSelectionScreen() {
             return;
         }
 
-        // Initialize bookings
+        // Initialize bookings with validation
+        console.log('[proceedBtn] Creating bookings for patients:', selected);
         appState.bookings = selected.map(function(patient) {
             return {
                 patientId: patient.id,
@@ -434,6 +453,9 @@ export function updatePatientsList() {
 }
 
 export function togglePatientSelection(patientId) {
+    console.log('[togglePatientSelection] Called with patientId:', patientId);
+    console.log('[togglePatientSelection] Current selectedPatientsForBooking:', appState.selectedPatientsForBooking);
+    
     var patient;
     
     // ログインユーザーの場合
@@ -451,19 +473,43 @@ export function togglePatientSelection(patientId) {
         };
     } else {
         patient = appState.allPatients.find(function(p) { return p.id === patientId; });
+        
+        // 患者が見つからない場合のログ
+        if (!patient) {
+            console.error('[togglePatientSelection] Patient not found in allPatients for ID:', patientId);
+            console.log('[togglePatientSelection] Available patients:', appState.allPatients.map(p => ({id: p.id, name: p.name})));
+        }
     }
+    
+    // 患者オブジェクトの検証
+    if (!patient) {
+        console.error('[togglePatientSelection] Patient is undefined for ID:', patientId);
+        return;
+    }
+    
+    if (!patient.id) {
+        console.error('[togglePatientSelection] Patient object has no ID:', patient);
+        return;
+    }
+    
+    console.log('[togglePatientSelection] Using patient:', patient);
     
     var isSelected = appState.selectedPatientsForBooking.some(function(p) { return p.id === patientId; });
 
     if (isSelected) {
+        console.log('[togglePatientSelection] Removing patient from selection:', patientId);
         appState.selectedPatientsForBooking = appState.selectedPatientsForBooking.filter(function(p) { return p.id !== patientId; });
     } else {
         if (appState.isPairBookingMode && appState.selectedPatientsForBooking.length >= 2) {
             alert("ペア予約では2名まで選択できます。");
             return;
         }
+        console.log('[togglePatientSelection] Adding patient to selection:', patient);
         appState.selectedPatientsForBooking.push(patient);
     }
+
+    console.log('[togglePatientSelection] Final selectedPatientsForBooking:', appState.selectedPatientsForBooking);
+    console.log('[togglePatientSelection] Total selected count:', appState.selectedPatientsForBooking.length);
 
     updatePatientsList();
     updateProceedButton();
@@ -598,6 +644,14 @@ function setupPatientItemEvents() {
         var patientId = item.getAttribute('data-patient-id');
         var checkbox = item.querySelector('.patient-checkbox');
         
+        // visitor_idが正しく取得されているかチェック
+        if (!patientId) {
+            console.error('[setupPatientItemEvents] patientId is undefined for item:', item);
+            return; // この患者アイテムをスキップ
+        }
+        
+        console.log('[setupPatientItemEvents] Processing patient ID:', patientId);
+        
         if (!item.hasAttribute('data-event-attached')) {
             item.setAttribute('data-event-attached', 'true');
             
@@ -676,6 +730,23 @@ function setupPatientItemEvents() {
  * 患者アイテムのUIを更新
  */
 function updatePatientItemUI(item, patientId) {
+    // visitor_idとselectedPatientsForBookingの整合性をチェック
+    if (!patientId) {
+        console.error('[updatePatientItemUI] patientId is undefined');
+        return;
+    }
+    
+    // 選択済み患者リストの各患者にidがあることを確認
+    console.log('[updatePatientItemUI] Checking selected patients for patient ID:', patientId);
+    console.log('[updatePatientItemUI] Selected patients:', appState.selectedPatientsForBooking);
+    
+    var invalidPatients = appState.selectedPatientsForBooking.filter(p => !p || !p.id);
+    if (invalidPatients.length > 0) {
+        console.error('[updatePatientItemUI] Found patients without ID:', invalidPatients);
+        // 無効な患者データを除去
+        appState.selectedPatientsForBooking = appState.selectedPatientsForBooking.filter(p => p && p.id);
+    }
+    
     var isSelected = appState.selectedPatientsForBooking.some(p => p.id === patientId);
     
     if (isSelected) {

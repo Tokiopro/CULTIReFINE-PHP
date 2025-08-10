@@ -5,7 +5,7 @@ import { appState } from '../core/app-state.js';
 import { Calendar, calendars } from '../components/calendar.js';
 import { createTreatmentAccordion } from '../components/treatment-accordion.js';
 import { showAlert, hideAlert, createElement } from '../core/ui-helpers.js';
-import { mockCheckTreatmentInterval, mockCheckSlotAvailability, getPatientMenus, getAvailableSlots } from '../data/gas-api.js';
+import { mockCheckTreatmentInterval, mockCheckSlotAvailability, getPatientMenus, getAvailableSlots, getAllStructuredMenus } from '../data/gas-api.js';
 import { formatDateKey } from '../data/treatment-data.js';
 import { loadPatientMenus } from '../components/patient-menu-loader.js';
 
@@ -467,7 +467,7 @@ async function displayPatientMenus(patientId) {
     // 会社IDを取得
     const companyId = appState.membershipInfo?.companyId || window.APP_CONFIG?.companyInfo?.companyId || null;
     
-    // 患者別メニューをロード（実際のpatientIdを使用）
+    // 全メニューをロード（患者別メニューが空のため全メニューAPIを使用）
     await loadPatientMenus('treatment-categories', actualPatientId, companyId, onMenuSelect);
     
     // 選択済みメニューをハイライト
@@ -719,6 +719,181 @@ async function loadCalendarAvailability(patientId, selectedMenus) {
         // ローディング状態を解除
         calendar.setLoading(false);
     }
+}
+
+/**
+ * Medical Force API経由で空き情報を取得してカレンダーに表示
+ * @param {string} visitorId - 来院者ID
+ * @param {Array} selectedMenus - 選択されたメニューの配列
+ */
+async function loadCalendarAvailabilityWithMedicalForce(visitorId, selectedMenus) {
+    const calendar = calendars['calendar'];
+    if (!calendar) return;
+    
+    console.log('[LoadCalendarAvailabilityWithMedicalForce] Called with visitorId:', visitorId, 'selectedMenus:', selectedMenus);
+    
+    // ローディング表示
+    const calendarLoadingMsg = document.getElementById('calendar-loading-message');
+    if (calendarLoadingMsg) {
+        calendarLoadingMsg.classList.remove('hidden');
+        calendarLoadingMsg.innerHTML = `
+            <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                <p class="text-sm text-blue-700 flex items-center">
+                    <svg class="animate-spin h-4 w-4 mr-2 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    メニューIDを決定中...
+                </p>
+            </div>
+        `;
+    }
+    
+    // ローディング状態を設定
+    calendar.setLoading(true);
+    
+    try {
+        // Step 1: メニュー名の配列を作成
+        const menuNames = selectedMenus.map(menu => menu.name || menu.display_name);
+        
+        console.log('[LoadCalendarAvailabilityWithMedicalForce] Menu names:', menuNames);
+        
+        // Step 2: GAS APIでメニューIDを決定
+        const menuIdResult = await determineMenuIds(visitorId, menuNames);
+        
+        if (!menuIdResult.success) {
+            throw new Error(menuIdResult.message || 'メニューID決定に失敗しました');
+        }
+        
+        console.log('[LoadCalendarAvailabilityWithMedicalForce] Menu IDs determined:', menuIdResult.data);
+        
+        // ローディングメッセージ更新
+        if (calendarLoadingMsg) {
+            calendarLoadingMsg.innerHTML = `
+                <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                    <p class="text-sm text-blue-700 flex items-center">
+                        <svg class="animate-spin h-4 w-4 mr-2 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        空き情報を取得中...
+                    </p>
+                </div>
+            `;
+        }
+        
+        // Step 3: カレンダーの現在表示されている月の初日を取得
+        const calendarMonth = calendar.currentDate;
+        const monthStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+        const monthEnd = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0);
+        
+        // 今日の日付を取得
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // 開始日は月の初日と今日の遅い方を使用
+        const startDate = monthStart > today ? monthStart : today;
+        
+        // Step 4: Medical Force API用のリクエストボディを構築
+        const requestBody = {
+            epoch_from_keydate: formatDateForAPI(startDate),
+            epoch_to_keydate: formatDateForAPI(monthEnd),
+            time_spacing: "10",
+            menus: menuIdResult.data.menus.map(menu => ({
+                menu_id: menu.menu_id,
+                staff_ids: [] // スタッフ指定なし
+            }))
+        };
+        
+        console.log('[LoadCalendarAvailabilityWithMedicalForce] Request body:', requestBody);
+        
+        // Step 5: Medical Force APIから空き情報を取得
+        const vacanciesResult = await getVacanciesFromMedicalForce(requestBody);
+        
+        if (!vacanciesResult.success) {
+            throw new Error(vacanciesResult.message || '空き情報取得に失敗しました');
+        }
+        
+        console.log('[LoadCalendarAvailabilityWithMedicalForce] Vacancies received:', vacanciesResult.data);
+        
+        // Step 6: カレンダーに空き情報を設定
+        if (vacanciesResult.data) {
+            // Medical Force APIのレスポンス形式をカレンダー形式に変換
+            const availableSlots = convertMedicalForceToCalendarFormat(vacanciesResult.data);
+            calendar.setAvailableSlots(availableSlots);
+            
+            // ローディング表示を成功メッセージに変更
+            if (calendarLoadingMsg) {
+                calendarLoadingMsg.innerHTML = `
+                    <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded">
+                        <p class="text-sm text-green-700">
+                            空き情報を取得しました
+                        </p>
+                    </div>
+                `;
+                // 3秒後に非表示
+                setTimeout(() => {
+                    calendarLoadingMsg.classList.add('hidden');
+                }, 3000);
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error loading availability with Medical Force:', error);
+        if (calendarLoadingMsg) {
+            calendarLoadingMsg.innerHTML = `
+                <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+                    <p class="text-sm text-red-700">
+                        ${error.message || '空き情報の取得中にエラーが発生しました'}
+                    </p>
+                </div>
+            `;
+        }
+    } finally {
+        // ローディング状態を解除
+        calendar.setLoading(false);
+    }
+}
+
+/**
+ * 日付をAPI用のフォーマットに変換
+ * @private
+ */
+function formatDateForAPI(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+/**
+ * Medical Force APIのレスポンスをカレンダー形式に変換
+ * @private
+ */
+function convertMedicalForceToCalendarFormat(medicalForceData) {
+    const availableSlots = {};
+    
+    // Medical Force形式: { "2022-01-01": { "10:00": "ok", "10:30": "ok", ... }, ... }
+    // カレンダー形式: { "2022-01-01": { slots: ["10:00", "10:30", ...], available: true }, ... }
+    
+    for (const [date, timeSlots] of Object.entries(medicalForceData)) {
+        const availableTimeSlots = [];
+        
+        for (const [time, status] of Object.entries(timeSlots)) {
+            if (status === "ok") {
+                availableTimeSlots.push(time);
+            }
+        }
+        
+        if (availableTimeSlots.length > 0) {
+            availableSlots[date] = {
+                slots: availableTimeSlots,
+                available: true
+            };
+        }
+    }
+    
+    return availableSlots;
 }
 
 // 選択されたメニューを削除

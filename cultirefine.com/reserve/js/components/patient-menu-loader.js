@@ -1,7 +1,7 @@
 // components/patient-menu-loader.js
 // 患者別メニューをロードして表示するモジュール
 
-import { getPatientMenus } from '../data/gas-api.js';
+import { getPatientMenus, getAllStructuredMenus } from '../data/gas-api.js';
 import { createElement } from '../core/ui-helpers.js';
 
 /**
@@ -22,8 +22,9 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
     container.innerHTML = '<div class="text-center py-8"><div class="loading-spinner"></div><p class="mt-2 text-gray-600">メニュー情報を取得中です...</p></div>';
     
     try {
-        // 患者別メニューを取得
-        const result = await getPatientMenus(patientId, companyId);
+        // 全メニューを取得（患者別メニューが空の場合の対策）
+        console.log('[LoadPatientMenus] Using getAllStructuredMenus instead of getPatientMenus');
+        const result = await getAllStructuredMenus();
         
         if (!result.success) {
             throw new Error(result.message || 'メニューの取得に失敗しました');
@@ -38,29 +39,85 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
             console.log('Data keys:', Object.keys(data));
         }
         
-        // 患者情報表示（新形式対応）
-        if (data.patient_info || data.visitor) {
-            const infoElement = createPatientInfoElement(data);
-            container.appendChild(infoElement);
-        }
+        // 患者情報は全メニューAPIには含まれないためスキップ
         
-        // メニュー表示（新形式のcategories配列に対応）
-        let menuCategories = data.categories || data.menu_categories || data.menus;
+        // 全メニューAPIの構造に対応（withTicket/withoutTicket形式）
+        let menuCategories = null;
         let hasMenus = false;
+        
+        // 全メニューAPIの階層構造から平坦化されたメニュー配列を作成
+        if (data.withTicket || data.withoutTicket) {
+            console.log('[LoadPatientMenus] Processing structured menus from getAllStructuredMenus');
+            menuCategories = [];
+            
+            // チケット付与メニューを処理
+            if (data.withTicket) {
+                // 配列形式の場合（convertToStructuredMenusの出力）
+                if (Array.isArray(data.withTicket) && data.withTicket.length > 0) {
+                    menuCategories.push({
+                        category_id: 'with-ticket',
+                        category_name: 'チケット付与メニュー',
+                        menus: data.withTicket
+                    });
+                }
+                // オブジェクト形式でcategoriesを持つ場合（旧形式）
+                else if (data.withTicket.categories) {
+                    const ticketMenus = flattenStructuredMenus(data.withTicket.categories, 'チケット付与メニュー');
+                    if (ticketMenus.length > 0) {
+                        menuCategories.push({
+                            category_id: 'with-ticket',
+                            category_name: 'チケット付与メニュー',
+                            menus: ticketMenus
+                        });
+                    }
+                }
+            }
+            
+            // 通常メニューを処理
+            if (data.withoutTicket) {
+                // 配列形式の場合（convertToStructuredMenusの出力）
+                if (Array.isArray(data.withoutTicket) && data.withoutTicket.length > 0) {
+                    menuCategories.push({
+                        category_id: 'without-ticket',
+                        category_name: '通常メニュー',
+                        menus: data.withoutTicket
+                    });
+                }
+                // オブジェクト形式でcategoriesを持つ場合（旧形式）
+                else if (data.withoutTicket.categories) {
+                    const regularMenus = flattenStructuredMenus(data.withoutTicket.categories, '通常メニュー');
+                    if (regularMenus.length > 0) {
+                        menuCategories.push({
+                            category_id: 'without-ticket', 
+                            category_name: '通常メニュー',
+                            menus: regularMenus
+                        });
+                    }
+                }
+            }
+            
+            hasMenus = menuCategories.length > 0;
+        } else {
+            // 旧形式のフォールバック
+            menuCategories = data.categories || data.menu_categories || data.menus;
+        }
         
         // デバッグ: メニューデータの構造を詳細に確認
         if (window.DEBUG_MODE) {
             console.log('Menu data structure check:');
+            console.log('- data.withTicket:', data.withTicket ? 'exists' : 'null');
+            console.log('- data.withoutTicket:', data.withoutTicket ? 'exists' : 'null');
             console.log('- data.categories:', data.categories);
             console.log('- data.menu_categories:', data.menu_categories);
             console.log('- data.menus:', data.menus);
             console.log('- Selected menuCategories:', menuCategories);
             console.log('- Type of menuCategories:', typeof menuCategories);
             console.log('- Is Array?:', Array.isArray(menuCategories));
+            console.log('- hasMenus:', hasMenus);
         }
         
-        // メニューの存在チェック（改善版）
-        if (menuCategories) {
+        // メニューの存在チェック（全メニューAPI対応）
+        if (!hasMenus && menuCategories) {
             if (Array.isArray(menuCategories)) {
                 // 配列形式の場合 - 表示可能なメニューがあるかチェック
                 hasMenus = menuCategories.length > 0;
@@ -683,6 +740,224 @@ function createHierarchicalStructure(flatMenus) {
     }
     
     return categories;
+}
+
+/**
+ * 階層構造のメニューを平坦化してメニュー配列を作成
+ * @param {Object} categories - カテゴリ階層構造
+ * @param {string} parentName - 親カテゴリ名
+ * @returns {Array} 平坦化されたメニュー配列
+ */
+function flattenStructuredMenus(categories, parentName = '') {
+    const flatMenus = [];
+    
+    if (window.DEBUG_MODE) {
+        console.log(`[FlattenStructuredMenus] Processing categories for ${parentName}:`, categories);
+    }
+    
+    function processCategory(categoryData, categoryName) {
+        // カテゴリ直下のメニューを追加
+        if (categoryData.menus && Array.isArray(categoryData.menus)) {
+            categoryData.menus.forEach(menu => {
+                flatMenus.push({
+                    ...menu,
+                    category_name: categoryName,
+                    parent_category: parentName
+                });
+            });
+        }
+        
+        // 子カテゴリを再帰処理
+        if (categoryData.categories && typeof categoryData.categories === 'object') {
+            Object.entries(categoryData.categories).forEach(([subCatId, subCatData]) => {
+                const subCatName = subCatData.name || subCatId;
+                processCategory(subCatData, `${categoryName} > ${subCatName}`);
+            });
+        }
+    }
+    
+    // 各大カテゴリを処理
+    Object.entries(categories).forEach(([catId, catData]) => {
+        const categoryName = catData.name || catId;
+        processCategory(catData, categoryName);
+    });
+    
+    if (window.DEBUG_MODE) {
+        console.log(`[FlattenStructuredMenus] Flattened ${flatMenus.length} menus for ${parentName}`);
+    }
+    
+    return flatMenus;
+}
+
+/**
+ * 全メニューをチケット有無を最上位にして階層構造を作成（単体予約用）
+ * @param {Object} structuredMenus - GAS APIから取得した階層構造メニュー
+ * @returns {Object} 表示用の階層構造
+ */
+function createTicketBasedHierarchy(structuredMenus) {
+    if (window.DEBUG_MODE) {
+        console.log('Creating ticket-based hierarchy from:', structuredMenus);
+    }
+    
+    const hierarchy = {
+        sections: []
+    };
+    
+    // チケット付与メニューセクション
+    if (structuredMenus.withTicket && Object.keys(structuredMenus.withTicket.categories).length > 0) {
+        hierarchy.sections.push({
+            name: 'チケット付与メニュー',
+            type: 'with_ticket',
+            categories: processCategories(structuredMenus.withTicket.categories)
+        });
+    }
+    
+    // 通常メニューセクション
+    if (structuredMenus.withoutTicket && Object.keys(structuredMenus.withoutTicket.categories).length > 0) {
+        hierarchy.sections.push({
+            name: '通常メニュー',
+            type: 'without_ticket',
+            categories: processCategories(structuredMenus.withoutTicket.categories)
+        });
+    }
+    
+    return hierarchy;
+}
+
+/**
+ * カテゴリーを処理して表示用の構造に変換
+ * @private
+ */
+function processCategories(categories) {
+    const processed = [];
+    
+    for (const [categoryId, categoryData] of Object.entries(categories)) {
+        const processedCategory = {
+            id: categoryId,
+            name: categoryData.name,
+            level: 'major',
+            children: []
+        };
+        
+        // 中カテゴリーの処理
+        if (categoryData.categories && Object.keys(categoryData.categories).length > 0) {
+            for (const [midCategoryId, midCategoryData] of Object.entries(categoryData.categories)) {
+                const processedMidCategory = {
+                    id: midCategoryId,
+                    name: midCategoryData.name,
+                    level: 'middle',
+                    children: [],
+                    menus: midCategoryData.menus || []
+                };
+                
+                // 小カテゴリーの処理
+                if (midCategoryData.categories && Object.keys(midCategoryData.categories).length > 0) {
+                    for (const [minorCategoryId, minorCategoryData] of Object.entries(midCategoryData.categories)) {
+                        processedMidCategory.children.push({
+                            id: minorCategoryId,
+                            name: minorCategoryData.name,
+                            level: 'minor',
+                            menus: minorCategoryData.menus || []
+                        });
+                    }
+                }
+                
+                processedCategory.children.push(processedMidCategory);
+            }
+        }
+        
+        // 大カテゴリー直下のメニュー
+        if (categoryData.menus && categoryData.menus.length > 0) {
+            processedCategory.menus = categoryData.menus;
+        }
+        
+        processed.push(processedCategory);
+    }
+    
+    return processed;
+}
+
+/**
+ * 単体予約用のメニューローダー
+ * 全メニューをチケット有無で分類して表示
+ */
+export async function loadAllMenusForSingleBooking(containerId, onSelectCallback) {
+    const container = document.getElementById(containerId);
+    if (!container) {
+        console.error('Menu container not found:', containerId);
+        return;
+    }
+    
+    // ローディング表示
+    container.innerHTML = '<div class="text-center py-8"><div class="loading-spinner"></div><p class="mt-2 text-gray-600">メニュー情報を取得中です...</p></div>';
+    
+    try {
+        // 全メニューを階層構造で取得
+        const result = await getAllStructuredMenus();
+        
+        if (!result.success) {
+            throw new Error(result.message || 'メニューの取得に失敗しました');
+        }
+        
+        const structuredMenus = result.data;
+        container.innerHTML = '';
+        
+        // チケット有無を最上位にした階層構造を作成
+        const hierarchy = createTicketBasedHierarchy(structuredMenus);
+        
+        if (window.DEBUG_MODE) {
+            console.log('Processed hierarchy:', hierarchy);
+        }
+        
+        // 階層構造を表示
+        const menuElement = createTicketBasedMenuAccordion(hierarchy, onSelectCallback);
+        container.appendChild(menuElement);
+        
+    } catch (error) {
+        console.error('Error loading all menus:', error);
+        container.innerHTML = '<div class="text-center text-red-600 py-8"><p>メニューの読み込みに失敗しました</p><p class="text-sm mt-2">' + error.message + '</p></div>';
+    }
+}
+
+/**
+ * チケット有無ベースのメニューアコーディオンを作成
+ * @private
+ */
+function createTicketBasedMenuAccordion(hierarchy, onSelectCallback) {
+    const accordionDiv = createElement('div', 'space-y-4');
+    
+    hierarchy.sections.forEach(section => {
+        // セクションヘッダー（チケット付与メニュー or 通常メニュー）
+        const sectionDiv = createElement('div', 'border rounded-lg overflow-hidden');
+        const sectionHeader = createElement('div', 'bg-gray-100 px-4 py-3 font-bold text-lg');
+        sectionHeader.textContent = section.name;
+        
+        if (section.type === 'with_ticket') {
+            sectionHeader.classList.add('bg-yellow-100', 'text-yellow-800');
+        } else {
+            sectionHeader.classList.add('bg-blue-100', 'text-blue-800');
+        }
+        
+        sectionDiv.appendChild(sectionHeader);
+        
+        // カテゴリーごとのアコーディオン
+        const categoriesDiv = createElement('div', 'p-2 space-y-2');
+        
+        section.categories.forEach(majorCategory => {
+            const majorCategoryDiv = createMajorCategoryAccordion(
+                majorCategory.name,
+                majorCategory,
+                null, // patientIdは単体予約では不要
+                onSelectCallback
+            );
+            categoriesDiv.appendChild(majorCategoryDiv);
+        });
+        
+        sectionDiv.appendChild(categoriesDiv);
+        accordionDiv.appendChild(sectionDiv);
+    });
+    
+    return accordionDiv;
 }
 
 /**

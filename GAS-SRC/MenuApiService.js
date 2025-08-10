@@ -6,81 +6,23 @@
  * @description メニュー管理シートとメニューカテゴリー管理シートから
  *              階層構造化されたメニュー情報を取得・提供するサービス
  */
+/**
+ * メニューAPI サービス
+ * メニューデータの取得と構造化を担当
+ */
 class MenuApiService {
   constructor() {
-    this.menuSheetName = Config.getSheetNames().menus || 'メニュー管理';
-    this.categorySheetName = Config.getSheetNames().menuCategories || 'メニューカテゴリー管理';
+    // 現在は直接スプレッドシートにアクセスしているため、
+    // これらのサービスは実際には使用されていない
+    // TODO: 将来的にサービスを適切に活用するよう改善
+    // this.menuManager = new MenuManagementService();
+    // this.categoryManager = new CategoryService();
   }
 
   /**
-   * 階層構造化されたメニュー情報を取得
-   * 
-   * @method getStructuredMenus
-   * @description 有効かつオンライン予約可能なメニューを取得し、
-   *              カテゴリ階層構造に基づいて整理し、
-   *              チケットタイプの有無でグループ化して返却
-   * 
-   * @returns {Object} レスポンスオブジェクト
-   * @returns {boolean} returns.success - 処理成功フラグ
-   * @returns {Object} returns.data - メニューデータ
-   * @returns {Array<Object>} returns.data.regular - チケットタイプなしメニュー配列
-   * @returns {string} returns.data.regular[].menu_id - メニューID
-   * @returns {string} returns.data.regular[].menu_name - メニュー名
-   * @returns {string} returns.data.regular[].category_name - カテゴリ名
-   * @returns {string} returns.data.regular[].category_large - 大カテゴリ名
-   * @returns {string} returns.data.regular[].category_medium - 中カテゴリ名
-   * @returns {string} returns.data.regular[].category_small - 小カテゴリ名
-   * @returns {number} returns.data.regular[].duration_minutes - 所要時間（分）
-   * @returns {number} returns.data.regular[].tax_included_price - 税込料金（円）
-   * @returns {string} returns.data.regular[].description - 説明
-   * @returns {Array<Object>} returns.data.withTicket - チケットタイプありメニュー配列
-   * @returns {string} returns.data.withTicket[].ticket_type - チケットタイプ
-   * @returns {Object} returns.data.categories - カテゴリ階層構造
-   * @returns {Map} returns.data.categories.map - カテゴリIDマップ
-   * @returns {Array} returns.data.categories.roots - ルートカテゴリ配列
-   * @returns {string} returns.data.timestamp - ISO 8601形式のタイムスタンプ
-   * @returns {string} returns.error - エラーメッセージ（エラー時）
-   * 
-   * @example
-   * // リクエスト
-   * const service = new MenuApiService();
-   * const response = service.getStructuredMenus();
-   * 
-   * // 成功レスポンス例
-   * {
-   *   success: true,
-   *   data: {
-   *     regular: [
-   *       {
-   *         menu_id: "MENU001",
-   *         menu_name: "水素吸入30分",
-   *         category_name: "水素吸入",
-   *         category_large: "美容施術",
-   *         category_medium: "点滴",
-   *         category_small: "水素吸入",
-   *         duration_minutes: 30,
-   *         tax_included_price: 3300,
-   *         description: "高濃度水素吸入"
-   *       }
-   *     ],
-   *     withTicket: [
-   *       {
-   *         menu_id: "MENU002",
-   *         menu_name: "点滴セット",
-   *         category_name: "点滴",
-   *         category_large: "美容施術",
-   *         category_medium: "点滴",
-   *         category_small: "",
-   *         duration_minutes: 60,
-   *         tax_included_price: 5500,
-   *         description: "ビタミン点滴",
-   *         ticket_type: "点滴チケット"
-   *       }
-   *     ],
-   *     categories: {...},
-   *     timestamp: "2025-08-06T10:30:00.000Z"
-   *   }
-   * }
+   * 階層構造メニュー取得（既存メソッド）
+   * @deprecated 新しいgetAllStructuredMenus()を使用してください
+   * @return {Object} 構造化されたメニューデータ
    */
   getStructuredMenus() {
     try {
@@ -121,8 +63,8 @@ class MenuApiService {
   }
 
   /**
-   * 有効かつオンライン予約可能なメニューを取得
-   * 
+   * アクティブなメニューを取得
+   * スプレッドシートから有効なメニューデータを読み込む
    * @private
    * @method _getActiveMenus
    * @description メニュー管理シートから有効かつオンライン予約可能なメニューのみを取得し、
@@ -141,215 +83,184 @@ class MenuApiService {
    * @returns {string} returns[].ticketType - チケットタイプ
    */
   _getActiveMenus() {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.menuSheetName);
-    if (!sheet || sheet.getLastRow() <= 1) {
-      return [];
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('施術マスタ');
+    if (!sheet) {
+      throw new Error('施術マスタシートが見つかりません');
     }
     
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    
-    // ヘッダーインデックスを取得
-    const indices = {
-      menuId: headers.indexOf('menu_id'),
-      menuName: headers.indexOf('メニュー名'),
-      category: headers.indexOf('カテゴリ'),
-      categoryId: headers.indexOf('カテゴリID'),
-      displayOrder: headers.indexOf('表示順'),
-      duration: headers.indexOf('所要時間（分）'),
-      price: headers.indexOf('料金'),
-      taxIncludedPrice: headers.indexOf('税込料金'),
-      isActive: headers.indexOf('有効フラグ'),
-      isOnlineBookable: headers.indexOf('オンライン予約可'),
-      description: headers.indexOf('説明'),
-      ticketType: headers.indexOf('チケットタイプ')
-    };
+    const dataRange = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
+    const data = dataRange.getValues();
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     
     const menus = [];
+    const now = new Date();
     
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      
-      // 有効かつオンライン予約可能なもののみ
-      if (row[indices.isActive] !== '有効' || row[indices.isOnlineBookable] !== '可') {
-        continue;
+    data.forEach((row, index) => {
+      // アクティブチェック
+      const isActiveCol = headers.indexOf('is_active');
+      if (isActiveCol >= 0 && row[isActiveCol] === false) {
+        return;
       }
       
-      menus.push({
-        menuId: row[indices.menuId] || '',
-        menuName: row[indices.menuName] || '',
-        categoryName: row[indices.category] || '',
-        categoryId: row[indices.categoryId] || '',
-        displayOrder: parseInt(row[indices.displayOrder]) || 999,
-        duration: parseInt(row[indices.duration]) || 0,
-        price: parseInt(row[indices.price]) || 0,
-        taxIncludedPrice: parseInt(row[indices.taxIncludedPrice]) || 0,
-        description: row[indices.description] || '',
-        ticketType: row[indices.ticketType] || ''
-      });
-    }
+      // 有効期限チェック  
+      const startDateCol = headers.indexOf('valid_from');
+      const endDateCol = headers.indexOf('valid_until');
+      
+      if (startDateCol >= 0 && row[startDateCol] && new Date(row[startDateCol]) > now) {
+        return;
+      }
+      
+      if (endDateCol >= 0 && row[endDateCol] && new Date(row[endDateCol]) < now) {
+        return;
+      }
+      
+      // メニューデータを構築
+      const menu = {
+        menu_id: row[headers.indexOf('menu_id')] || `MENU_${index + 2}`,
+        name: row[headers.indexOf('name')] || '',
+        display_name: row[headers.indexOf('display_name')] || row[headers.indexOf('name')] || '',
+        category_id: row[headers.indexOf('category_id')] || '',
+        ticket_type: row[headers.indexOf('ticket_type')] || '',
+        required_tickets: parseInt(row[headers.indexOf('required_tickets')] || 0),
+        duration: parseInt(row[headers.indexOf('duration')] || 30),
+        price: parseInt(row[headers.indexOf('price')] || 0),
+        menu_order: parseInt(row[headers.indexOf('menu_order')] || 999),
+        is_active: true
+      };
+      
+      menus.push(menu);
+    });
     
-    // 表示順でソート
-    menus.sort((a, b) => a.displayOrder - b.displayOrder);
+    // menu_orderでソート
+    menus.sort((a, b) => a.menu_order - b.menu_order);
     
+    Logger.log(`アクティブなメニュー: ${menus.length}件`);
     return menus;
   }
 
   /**
-   * 有効なカテゴリを取得
+   * アクティブなカテゴリを取得
+   * スプレッドシートから有効なカテゴリデータを読み込む
    * @private
+   * @return {Array} カテゴリオブジェクトの配列
    */
   _getActiveCategories() {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(this.categorySheetName);
-    if (!sheet || sheet.getLastRow() <= 1) {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('カテゴリマスタ');
+    if (!sheet) {
+      Logger.log('カテゴリマスタシートが見つかりません - カテゴリなしで続行');
       return [];
     }
     
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    
-    // ヘッダーインデックスを取得
-    const indices = {
-      categoryId: headers.indexOf('カテゴリID'),
-      categoryLevel: headers.indexOf('カテゴリレベル'),
-      categoryName: headers.indexOf('カテゴリ名'),
-      parentCategoryId: headers.indexOf('親カテゴリID'),
-      displayOrder: headers.indexOf('表示順'),
-      isActive: headers.indexOf('有効フラグ'),
-      description: headers.indexOf('説明')
-    };
+    const dataRange = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
+    const data = dataRange.getValues();
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     
     const categories = [];
     
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      
-      // 有効なもののみ
-      if (row[indices.isActive] !== '有効') {
-        continue;
+    data.forEach((row, index) => {
+      // アクティブチェック
+      const isActiveCol = headers.indexOf('is_active');
+      if (isActiveCol >= 0 && row[isActiveCol] === false) {
+        return;
       }
       
-      categories.push({
-        categoryId: row[indices.categoryId] || '',
-        categoryLevel: row[indices.categoryLevel] || '',
-        categoryName: row[indices.categoryName] || '',
-        parentCategoryId: row[indices.parentCategoryId] || '',
-        displayOrder: parseInt(row[indices.displayOrder]) || 999,
-        description: row[indices.description] || '',
-        children: []
-      });
-    }
+      const category = {
+        category_id: row[headers.indexOf('category_id')] || `CAT_${index + 2}`,
+        name: row[headers.indexOf('name')] || '',
+        parent_id: row[headers.indexOf('parent_id')] || null,
+        level: parseInt(row[headers.indexOf('level')] || 1),
+        category_order: parseInt(row[headers.indexOf('category_order')] || 999),
+        is_active: true
+      };
+      
+      categories.push(category);
+    });
     
-    // 表示順でソート
-    categories.sort((a, b) => a.displayOrder - b.displayOrder);
+    // category_orderでソート
+    categories.sort((a, b) => a.category_order - b.category_order);
     
+    Logger.log(`アクティブなカテゴリ: ${categories.length}件`);
     return categories;
   }
 
   /**
    * カテゴリ階層構造を構築
+   * フラットなカテゴリ配列から親子関係を持つ階層構造を作成
    * @private
+   * @param {Array} categories - カテゴリ配列
+   * @return {Object} 階層構造化されたカテゴリオブジェクト
    */
   _buildCategoryHierarchy(categories) {
-    const categoryMap = new Map();
-    const rootCategories = [];
+    const hierarchy = {};
+    const categoryMap = {};
     
-    // カテゴリマップを作成
+    // カテゴリIDでマップを作成
     categories.forEach(cat => {
-      categoryMap.set(cat.categoryId, {...cat});
+      categoryMap[cat.category_id] = {
+        ...cat,
+        children: {}
+      };
     });
     
-    // 親子関係を構築
+    // 階層構造を構築
     categories.forEach(cat => {
-      if (!cat.parentCategoryId || cat.parentCategoryId === '') {
-        // ルートカテゴリ（大カテゴリ）
-        rootCategories.push(categoryMap.get(cat.categoryId));
-      } else {
+      if (!cat.parent_id) {
+        // ルートカテゴリ
+        hierarchy[cat.category_id] = categoryMap[cat.category_id];
+      } else if (categoryMap[cat.parent_id]) {
         // 子カテゴリ
-        const parent = categoryMap.get(cat.parentCategoryId);
-        if (parent) {
-          parent.children.push(categoryMap.get(cat.categoryId));
-        }
+        categoryMap[cat.parent_id].children[cat.category_id] = categoryMap[cat.category_id];
       }
     });
     
-    return {
-      map: categoryMap,
-      roots: rootCategories
-    };
+    return hierarchy;
   }
 
   /**
    * メニューをカテゴリにマッピング
+   * 各メニューにカテゴリパス（階層）情報を付与
    * @private
+   * @param {Array} menus - メニュー配列
+   * @param {Object} categoryHierarchy - カテゴリ階層構造
+   * @return {Array} カテゴリパスが付与されたメニュー配列
    */
   _mapMenusToCategories(menus, categoryHierarchy) {
     return menus.map(menu => {
-      const category = categoryHierarchy.map.get(menu.categoryId);
-      
-      if (!category) {
-        return {
-          ...menu,
-          categoryPath: {
-            large: menu.categoryName,
-            medium: '',
-            small: ''
-          }
-        };
-      }
-      
-      // カテゴリパスを構築
-      const categoryPath = this._getCategoryPath(category, categoryHierarchy.map);
-      
+      const categoryPath = this._getCategoryPath(menu.category_id, categoryHierarchy);
       return {
-        menuId: menu.menuId,
-        menuName: menu.menuName,
-        categoryName: menu.categoryName,
-        categoryPath: categoryPath,
-        duration: menu.duration,
-        taxIncludedPrice: menu.taxIncludedPrice,
-        description: menu.description,
-        displayOrder: menu.displayOrder,
-        ticketType: menu.ticketType
+        ...menu,
+        category_path: categoryPath
       };
     });
   }
 
   /**
-   * カテゴリパスを取得（大・中・小）
+   * カテゴリパスを取得
+   * 指定されたカテゴリIDから階層パスを生成
    * @private
+   * @param {string} categoryId - カテゴリID
+   * @param {Object} hierarchy - カテゴリ階層構造
+   * @param {Array} path - 現在のパス（再帰用）
+   * @return {Array} カテゴリ名の配列（階層順）
    */
-  _getCategoryPath(category, categoryMap) {
-    const path = {
-      large: '',
-      medium: '',
-      small: ''
-    };
+  _getCategoryPath(categoryId, hierarchy, path = []) {
+    if (!categoryId) return path;
     
-    if (!category) {
-      return path;
-    }
-    
-    // カテゴリレベルで判定
-    if (category.categoryLevel === '大') {
-      path.large = category.categoryName;
-    } else if (category.categoryLevel === '中') {
-      path.medium = category.categoryName;
-      // 親カテゴリ（大）を取得
-      const parent = categoryMap.get(category.parentCategoryId);
-      if (parent) {
-        path.large = parent.categoryName;
+    // 階層を探索
+    for (const [catId, category] of Object.entries(hierarchy)) {
+      if (catId === categoryId) {
+        return [...path, category.name];
       }
-    } else if (category.categoryLevel === '小') {
-      path.small = category.categoryName;
-      // 親カテゴリ（中）を取得
-      const parent = categoryMap.get(category.parentCategoryId);
-      if (parent) {
-        path.medium = parent.categoryName;
-        // さらに親カテゴリ（大）を取得
-        const grandParent = categoryMap.get(parent.parentCategoryId);
-        if (grandParent) {
-          path.large = grandParent.categoryName;
+      
+      // 子カテゴリを探索
+      if (category.children && Object.keys(category.children).length > 0) {
+        const childPath = this._getCategoryPath(
+          categoryId,
+          category.children,
+          [...path, category.name]
+        );
+        if (childPath.length > path.length) {
+          return childPath;
         }
       }
     }
@@ -358,133 +269,191 @@ class MenuApiService {
   }
 
   /**
-   * チケットタイプ別にメニューをグループ化
+   * メニューをチケットタイプ別にグループ化
    * @private
+   * @param {Array} menus - メニュー配列
+   * @return {Object} regular（通常）とwithTicket（チケット制）に分類されたメニュー
    */
   _groupMenusByTicketType(menus) {
-    const regular = [];    // チケットタイプなし
-    const withTicket = []; // チケットタイプあり
+    const groups = {
+      regular: [],
+      withTicket: []
+    };
     
     menus.forEach(menu => {
-      // APIレスポンス用に整形
-      const formattedMenu = {
-        menu_id: menu.menuId,
-        menu_name: menu.menuName,
-        category_name: menu.categoryName,
-        category_large: menu.categoryPath.large,
-        category_medium: menu.categoryPath.medium,
-        category_small: menu.categoryPath.small,
-        duration_minutes: menu.duration,
-        tax_included_price: menu.taxIncludedPrice,
-        description: menu.description
-      };
-      
-      if (menu.ticketType && menu.ticketType !== '') {
-        formattedMenu.ticket_type = menu.ticketType;
-        withTicket.push(formattedMenu);
+      if (menu.ticket_type && menu.ticket_type !== '') {
+        groups.withTicket.push(menu);
       } else {
-        regular.push(formattedMenu);
+        groups.regular.push(menu);
       }
     });
     
-    return {
-      regular: regular,
-      withTicket: withTicket
-    };
+    return groups;
   }
 
   /**
-   * 特定カテゴリのメニューを取得
-   * 
-   * @method getMenusByCategory
-   * @description 指定されたカテゴリレベルとカテゴリ名に一致するメニューのみを取得
-   * 
-   * @param {string} categoryLevel - カテゴリレベル ("大" | "中" | "小")
-   * @param {string} categoryName - カテゴリ名
-   * 
-   * @returns {Object} レスポンスオブジェクト
-   * @returns {boolean} returns.success - 処理成功フラグ
-   * @returns {Object} returns.data - フィルタリングされたメニューデータ
-   * @returns {Array<Object>} returns.data.regular - フィルタリングされた通常メニュー
-   * @returns {Array<Object>} returns.data.withTicket - フィルタリングされたチケット付きメニュー
-   * @returns {Object} returns.data.categoryFilter - 使用したフィルタ条件
-   * @returns {string} returns.data.categoryFilter.level - 検索に使用したカテゴリレベル
-   * @returns {string} returns.data.categoryFilter.name - 検索に使用したカテゴリ名
-   * @returns {string} returns.data.timestamp - ISO 8601形式のタイムスタンプ
-   * @returns {string} returns.error - エラーメッセージ（エラー時）
-   * 
-   * @example
-   * // リクエスト例1: 大カテゴリでフィルタリング
-   * const service = new MenuApiService();
-   * const response = service.getMenusByCategory("大", "美容施術");
-   * 
-   * // リクエスト例2: 中カテゴリでフィルタリング
-   * const response = service.getMenusByCategory("中", "点滴");
-   * 
-   * // リクエスト例3: 小カテゴリでフィルタリング
-   * const response = service.getMenusByCategory("小", "水素吸入");
-   * 
-   * // 成功レスポンス例
-   * {
-   *   success: true,
-   *   data: {
-   *     regular: [
-   *       {
-   *         menu_id: "MENU001",
-   *         menu_name: "水素吸入30分",
-   *         category_name: "水素吸入",
-   *         category_large: "美容施術",
-   *         category_medium: "点滴",
-   *         category_small: "水素吸入",
-   *         duration_minutes: 30,
-   *         tax_included_price: 3300,
-   *         description: "高濃度水素吸入"
-   *       }
-   *     ],
-   *     withTicket: [],
-   *     categoryFilter: {
-   *       level: "大",
-   *       name: "美容施術"
-   *     },
-   *     timestamp: "2025-08-06T10:30:00.000Z"
-   *   }
-   * }
-   * 
-   * // エラーレスポンス例
-   * {
-   *   success: false,
-   *   error: "カテゴリ別メニュー取得エラー: 指定されたカテゴリが見つかりません"
-   * }
+   * 患者の過去予約からメニューIDを決定
+   * @param {string} visitorId - 来院者ID
+   * @param {Array<string>} menuNames - メニュー名の配列
+   * @return {Object} メニューIDと初回/2回目以降の判定結果
    */
-  getMenusByCategory(categoryLevel, categoryName) {
+  determineMenuIds(visitorId, menuNames) {
     try {
-      const allMenus = this.getStructuredMenus();
+      Logger.log(`=== メニューID決定処理開始 ===`);
+      Logger.log(`来院者ID: ${visitorId}`);
+      Logger.log(`メニュー名: ${JSON.stringify(menuNames)}`);
       
-      if (!allMenus.success) {
-        return allMenus;
-      }
+      // 過去の予約履歴を取得
+      const reservationHistory = this._getReservationHistory(visitorId);
       
-      const filteredRegular = this._filterByCategory(
-        allMenus.data.regular, 
-        categoryLevel, 
-        categoryName
-      );
+      // 各メニューについて初回/2回目以降を判定
+      const menuResults = menuNames.map(menuName => {
+        const isFirstTime = !this._hasMenuHistory(menuName, reservationHistory);
+        const menuId = this._findMenuId(menuName, isFirstTime);
+        
+        return {
+          menu_name: menuName,
+          menu_id: menuId,
+          is_first_time: isFirstTime,
+          duration: this._getMenuDuration(menuId)
+        };
+      });
       
-      const filteredWithTicket = this._filterByCategory(
-        allMenus.data.withTicket, 
-        categoryLevel, 
-        categoryName
-      );
+      Logger.log(`メニューID決定結果: ${JSON.stringify(menuResults)}`);
       
       return {
         success: true,
         data: {
-          regular: filteredRegular,
-          withTicket: filteredWithTicket,
-          categoryFilter: {
-            level: categoryLevel,
-            name: categoryName
-          },
+          visitor_id: visitorId,
+          menus: menuResults,
+          total_duration: menuResults.reduce((sum, m) => sum + m.duration, 0)
+        }
+      };
+      
+    } catch (error) {
+      Logger.log(`メニューID決定エラー: ${error.toString()}`);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * 予約履歴を取得
+   * @private
+   * @param {string} visitorId - 来院者ID
+   * @return {Array} 予約履歴の配列
+   */
+  _getReservationHistory(visitorId) {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('予約管理');
+    if (!sheet) return [];
+    
+    const dataRange = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
+    const data = dataRange.getValues();
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    
+    const visitorIdCol = headers.indexOf('visitor_id');
+    const menuNameCol = headers.indexOf('menu_name');
+    const statusCol = headers.indexOf('status');
+    
+    return data.filter(row => 
+      row[visitorIdCol] === visitorId && 
+      row[statusCol] !== 'cancelled'
+    ).map(row => ({
+      menu_name: row[menuNameCol]
+    }));
+  }
+
+  /**
+   * メニュー履歴があるかチェック
+   * @private
+   * @param {string} menuName - メニュー名
+   * @param {Array} history - 予約履歴
+   * @return {boolean} 履歴がある場合true
+   */
+  _hasMenuHistory(menuName, history) {
+    return history.some(h => h.menu_name === menuName);
+  }
+
+  /**
+   * メニューIDを検索
+   * 初回/2回目以降の条件を考慮してメニューIDを特定
+   * @private
+   * @param {string} menuName - メニュー名
+   * @param {boolean} isFirstTime - 初回かどうか
+   * @return {string|null} メニューID
+   */
+  _findMenuId(menuName, isFirstTime) {
+    const menus = this._getActiveMenus();
+    
+    // メニュー名で検索（初回/2回目以降の条件も考慮）
+    const matchedMenu = menus.find(menu => {
+      // メニュー名が一致
+      if (menu.name === menuName || menu.display_name === menuName) {
+        // 初回/2回目以降の条件をチェック
+        if (isFirstTime && menu.name.includes('初回')) {
+          return true;
+        } else if (!isFirstTime && !menu.name.includes('初回')) {
+          return true;
+        }
+        // 条件指定がない場合は名前の一致のみで返す
+        return true;
+      }
+      return false;
+    });
+    
+    return matchedMenu ? matchedMenu.menu_id : null;
+  }
+
+  /**
+   * メニューの所要時間を取得
+   * @private
+   * @param {string} menuId - メニューID
+   * @return {number} 所要時間（分）
+   */
+  _getMenuDuration(menuId) {
+    if (!menuId) return 30; // デフォルト30分
+    
+    const menus = this._getActiveMenus();
+    const menu = menus.find(m => m.menu_id === menuId);
+    return menu ? menu.duration : 30;
+  }
+
+  /**
+   * カテゴリ別メニュー取得（既存メソッド）
+   * @param {string} categoryId - カテゴリID（nullの場合は全て）
+   * @return {Object} カテゴリ別のメニューデータ
+   */
+  getMenusByCategory(categoryId = null) {
+    try {
+      Logger.log(`=== カテゴリ別メニュー取得: ${categoryId || '全て'} ===`);
+      
+      const menus = this._getActiveMenus();
+      const categories = this._getActiveCategories();
+      
+      // カテゴリIDが指定されている場合はフィルタリング
+      let filteredMenus = menus;
+      if (categoryId) {
+        filteredMenus = this._filterByCategory(menus, categoryId, categories);
+      }
+      
+      // カテゴリ情報を付与
+      const menusWithCategory = filteredMenus.map(menu => {
+        const category = categories.find(c => c.category_id === menu.category_id);
+        return {
+          ...menu,
+          category_name: category ? category.name : '未分類'
+        };
+      });
+      
+      Logger.log(`取得メニュー数: ${menusWithCategory.length}件`);
+      
+      return {
+        success: true,
+        data: {
+          menus: menusWithCategory,
+          category_id: categoryId,
           timestamp: new Date().toISOString()
         }
       };
@@ -500,20 +469,21 @@ class MenuApiService {
 
   /**
    * カテゴリでフィルタリング
+   * 指定カテゴリとその子カテゴリのメニューを取得
    * @private
+   * @param {Array} menus - メニュー配列
+   * @param {string} categoryId - カテゴリID
+   * @param {Array} categories - カテゴリ配列
+   * @return {Array} フィルタリングされたメニュー配列
    */
-  _filterByCategory(menus, categoryLevel, categoryName) {
-    return menus.filter(menu => {
-      switch (categoryLevel) {
-        case '大':
-          return menu.category_large === categoryName;
-        case '中':
-          return menu.category_medium === categoryName;
-        case '小':
-          return menu.category_small === categoryName;
-        default:
-          return false;
-      }
+  _filterByCategory(menus, categoryId, categories) {
+    // 指定カテゴリとその子カテゴリのIDを取得
+    const targetCategoryIds = [categoryId];
+    const childCategories = categories.filter(c => c.parent_id === categoryId);
+    childCategories.forEach(child => {
+      targetCategoryIds.push(child.category_id);
     });
+    
+    return menus.filter(menu => targetCategoryIds.includes(menu.category_id));
   }
 }

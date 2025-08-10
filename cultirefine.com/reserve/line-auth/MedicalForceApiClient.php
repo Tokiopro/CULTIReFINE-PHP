@@ -15,14 +15,24 @@ class MedicalForceApiClient
     private ?string $accessToken = null;
     private ?int $tokenExpiry = null;
     
-    public function __construct(string $baseUrl, string $apiKey, string $clientId = '', string $clientSecret = '', string $clinicId = '', int $timeout = 30)
+    public function __construct(string $baseUrl, string $apiKey, string $clientId = '', string $clientSecret = '', string $clinicId = '', int $timeout = 60)
     {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->apiKey = $apiKey;
         $this->clientId = $clientId;
         $this->clientSecret = $clientSecret;
-        $this->clinicId = $clinicId ?: getenv('CLINIC_ID') ?: '';
+        // clinic_idの取得優先順位: 1. 引数 2. MEDICAL_FORCE_CLINIC_ID 3. CLINIC_ID
+        $this->clinicId = $clinicId ?: (defined('MEDICAL_FORCE_CLINIC_ID') ? MEDICAL_FORCE_CLINIC_ID : (getenv('MEDICAL_FORCE_CLINIC_ID') ?: getenv('CLINIC_ID') ?: ''));
         $this->timeout = $timeout;
+        
+        // デバッグ: clinic_id設定状況
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[Medical Force API] Constructor initialized:');
+            error_log('[Medical Force API]   - Base URL: ' . $this->baseUrl);
+            error_log('[Medical Force API]   - Clinic ID: ' . ($this->clinicId ?: 'NOT SET (WARNING!)'));
+            error_log('[Medical Force API]   - API Key: ' . (empty($this->apiKey) ? 'NOT SET' : 'SET (length: ' . strlen($this->apiKey) . ')'));
+            error_log('[Medical Force API]   - Client ID: ' . (empty($this->clientId) ? 'NOT SET' : 'SET'));
+        }
     }
     
     /**
@@ -246,32 +256,20 @@ class MedicalForceApiClient
                 }
             }
             
-            // 名前の分割処理
-            $nameParts = explode(' ', trim($visitorData['name']), 2);
-            $lastName = $nameParts[0] ?? '';
-            $firstName = $nameParts[1] ?? '';
+            // 性別の検証と変換（GAS側と同じ形式）
+            $validGenders = ['MALE', 'FEMALE', 'male', 'female'];
+            $gender = strtoupper($visitorData['gender']);
             
-            // カナの分割処理
-            $kanaParts = explode(' ', trim($visitorData['kana']), 2);
-            $lastNameKana = $kanaParts[0] ?? '';
-            $firstNameKana = $kanaParts[1] ?? '';
+            if (!in_array($visitorData['gender'], $validGenders)) {
+                error_log('[Medical Force API] Invalid gender value: ' . $visitorData['gender']);
+                throw new Exception("無効な性別値が指定されました: " . $visitorData['gender'] . " (有効な値: MALE, FEMALE)", 400);
+            }
             
-            // 性別の変換
-            $genderMap = [
-                'MALE' => 'male',
-                'FEMALE' => 'female',
-                'male' => 'male',
-                'female' => 'female'
-            ];
-            $gender = $genderMap[$visitorData['gender']] ?? 'other';
-            
-            // Medical Force API用のデータを準備
+            // GAS側と同じリクエスト形式を使用
             $requestData = [
-                'last_name' => $lastName,
-                'first_name' => $firstName ?: '未設定',
-                'last_name_kana' => $lastNameKana,
-                'first_name_kana' => $firstNameKana ?: 'ミセッテイ',
-                'gender' => $gender
+                'name' => trim($visitorData['name']),
+                'name_kana' => trim($visitorData['kana']),
+                'gender' => $gender  // 大文字のMALE/FEMALE
             ];
             
             // オプションフィールドの追加
@@ -287,21 +285,59 @@ class MedicalForceApiClient
                 }
             }
             
-            // Medical Force APIに送信
-            $response = $this->makeRequest('POST', '/api/visitors', $requestData);
+            // デバッグ: リクエストデータの詳細
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[Medical Force API] === Visitor Creation Request ===');
+                error_log('[Medical Force API] Original data:');
+                error_log('[Medical Force API]   - name: ' . $visitorData['name']);
+                error_log('[Medical Force API]   - kana: ' . $visitorData['kana']);
+                error_log('[Medical Force API]   - gender: ' . $visitorData['gender']);
+                error_log('[Medical Force API] Converted data:');
+                error_log('[Medical Force API]   - name: ' . $requestData['name']);
+                error_log('[Medical Force API]   - name_kana: ' . $requestData['name_kana']);
+                error_log('[Medical Force API]   - gender: ' . $requestData['gender']);
+                error_log('[Medical Force API] Full request: ' . json_encode($requestData));
+            }
             
-            if (!$response['success']) {
+            // Medical Force APIに送信（GAS側と同じエンドポイント）
+            $response = $this->makeRequest('POST', '/developer/visitors', $requestData);
+            
+            // Medical Force APIの生レスポンスを検証
+            // エラーレスポンスの場合、'error'または'message'フィールドが含まれる
+            if (isset($response['error']) || (isset($response['message']) && !isset($response['visitor_id']) && !isset($response['id']))) {
                 throw new Exception(
-                    'Medical Force API エラー: ' . ($response['message'] ?? 'Unknown error'),
-                    $response['error_code'] ?? 500
+                    'Medical Force API エラー: ' . ($response['message'] ?? $response['error'] ?? 'Unknown error'),
+                    400
                 );
+            }
+            
+            // 成功レスポンスの検証 - visitor_idまたはidが必須
+            if (!isset($response['visitor_id']) && !isset($response['id'])) {
+                error_log('[Medical Force API] Unexpected response format: ' . json_encode($response));
+                throw new Exception(
+                    'Medical Force API エラー: 予期しないレスポンス形式です（visitor_idが含まれていません）',
+                    500
+                );
+            }
+            
+            // visitor_idの取得（'visitor_id'または'id'フィールドから）
+            $visitorId = $response['visitor_id'] ?? $response['id'] ?? null;
+            if (!$visitorId) {
+                throw new Exception('Medical Force API エラー: visitor_idが返されませんでした', 500);
+            }
+            
+            // デバッグ: 成功レスポンスの詳細
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[Medical Force API] Visitor created successfully:');
+                error_log('[Medical Force API]   - Visitor ID: ' . $visitorId);
+                error_log('[Medical Force API]   - Full response: ' . json_encode($response));
             }
             
             return [
                 'success' => true,
-                'visitor_id' => $response['data']['visitor_id'] ?? $this->generateMockVisitorId(),
+                'visitor_id' => $visitorId,
                 'message' => 'Medical Force APIで来院者が作成されました',
-                'data' => $response['data'] ?? []
+                'data' => $response  // 生のレスポンス全体を含める
             ];
             
         } catch (Exception $e) {
@@ -383,38 +419,27 @@ class MedicalForceApiClient
         // OAuth 2.0 アクセストークンを取得
         $token = $this->getAccessToken();
         
-        // Medical Force API は AWS Cognito ベースのため署名付きリクエストが必要
+        // GAS側と同じシンプルなヘッダー構成
         $headers = [
             'Content-Type: application/json',
-            'Accept: application/json'
+            'Accept: application/json',
+            'Authorization: Bearer ' . $token
         ];
         
-        // JWT トークンの場合の詳細ログ出力
-        if (defined('DEBUG_MODE') && DEBUG_MODE) {
-            error_log('[Medical Force API] Token type detection:');
-            error_log('[Medical Force API] Token starts with ey: ' . (substr($token, 0, 2) === 'ey' ? 'yes' : 'no'));
-            error_log('[Medical Force API] Token length: ' . strlen($token));
-            error_log('[Medical Force API] Token prefix: ' . substr($token, 0, 20) . '...');
-        }
-        
-        // Medical Force API は標準的な Bearer 認証を使用
-        $headers[] = 'Authorization: Bearer ' . $token;
-        
-        if (defined('DEBUG_MODE') && DEBUG_MODE) {
-            error_log('[Medical Force API] Using standard Bearer authentication');
-            error_log('[Medical Force API] Authorization header: Bearer ' . substr($token, 0, 20) . '...');
-        }
-        
-        // clinic_idヘッダーを追加（Medical Force API仕様）
+        // clinic_idはヘッダーではなくリクエストボディに含める（GAS側と同じ方式）
         if (!empty($this->clinicId)) {
-            $headers[] = 'clinic_id: ' . $this->clinicId;
-            if (defined('DEBUG_MODE') && DEBUG_MODE) {
-                error_log('[Medical Force API] Adding clinic_id header: ' . $this->clinicId);
+            if (in_array($method, ['POST', 'PUT', 'PATCH'])) {
+                // POSTの場合はリクエストボディに含める
+                $data['clinic_id'] = $this->clinicId;
+            } else {
+                // GETの場合はクエリパラメータに含める（GAS側では自動処理）
+                $separator = strpos($url, '?') !== false ? '&' : '?';
+                $url .= $separator . 'clinic_id=' . urlencode($this->clinicId);
             }
         } else {
-            if (defined('DEBUG_MODE') && DEBUG_MODE) {
-                error_log('[Medical Force API] WARNING: clinic_id is empty or not set');
-            }
+            // clinic_idが必須の場合はエラーとする
+            error_log('[Medical Force API] ERROR: clinic_id is required but not set');
+            throw new Exception('Medical Force API: clinic_id is required', 400);
         }
         
         $options = [
@@ -430,9 +455,9 @@ class MedicalForceApiClient
             $options[CURLOPT_POSTFIELDS] = json_encode($data);
         }
         
-        // デバッグ: 送信されるリクエストの詳細をログ
+        // デバッグ: 送信されるリクエストの詳細をログ（GAS側と同様）
         if (defined('DEBUG_MODE') && DEBUG_MODE) {
-            error_log('[Medical Force API] ===== Request Details =====');
+            error_log('[Medical Force API] ===== Request Details (GAS Compatible) =====');
             error_log('[Medical Force API] URL: ' . $url);
             error_log('[Medical Force API] Method: ' . $method);
             error_log('[Medical Force API] Headers: ' . json_encode($headers));
@@ -440,6 +465,7 @@ class MedicalForceApiClient
                 error_log('[Medical Force API] Request Body: ' . json_encode($data));
             }
             error_log('[Medical Force API] Clinic ID: ' . ($this->clinicId ?: 'NOT SET'));
+            error_log('[Medical Force API] Token (first 20 chars): ' . substr($token, 0, 20) . '...');
             error_log('[Medical Force API] =========================');
         }
         
@@ -474,13 +500,18 @@ class MedicalForceApiClient
         // HTTPエラーコードをチェック
         if ($httpCode >= 400) {
             $errorMessage = $decodedResponse['message'] ?? "HTTP Error {$httpCode}";
+            
+            // 詳細なエラー情報をログに記録
             error_log('[Medical Force API] HTTP Error ' . $httpCode . ': ' . $errorMessage);
+            error_log('[Medical Force API] Full error response: ' . json_encode($decodedResponse));
             
             if ($httpCode === 401) {
                 error_log('[Medical Force API] 401 Unauthorized - OAuth token may be invalid or expired');
+                error_log('[Medical Force API] Token used: ' . substr($token, 0, 20) . '...');
                 throw new Exception("認証エラー: " . $errorMessage, 401);
             } elseif ($httpCode === 403) {
                 error_log('[Medical Force API] 403 Forbidden - Check clinic_id and permissions');
+                error_log('[Medical Force API] Clinic ID used: ' . $this->clinicId);
                 throw new Exception("権限エラー: " . $errorMessage, 403);
             } elseif ($httpCode === 404) {
                 error_log('[Medical Force API] 404 Not Found - Check endpoint: ' . $endpoint);

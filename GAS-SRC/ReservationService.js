@@ -131,9 +131,10 @@ class ReservationService {
       
       Logger.log(`合計${allReservations.length}件の予約情報を取得しました`);
       
-      // スプレッドシートに書き込み
+      // スプレッドシートに書き込み（スマートマージ使用）
       if (allReservations.length > 0) {
-        this._writeReservationsToSheet(allReservations);
+        const mergeResult = this._smartMergeReservations(allReservations);
+        Logger.log(`同期結果: 更新${mergeResult.stats.updated}件、追加${mergeResult.stats.added}件`);
       }
       
       return allReservations.length;
@@ -217,7 +218,8 @@ class ReservationService {
     
     // スプレッドシートに書き込み
     if (allReservations.length > 0) {
-      this._writeReservationsToSheetBatch(allReservations);
+      const mergeResult = this._smartMergeReservations(allReservations);
+      Logger.log(`同期結果: 更新${mergeResult.stats.updated}件、追加${mergeResult.stats.added}件`);
     }
     
     syncStatus.completed = true;
@@ -340,13 +342,14 @@ class ReservationService {
       
       Logger.log(`新規/更新予約: ${allReservations.length}件`);
       
-      // 差分のみをスプレッドシートに追加
+      // スマートマージで既存データを保持しながら更新
       if (allReservations.length > 0) {
         const sheetStartTime = new Date().getTime();
-        this._appendReservationsToSheet(allReservations);
+        const mergeResult = this._smartMergeReservations(allReservations);
         const sheetEndTime = new Date().getTime();
         timeLog.sheetWrite = sheetEndTime - sheetStartTime;
         Logger.log(`スプレッドシート書き込み時間: ${timeLog.sheetWrite}ms`);
+        Logger.log(`同期結果: 更新${mergeResult.stats.updated}件、追加${mergeResult.stats.added}件`);
       }
       
       const endTime = new Date().getTime();
@@ -449,8 +452,9 @@ class ReservationService {
       Logger.log(`${reservations.length}件の更新された予約情報を取得しました`);
       
       if (reservations.length > 0) {
-        // 既存データとマージして更新
-        this._mergeReservationsToSheet(reservations);
+        // スマートマージで既存データを保持しながら更新
+        const mergeResult = this._smartMergeReservations(reservations);
+        Logger.log(`同期結果: 更新${mergeResult.stats.updated}件、追加${mergeResult.stats.added}件`);
       }
       
       return reservations.length;
@@ -921,6 +925,205 @@ class ReservationService {
     });
     
     Logger.log(`${reservations.length}件の予約情報をマージしました`);
+  }
+
+  /**
+   * スマートマージ：既存データを保持しながら更新・追加を行う
+   * @param {Array} reservations - 同期する予約データ
+   * @param {Object} options - オプション設定
+   * @returns {Object} 処理結果のサマリー
+   */
+  _smartMergeReservations(reservations, options = {}) {
+    const sheet = Utils.getOrCreateSheet(this.sheetName);
+    
+    // ヘッダーが存在しない場合は作成
+    if (sheet.getLastRow() === 0) {
+      this._createReservationHeaders(sheet);
+    }
+    
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const reservationIdIndex = headers.indexOf('reservation_id');
+    
+    if (reservationIdIndex === -1) {
+      throw new Error('reservation_idカラムが見つかりません');
+    }
+    
+    // パフォーマンス計測
+    const startTime = new Date().getTime();
+    const stats = {
+      updated: 0,
+      added: 0,
+      skipped: 0,
+      errors: 0
+    };
+    
+    // 既存データをMapに変換（高速検索用）
+    Logger.log('既存データの読み込みを開始...');
+    const existingDataStartTime = new Date().getTime();
+    let existingMap = new Map();
+    
+    if (sheet.getLastRow() > 1) {
+      const existingData = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+      
+      for (let i = 0; i < existingData.length; i++) {
+        const reservationId = existingData[i][reservationIdIndex];
+        if (reservationId) {
+          existingMap.set(reservationId, {
+            rowIndex: i + 2, // スプレッドシートの行番号（1-indexed、ヘッダー行を考慮）
+            data: existingData[i]
+          });
+        }
+      }
+    }
+    
+    const existingDataEndTime = new Date().getTime();
+    Logger.log(`既存データ読み込み完了: ${existingMap.size}件 (${existingDataEndTime - existingDataStartTime}ms)`);
+    
+    // バッチ処理用の配列
+    const updateBatch = [];
+    const appendBatch = [];
+    
+    // 予約データを処理
+    Logger.log('予約データの処理を開始...');
+    const processStartTime = new Date().getTime();
+    
+    for (const reservation of reservations) {
+      try {
+        const reservationId = reservation.id || reservation.reservation_id;
+        
+        if (!reservationId) {
+          Logger.log('警告: reservation_idが見つかりません');
+          stats.skipped++;
+          continue;
+        }
+        
+        const rowData = this._reservationToRowOptimized ? 
+          this._reservationToRowOptimized(reservation) : 
+          this._reservationToRow(reservation);
+        
+        if (existingMap.has(reservationId)) {
+          // 既存レコードを更新
+          const existing = existingMap.get(reservationId);
+          
+          // データが変更されているかチェック（オプション）
+          if (options.checkChanges) {
+            const hasChanges = !this._isRowDataEqual(existing.data, rowData);
+            if (!hasChanges) {
+              stats.skipped++;
+              continue;
+            }
+          }
+          
+          updateBatch.push({
+            rowIndex: existing.rowIndex,
+            data: rowData
+          });
+          stats.updated++;
+        } else {
+          // 新規レコードを追加
+          appendBatch.push(rowData);
+          stats.added++;
+        }
+      } catch (error) {
+        Logger.log(`予約処理エラー: ${error.toString()}`);
+        stats.errors++;
+      }
+    }
+    
+    const processEndTime = new Date().getTime();
+    Logger.log(`データ処理完了 (${processEndTime - processStartTime}ms)`);
+    
+    // スプレッドシートへの書き込み
+    Logger.log('スプレッドシートへの書き込みを開始...');
+    const writeStartTime = new Date().getTime();
+    
+    // 更新処理（バッチで実行）
+    if (updateBatch.length > 0) {
+      const batchSize = 50; // 一度に更新する行数
+      
+      for (let i = 0; i < updateBatch.length; i += batchSize) {
+        const batch = updateBatch.slice(i, Math.min(i + batchSize, updateBatch.length));
+        
+        // 各更新を実行
+        batch.forEach(update => {
+          sheet.getRange(update.rowIndex, 1, 1, update.data.length).setValues([update.data]);
+        });
+        
+        // API制限を考慮して少し待機
+        if (i + batchSize < updateBatch.length) {
+          Utilities.sleep(100);
+        }
+      }
+      
+      Logger.log(`${updateBatch.length}件のレコードを更新`);
+    }
+    
+    // 追加処理（まとめて実行）
+    if (appendBatch.length > 0) {
+      const startRow = sheet.getLastRow() + 1;
+      const batchSize = 100;
+      
+      for (let i = 0; i < appendBatch.length; i += batchSize) {
+        const batch = appendBatch.slice(i, Math.min(i + batchSize, appendBatch.length));
+        
+        if (batch.length > 0) {
+          sheet.getRange(startRow + i, 1, batch.length, batch[0].length).setValues(batch);
+        }
+        
+        // API制限を考慮
+        if (i + batchSize < appendBatch.length) {
+          Utilities.sleep(100);
+        }
+      }
+      
+      Logger.log(`${appendBatch.length}件の新規レコードを追加`);
+    }
+    
+    const writeEndTime = new Date().getTime();
+    Logger.log(`書き込み完了 (${writeEndTime - writeStartTime}ms)`);
+    
+    const endTime = new Date().getTime();
+    const totalTime = endTime - startTime;
+    
+    // 処理結果のサマリー
+    const summary = {
+      success: true,
+      stats: stats,
+      executionTime: totalTime,
+      details: {
+        existingRecords: existingMap.size,
+        processedRecords: reservations.length,
+        dataLoadTime: existingDataEndTime - existingDataStartTime,
+        processTime: processEndTime - processStartTime,
+        writeTime: writeEndTime - writeStartTime
+      }
+    };
+    
+    Logger.log('=== スマートマージ完了 ===');
+    Logger.log(`更新: ${stats.updated}件`);
+    Logger.log(`追加: ${stats.added}件`);
+    Logger.log(`スキップ: ${stats.skipped}件`);
+    Logger.log(`エラー: ${stats.errors}件`);
+    Logger.log(`合計実行時間: ${totalTime}ms`);
+    
+    return summary;
+  }
+  
+  /**
+   * 行データが同一かチェック（オプション機能）
+   */
+  _isRowDataEqual(row1, row2) {
+    if (row1.length !== row2.length) return false;
+    
+    for (let i = 0; i < row1.length; i++) {
+      // 日付型の比較は文字列に変換
+      const val1 = row1[i] instanceof Date ? row1[i].toISOString() : String(row1[i] || '');
+      const val2 = row2[i] instanceof Date ? row2[i].toISOString() : String(row2[i] || '');
+      
+      if (val1 !== val2) return false;
+    }
+    
+    return true;
   }
   
   /**
