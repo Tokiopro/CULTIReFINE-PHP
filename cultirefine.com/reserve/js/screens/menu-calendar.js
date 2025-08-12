@@ -394,18 +394,14 @@ function addMinutes(timeStr, minutes) {
 }
 
 /**
- * 患者別メニューを表示
+ * 全ユーザー共通メニューを表示
  */
 async function displayPatientMenus(patientId) {
     const container = document.getElementById('treatment-categories');
     if (!container) return;
     
-    // current-userの場合は実際のvisitor_idを使用
-    const actualPatientId = patientId === 'current-user' 
-        ? (window.APP_CONFIG?.currentUserVisitorId || patientId)
-        : patientId;
-    
-    console.log('displayPatientMenus: patientId =', patientId, ', actualPatientId =', actualPatientId);
+    // 全ユーザー共通メニューのため、patientIdは状態管理用のみに使用
+    console.log('displayPatientMenus: Loading common menus for all users');
     
     // ローディング表示
     container.innerHTML = '<div class="text-center py-4">メニューを読み込んでいます...</div>';
@@ -413,12 +409,11 @@ async function displayPatientMenus(patientId) {
     // メニュー選択時のコールバック
     const onMenuSelect = (menu, menuPatientId, isChecked) => {
         console.log('[MenuSelect] ========== START ==========');
-        console.log('[MenuSelect] Menu:', menu.name || menu.id, 'Patient ID from menu:', menuPatientId, 'isChecked:', isChecked);
+        console.log('[MenuSelect] Menu:', menu.name || menu.id, 'isChecked:', isChecked);
         console.log('[MenuSelect] Current patient:', currentPatient.name, 'ID:', currentPatient.id);
-        console.log('[MenuSelect] actualPatientId:', actualPatientId);
         
-        // current-userの場合はactualPatientIdを使用する
-        const statePatientId = currentPatient.id; // 状態管理には常にcurrent-userを使用
+        // 状態管理用の患者ID
+        const statePatientId = currentPatient.id;
         
         console.log('[MenuSelect] State patient ID to use:', statePatientId);
         console.log('[MenuSelect] Current appState.selectedTreatments:', Object.keys(appState.selectedTreatments));
@@ -452,8 +447,8 @@ async function displayPatientMenus(patientId) {
         
         // メニューが選択されたらカレンダーの空き情報を更新
         if (appState.selectedTreatments[statePatientId].length > 0) {
-            // APIにはactualPatientIdを使用
-            loadCalendarAvailability(actualPatientId, appState.selectedTreatments[statePatientId]);
+            // 全ユーザー共通メニューのため、患者IDを使用
+            loadCalendarAvailability(statePatientId, appState.selectedTreatments[statePatientId]);
         }
         
         console.log('[MenuSelect] Final state:', {
@@ -464,11 +459,9 @@ async function displayPatientMenus(patientId) {
         console.log('[MenuSelect] ========== END ==========');
     };
     
-    // 会社IDを取得
-    const companyId = appState.membershipInfo?.companyId || window.APP_CONFIG?.companyInfo?.companyId || null;
-    
-    // 全メニューをロード（患者別メニューが空のため全メニューAPIを使用）
-    await loadPatientMenus('treatment-categories', actualPatientId, companyId, onMenuSelect);
+    // 全ユーザー共通メニューをロード
+    // patientIdとcompanyIdは互換性のため渡すが、実際には使用されない
+    await loadPatientMenus('treatment-categories', null, null, onMenuSelect);
     
     // 選択済みメニューをハイライト
     highlightSelectedMenus(patientId);

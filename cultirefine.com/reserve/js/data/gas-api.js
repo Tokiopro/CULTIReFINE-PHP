@@ -640,10 +640,23 @@ export async function getPatientMenus(visitorId, companyId = null) {
 export async function getAllStructuredMenus() {
     console.log('[GAS API] Getting all structured menus');
     
+    // PHPから提供されたメニューデータを優先的に使用（history/index.php, ticket/index.phpと同じパターン）
+    if (window.MENU_DATA) {
+        console.log('[GAS API] Using menu data from PHP (window.MENU_DATA)');
+        return {
+            success: true,
+            status: 'success',
+            data: window.MENU_DATA
+        };
+    }
+    
+    // PHPでメニューデータが取得できなかった場合のみ、フォールバックとしてapi-bridgeを使用
+    // これは通常発生しないが、安全策として残す
+    console.warn('[GAS API] Menu data not available from PHP, falling back to api-bridge (this should not normally happen)');
+    
     try {
         const url = new URL(API_BASE_URL);
-        // GAS側の既存エンドポイント getMenusWithCategories を使用
-        url.searchParams.set('action', 'getMenusWithCategories');
+        url.searchParams.set('action', 'getAllStructuredMenus');
         
         const response = await fetch(url.toString(), {
             method: 'GET',
@@ -660,27 +673,96 @@ export async function getAllStructuredMenus() {
         }
         
         const result = await response.json();
-        console.log('[GAS API] Menus with categories received:', result);
+        console.log('[GAS API] All structured menus received:', result);
         
         // エラーチェック
-        if (result.success === false) {
-            throw new Error(result.message || 'メニュー情報の取得に失敗しました');
+        if (result.status === 'error' || result.success === false) {
+            throw new Error(result.error || result.message || 'メニュー情報の取得に失敗しました');
         }
         
-        // GASの getMenusWithCategories レスポンスを構造化メニュー形式に変換
+        // レスポンスがすでに構造化されている場合はそのまま返す
+        if (result.status === 'success' && result.data) {
+            return {
+                success: true,
+                status: 'success',
+                data: result.data
+            };
+        }
+        
+        // 古い形式の場合は変換
         const structuredData = convertToStructuredMenus(result.data || result);
         
         return {
             success: true,
+            status: 'success',
             data: structuredData
         };
         
     } catch (error) {
         console.error('[GAS API] Error getting all structured menus:', error);
+        
+        // エラーの詳細分析
+        let errorMessage = 'メニュー情報の取得に失敗しました';
+        let errorCode = 'UNKNOWN_ERROR';
+        let suggestions = [];
+        
+        if (error.message.includes('HTTP error! status: 500')) {
+            errorCode = 'SERVER_ERROR';
+            errorMessage = 'サーバーエラーが発生しました';
+            suggestions = [
+                'ページを再読み込みしてお試しください',
+                'しばらく時間をおいてから再度お試しください',
+                '問題が解決しない場合は管理者にお問い合わせください'
+            ];
+        } else if (error.message.includes('HTTP error! status: 401')) {
+            errorCode = 'AUTH_ERROR';
+            errorMessage = '認証エラーです。ログインしてください';
+            suggestions = [
+                'LINEでログインし直してください',
+                'セッションが期限切れの可能性があります'
+            ];
+        } else if (error.message.includes('HTTP error! status: 403')) {
+            errorCode = 'PERMISSION_ERROR';
+            errorMessage = 'アクセス権限がありません';
+            suggestions = ['適切な権限を持つアカウントでログインしてください'];
+        } else if (error.message.includes('Failed to fetch')) {
+            errorCode = 'NETWORK_ERROR';
+            errorMessage = 'ネットワークエラーです';
+            suggestions = [
+                'インターネット接続を確認してください',
+                'ページを再読み込みしてお試しください'
+            ];
+        } else if (error.message.includes('timeout')) {
+            errorCode = 'TIMEOUT_ERROR';
+            errorMessage = 'タイムアウトが発生しました';
+            suggestions = [
+                'しばらく時間をおいてから再度お試しください',
+                'サーバーが混雑している可能性があります'
+            ];
+        }
+        
+        // デバッグ情報をコンソールに出力
+        console.group('[GAS API] Error Details');
+        console.error('Error Code:', errorCode);
+        console.error('Error Message:', errorMessage);
+        console.error('Original Error:', error);
+        console.error('Response URL:', response?.url || 'N/A');
+        console.error('Response Status:', response?.status || 'N/A');
+        console.groupEnd();
+        
         return {
             success: false,
-            message: error.message || 'メニュー情報の取得に失敗しました',
-            error: error
+            status: 'error',
+            message: errorMessage,
+            error_code: errorCode,
+            suggestions: suggestions,
+            original_error: error.message,
+            timestamp: new Date().toISOString(),
+            debug_info: {
+                user_agent: navigator.userAgent,
+                url: window.location.href,
+                referrer: document.referrer
+            }
         };
     }
 }

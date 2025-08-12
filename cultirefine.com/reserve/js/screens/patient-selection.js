@@ -455,6 +455,7 @@ export function updatePatientsList() {
 export function togglePatientSelection(patientId) {
     console.log('[togglePatientSelection] Called with patientId:', patientId);
     console.log('[togglePatientSelection] Current selectedPatientsForBooking:', appState.selectedPatientsForBooking);
+    console.log('[togglePatientSelection] All patients count:', appState.allPatients.length);
     
     var patient;
     
@@ -478,6 +479,27 @@ export function togglePatientSelection(patientId) {
         if (!patient) {
             console.error('[togglePatientSelection] Patient not found in allPatients for ID:', patientId);
             console.log('[togglePatientSelection] Available patients:', appState.allPatients.map(p => ({id: p.id, name: p.name})));
+            
+            // PHP生成のHTMLから患者情報を取得して追加
+            var patientElement = document.querySelector('.patient-item[data-patient-id="' + patientId + '"]');
+            if (patientElement) {
+                var nameElement = patientElement.querySelector('.font-medium');
+                if (nameElement) {
+                    patient = {
+                        id: patientId,
+                        name: nameElement.textContent,
+                        kana: '',
+                        gender: '',
+                        is_public: true,
+                        lastVisit: null,
+                        isNew: false,
+                        isVisible: true,
+                        member_type: patientElement.textContent.includes('(本会員)') ? 'main' : 'sub'
+                    };
+                    console.log('[togglePatientSelection] Created patient from DOM:', patient);
+                    appState.allPatients.push(patient);
+                }
+            }
         }
     }
     
@@ -684,9 +706,15 @@ function setupPatientItemEvents() {
                     patientData.member_type = 'sub';
                 }
                 
-                // appState.allPatientsに追加（存在しない場合）
-                if (!appState.allPatients.find(p => p.id === patientId)) {
+                // appState.allPatientsに追加または更新
+                var existingPatient = appState.allPatients.find(p => p.id === patientId);
+                if (!existingPatient) {
+                    console.log('[setupPatientItemEvents] Adding patient to allPatients:', patientData);
                     appState.allPatients.push(patientData);
+                } else {
+                    // 既存のデータを使用
+                    console.log('[setupPatientItemEvents] Using existing patient data:', existingPatient);
+                    patientData = existingPatient;
                 }
                 
                 // ペアモードの制限チェック

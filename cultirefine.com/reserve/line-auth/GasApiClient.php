@@ -421,11 +421,12 @@ class GasApiClient
         
         // デバッグ: リクエスト開始
         if (defined('DEBUG_MODE') && DEBUG_MODE) {
-            error_log("[GAS API] makeRequest START");
+            error_log("[GAS API] makeRequest START - " . date('Y-m-d H:i:s'));
             error_log("[GAS API] Method: {$method}");
             error_log("[GAS API] Path: {$path}");
             error_log("[GAS API] Base URL: {$this->baseUrl}");
             error_log("[GAS API] Data: " . ($data ? json_encode($data) : 'null'));
+            error_log("[GAS API] Request ID: " . uniqid());
         }
         
         // 認証が必要なエンドポイントの場合、URLパラメータでAPIキーを送信
@@ -489,11 +490,15 @@ class GasApiClient
         
         // デバッグ: レスポンス詳細
         if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] makeRequest RESPONSE - " . date('Y-m-d H:i:s'));
             error_log("[GAS API] HTTP Code: {$httpCode}");
             error_log("[GAS API] cURL Error: " . ($curlError ?: 'none'));
-            error_log("[GAS API] Response (first 500 chars): " . substr($response, 0, 500));
-            error_log("[GAS API] Total time: " . $curlInfo['total_time']);
-            error_log("[GAS API] Connect time: " . $curlInfo['connect_time']);
+            error_log("[GAS API] Response length: " . strlen($response));
+            error_log("[GAS API] Response (first 1000 chars): " . substr($response, 0, 1000));
+            error_log("[GAS API] Total time: " . $curlInfo['total_time'] . "s");
+            error_log("[GAS API] Connect time: " . $curlInfo['connect_time'] . "s");
+            error_log("[GAS API] DNS lookup time: " . ($curlInfo['namelookup_time'] ?? 0) . "s");
+            error_log("[GAS API] Size download: " . ($curlInfo['size_download'] ?? 0) . " bytes");
         }
         
         // cURLエラーチェック

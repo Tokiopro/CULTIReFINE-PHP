@@ -51,17 +51,75 @@ require_once 'line-auth/logger.php';
 $logger = new Logger();
 
 try {
-    // LINE認証チェック
-    if (!isset($_SESSION['line_user_id'])) {
-        throw new Exception('認証が必要です', 401);
+    // ルーティング前にアクションを取得
+    $action = $_GET['action'] ?? '';
+    
+    // 公開APIのホワイトリスト（認証不要のエンドポイント）
+    $publicActions = [
+        'getAllStructuredMenus',  // メニュー一覧取得
+        'getMenuCategories',      // メニューカテゴリ取得
+        'testConnection'          // 接続テスト
+    ];
+    
+    // 公開APIの場合は認証をスキップ
+    if (!in_array($action, $publicActions)) {
+        // LINE認証チェック（詳細なセッション検証）
+        if (!isset($_SESSION['line_user_id']) || empty($_SESSION['line_user_id'])) {
+            error_log('[API Bridge] Authentication failed - line_user_id not found in session');
+            error_log('[API Bridge] Session data: ' . json_encode([
+                'session_id' => session_id(),
+                'session_status' => session_status(),
+                'session_keys' => array_keys($_SESSION),
+                'has_line_user_id' => isset($_SESSION['line_user_id']),
+                'line_user_id_value' => $_SESSION['line_user_id'] ?? 'not_set'
+            ]));
+            throw new Exception('認証が必要です。ログインしてください。', 401);
+        }
+        
+        // セッション有効性チェック（24時間以内の認証）
+        $sessionValid = true;
+        if (isset($_SESSION['line_auth_time'])) {
+            $elapsed = time() - $_SESSION['line_auth_time'];
+            $sessionLifetime = 86400; // 24時間
+            if ($elapsed > $sessionLifetime) {
+                $sessionValid = false;
+                error_log('[API Bridge] Session expired - elapsed: ' . $elapsed . 's, lifetime: ' . $sessionLifetime . 's');
+            }
+        } else {
+            // 認証時刻がない場合は警告ログ
+            error_log('[API Bridge] Warning: line_auth_time not found in session');
+        }
+        
+        if (!$sessionValid) {
+            error_log('[API Bridge] Session validation failed for user: ' . $_SESSION['line_user_id']);
+            throw new Exception('セッションが無効です。再度ログインしてください。', 401);
+        }
+        
+        $lineUserId = $_SESSION['line_user_id'];
+    } else {
+        // 公開APIの場合はダミーユーザーIDを設定
+        $lineUserId = 'public_api_user';
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[API Bridge] Public API accessed: ' . $action);
+        }
     }
     
-    $lineUserId = $_SESSION['line_user_id'];
-    $gasApi = new GasApiClient(GAS_DEPLOYMENT_ID, GAS_API_KEY);
+    // GAS API クライアント初期化（エラーハンドリング付き）
+    try {
+        $gasApi = new GasApiClient(GAS_DEPLOYMENT_ID, GAS_API_KEY);
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log('[API Bridge] GAS API client initialized successfully');
+        }
+    } catch (Exception $e) {
+        error_log('[API Bridge] Failed to initialize GAS API client: ' . $e->getMessage());
+        throw new Exception('システムエラー: API接続に失敗しました', 500);
+    }
     
     // ルーティング
     $method = $_SERVER['REQUEST_METHOD'];
-    $action = $_GET['action'] ?? '';
+    // $action は既に上で取得済み
     
     switch ($action) {
         case 'getUserFullInfo':
@@ -99,17 +157,68 @@ try {
         case 'getAllStructuredMenus':
             // 全メニューを階層構造で取得
             if (!$gasApi) {
+                error_log('[API Bridge] getAllStructuredMenus: GAS API client not initialized');
                 throw new Exception('GAS API client not initialized');
             }
             
-            $apiResult = $gasApi->getAllStructuredMenus();
-            
-            if ($apiResult['status'] !== 'success') {
-                throw new Exception($apiResult['error'] ?? 'メニュー取得に失敗しました');
+            // デバッグログ
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log('[API Bridge] getAllStructuredMenus called');
+                error_log('[API Bridge] Session data: ' . json_encode([
+                    'line_user_id' => $_SESSION['line_user_id'] ?? 'not_set',
+                    'session_id' => session_id()
+                ]));
             }
             
-            // 共通レスポンス処理で使用する$result変数に設定
-            $result = $apiResult;
+            try {
+                $apiResult = $gasApi->getAllStructuredMenus();
+                
+                if ($apiResult['status'] !== 'success') {
+                    error_log('[API Bridge] getAllStructuredMenus failed: ' . json_encode($apiResult));
+                    throw new Exception($apiResult['error'] ?? 'メニュー取得に失敗しました');
+                }
+                
+                // データ検証
+                if (!isset($apiResult['data'])) {
+                    error_log('[API Bridge] getAllStructuredMenus: No data in response');
+                    throw new Exception('メニューデータが空です');
+                }
+                
+                // 成功ログ
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    $menuCount = 0;
+                    if (isset($apiResult['data']['withTicket']['categories'])) {
+                        foreach ($apiResult['data']['withTicket']['categories'] as $cat) {
+                            $menuCount += count($cat['menus'] ?? []);
+                        }
+                    }
+                    if (isset($apiResult['data']['withoutTicket']['categories'])) {
+                        foreach ($apiResult['data']['withoutTicket']['categories'] as $cat) {
+                            $menuCount += count($cat['menus'] ?? []);
+                        }
+                    }
+                    error_log('[API Bridge] getAllStructuredMenus success - Total menus: ' . $menuCount);
+                }
+                
+                // 共通レスポンス処理で使用する$result変数に設定
+                $result = $apiResult;
+                
+            } catch (Exception $e) {
+                error_log('[API Bridge] getAllStructuredMenus error: ' . $e->getMessage());
+                error_log('[API Bridge] getAllStructuredMenus stack trace: ' . $e->getTraceAsString());
+                
+                // より詳細なエラー情報を提供
+                $result = [
+                    'status' => 'error',
+                    'error' => 'メニュー取得中にエラーが発生しました',
+                    'details' => $e->getMessage(),
+                    'debug_info' => [
+                        'session_valid' => isset($_SESSION['line_user_id']),
+                        'gas_api_initialized' => isset($gasApi),
+                        'timestamp' => date('Y-m-d H:i:s')
+                    ]
+                ];
+            }
             break;
             
         case 'getMenusWithCategories':

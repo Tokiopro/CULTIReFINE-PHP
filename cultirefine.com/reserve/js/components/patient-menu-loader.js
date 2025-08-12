@@ -1,14 +1,14 @@
 // components/patient-menu-loader.js
-// 患者別メニューをロードして表示するモジュール
+// 全ユーザー共通メニューをロードして表示するモジュール
 
-import { getPatientMenus, getAllStructuredMenus } from '../data/gas-api.js';
+// PHPから提供されたメニューデータを使用するため、API呼び出しは不要
 import { createElement } from '../core/ui-helpers.js';
 
 /**
- * 患者別メニューをロードして表示
+ * 全ユーザー共通メニューをロードして表示
  * @param {string} containerId - メニューを表示するコンテナのID
- * @param {string} patientId - 患者ID
- * @param {string} companyId - 会社ID（オプション）
+ * @param {string} patientId - 患者ID（互換性のため残すが使用しない）
+ * @param {string} companyId - 会社ID（互換性のため残すが使用しない）
  * @param {function} onSelectCallback - メニュー選択時のコールバック
  */
 export async function loadPatientMenus(containerId, patientId, companyId, onSelectCallback) {
@@ -22,12 +22,43 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
     container.innerHTML = '<div class="text-center py-8"><div class="loading-spinner"></div><p class="mt-2 text-gray-600">メニュー情報を取得中です...</p></div>';
     
     try {
-        // 全メニューを取得（患者別メニューが空の場合の対策）
-        console.log('[LoadPatientMenus] Using getAllStructuredMenus instead of getPatientMenus');
-        const result = await getAllStructuredMenus();
+        let result;
+        
+        // PHPから提供されたメニューデータを使用（history/index.php, ticket/index.phpと同じパターン）
+        if (window.MENU_DATA) {
+            console.log('[LoadMenus] Using menu data from PHP (GasApiClient)');
+            result = {
+                success: true,
+                data: window.MENU_DATA
+            };
+        } else {
+            // PHPでメニューデータが取得できなかった場合
+            console.error('[LoadMenus] Menu data not available from PHP');
+            const errorMessage = window.MENU_ERROR || 'メニューデータが利用できません';
+            result = {
+                success: false,
+                message: errorMessage
+            };
+        }
         
         if (!result.success) {
-            throw new Error(result.message || 'メニューの取得に失敗しました');
+            // エラー詳細情報を表示用に整理
+            const errorInfo = {
+                message: result.message || 'メニューの取得に失敗しました',
+                code: result.error_code || 'UNKNOWN_ERROR',
+                suggestions: result.suggestions || [],
+                timestamp: result.timestamp || new Date().toISOString()
+            };
+            
+            console.error('[LoadMenus] Detailed error info:', errorInfo);
+            
+            // より詳細なエラーメッセージを作成
+            let detailedMessage = errorInfo.message;
+            if (errorInfo.suggestions.length > 0) {
+                detailedMessage += '\n\n解決方法:\n• ' + errorInfo.suggestions.join('\n• ');
+            }
+            
+            throw new Error(detailedMessage);
         }
         
         const data = result.data;
@@ -39,7 +70,7 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
             console.log('Data keys:', Object.keys(data));
         }
         
-        // 患者情報は全メニューAPIには含まれないためスキップ
+        // 全ユーザー共通メニューのため患者情報は不要
         
         // 全メニューAPIの構造に対応（withTicket/withoutTicket形式）
         let menuCategories = null;
@@ -47,7 +78,7 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
         
         // 全メニューAPIの階層構造から平坦化されたメニュー配列を作成
         if (data.withTicket || data.withoutTicket) {
-            console.log('[LoadPatientMenus] Processing structured menus from getAllStructuredMenus');
+            console.log('[LoadMenus] Processing structured menus from getAllStructuredMenus');
             menuCategories = [];
             
             // チケット付与メニューを処理
@@ -209,7 +240,49 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
         
     } catch (error) {
         console.error('Error loading patient menus:', error);
-        container.innerHTML = '<div class="text-center text-red-600 py-8"><p>メニューの読み込みに失敗しました</p><p class="text-sm mt-2">' + error.message + '</p></div>';
+        
+        // エラーの種類に応じた表示を作成
+        let errorHtml = '<div class="text-center py-8">';
+        errorHtml += '<div class="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">';
+        errorHtml += '<div class="flex items-center mb-4">';
+        errorHtml += '<svg class="w-8 h-8 text-red-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">';
+        errorHtml += '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>';
+        errorHtml += '</svg>';
+        errorHtml += '<h3 class="text-lg font-semibold text-red-800">メニュー読み込みエラー</h3>';
+        errorHtml += '</div>';
+        
+        // エラーメッセージを改行で分割して表示
+        const messageLines = error.message.split('\n');
+        errorHtml += '<p class="text-red-700 mb-4">' + messageLines[0] + '</p>';
+        
+        // 解決方法の提案があれば表示
+        if (messageLines.length > 1) {
+            errorHtml += '<div class="text-left text-sm text-red-600">';
+            for (let i = 1; i < messageLines.length; i++) {
+                if (messageLines[i].trim()) {
+                    errorHtml += '<p class="mb-1">' + messageLines[i] + '</p>';
+                }
+            }
+            errorHtml += '</div>';
+        }
+        
+        // 再試行ボタンを追加
+        errorHtml += '<div class="mt-4">';
+        errorHtml += '<button onclick="window.location.reload()" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition mr-2">再読み込み</button>';
+        errorHtml += '<button onclick="console.log(\'Diagnostic info:\', arguments[0])" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition">詳細表示</button>';
+        errorHtml += '</div>';
+        
+        errorHtml += '</div></div>';
+        
+        container.innerHTML = errorHtml;
+        
+        // デバッグ情報もコンソールに出力
+        console.group('[LoadPatientMenus] Error Details');
+        console.error('Error type:', error.name);
+        console.error('Error message:', error.message);
+        console.error('Stack trace:', error.stack);
+        console.error('Timestamp:', new Date().toISOString());
+        console.groupEnd();
     }
 }
 

@@ -173,6 +173,10 @@ $logger->info('[Index] データ取得開始', [
 // GAS APIクライアントを読み込み（user_dataの詳細情報取得用）
 require_once __DIR__ . '/line-auth/GasApiClient.php';
 
+// メニューデータを格納する変数
+$menuData = null;
+$menuError = null;
+
 try {
     // 既存のuser_dataを使用（callback.phpで既に取得済み）
     $logger->info('[Index] セッションからユーザーデータを使用', [
@@ -182,6 +186,98 @@ try {
     ]);
     
     $gasApi = new GasApiClient(GAS_DEPLOYMENT_ID, GAS_API_KEY);
+    
+    // メニューデータをGasApiClientから取得
+    try {
+        $logger->info('[Index] getAllStructuredMenus 呼び出し開始', [
+            'gas_deployment_id' => substr(GAS_DEPLOYMENT_ID, 0, 10) . '...',
+            'gas_api_key_length' => strlen(GAS_API_KEY),
+            'debug_mode' => DEBUG_MODE
+        ]);
+        
+        // GAS APIを直接呼び出し（history/index.phpやticket/index.phpと同じパターン）
+        $menuResult = $gasApi->getAllStructuredMenus();
+        
+        $logger->info('[Index] GAS API レスポンス受信', [
+            'response_keys' => array_keys($menuResult ?? []),
+            'status' => $menuResult['status'] ?? 'missing',
+            'has_data' => isset($menuResult['data']),
+            'has_error' => isset($menuResult['error']),
+            'raw_response_type' => gettype($menuResult)
+        ]);
+        
+        if ($menuResult['status'] === 'success' && isset($menuResult['data'])) {
+            $menuData = $menuResult['data'];
+            
+            // メニュー数をカウント
+            $withTicketCount = 0;
+            $withoutTicketCount = 0;
+            
+            if (isset($menuData['withTicket']['categories'])) {
+                foreach ($menuData['withTicket']['categories'] as $category) {
+                    $withTicketCount += count($category['menus'] ?? []);
+                }
+            }
+            
+            if (isset($menuData['withoutTicket']['categories'])) {
+                foreach ($menuData['withoutTicket']['categories'] as $category) {
+                    $withoutTicketCount += count($category['menus'] ?? []);
+                }
+            }
+            
+            $logger->info('[Index] メニューデータ取得成功', [
+                'withTicket_count' => $withTicketCount,
+                'withoutTicket_count' => $withoutTicketCount,
+                'total_count' => $withTicketCount + $withoutTicketCount
+            ]);
+            
+            // セッションにメニューデータを保存（キャッシュとして）
+            $_SESSION['menu_data'] = $menuData;
+            $_SESSION['menu_data_timestamp'] = time();
+            
+        } else {
+            // エラーの詳細を取得
+            $errorDetails = [];
+            if (isset($menuResult['error'])) {
+                if (is_array($menuResult['error'])) {
+                    $menuError = $menuResult['error']['message'] ?? 'メニューデータの取得に失敗しました';
+                    $errorDetails = $menuResult['error'];
+                } else {
+                    $menuError = $menuResult['error'];
+                    $errorDetails = ['message' => $menuResult['error']];
+                }
+            } else {
+                $menuError = 'メニューデータの取得に失敗しました';
+                $errorDetails = ['message' => 'Unknown error', 'result' => $menuResult];
+            }
+            
+            $logger->error('[Index] メニューデータ取得失敗', [
+                'menu_error' => $menuError,
+                'error_details' => $errorDetails,
+                'full_result' => $menuResult,
+                'result_type' => gettype($menuResult),
+                'result_size' => is_string($menuResult) ? strlen($menuResult) : (is_array($menuResult) ? count($menuResult) : 'unknown')
+            ]);
+            
+            // デバッグ情報にエラー詳細を追加
+            $debugInfo['menu_api_error'] = $errorDetails;
+        }
+    } catch (Exception $e) {
+        $menuError = 'メニューデータの取得中にエラーが発生しました: ' . $e->getMessage();
+        $logger->error('[Index] メニューデータ取得例外', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+            'gas_deployment_id' => GAS_DEPLOYMENT_ID ? 'set' : 'not set',
+            'gas_api_key' => GAS_API_KEY ? 'set' : 'not set'
+        ]);
+        
+        // デバッグ情報に例外詳細を追加
+        $debugInfo['menu_api_exception'] = [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
+        ];
+    }
     
     // userDataからユーザー情報を取得（callback.phpで取得済み）
     $currentUserVisitorId = $userData['visitor_id'] ?? $userData['id'] ?? null;
@@ -586,6 +682,24 @@ try {
                         <p id="menu-calendar-description" class="text-gray-600"></p>
                     </div>
                     <div class="px-6 pb-6 space-y-6">
+                        <?php if ($menuError): ?>
+                        <!-- メニュー取得エラー表示 -->
+                        <div class="bg-red-50 border-l-4 border-red-400 p-4 rounded">
+                            <div class="flex">
+                                <div class="flex-shrink-0">
+                                    <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                                    </svg>
+                                </div>
+                                <div class="ml-3">
+                                    <p class="text-sm text-red-700">
+                                        メニューデータの取得に失敗しました: <?php echo htmlspecialchars($menuError); ?>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                        
                         <section class="space-y-4">
                             <h3 class="text-lg font-semibold text-gray-700">1. 施術メニューを選択</h3>
                             <div id="treatment-categories" class="border border-gray-200 rounded-lg overflow-hidden"></div>
@@ -2138,9 +2252,17 @@ try {
             displayName: <?php echo json_encode($displayName); ?>,
             pictureUrl: <?php echo json_encode($pictureUrl); ?>,
             userData: <?php echo json_encode($userData); ?>,
+            companyInfo: <?php echo json_encode($companyInfo); ?>,
+            companyPatients: <?php echo json_encode($companyPatients); ?>,
+            currentUserVisitorId: <?php echo json_encode($currentUserVisitorId); ?>,
+            userRole: <?php echo json_encode($userRole); ?>,
             debugMode: <?php echo json_encode(defined('DEBUG_MODE') && DEBUG_MODE); ?>,
             debugInfo: <?php echo json_encode($debugInfo ?? []); ?>
         };
+        
+        // GasApiClientから取得したメニューデータをJavaScriptに渡す
+        window.MENU_DATA = <?php echo json_encode($menuData); ?>;
+        window.MENU_ERROR = <?php echo json_encode($menuError); ?>;
         
         // デバッグ情報
         if (window.SESSION_USER_DATA.debugMode) {
@@ -2149,6 +2271,21 @@ try {
             console.log('Display Name:', window.SESSION_USER_DATA.displayName);
             console.log('Has User Data:', !!window.SESSION_USER_DATA.userData);
             console.log('User Data:', window.SESSION_USER_DATA.userData);
+            console.log('Company Info:', window.SESSION_USER_DATA.companyInfo);
+            console.log('Company Patients:', window.SESSION_USER_DATA.companyPatients);
+            console.log('User Role:', window.SESSION_USER_DATA.userRole);
+            
+            console.log('=== MENU DATA FROM GasApiClient ===');
+            console.log('Menu Data:', window.MENU_DATA);
+            if (window.MENU_ERROR) {
+                console.error('Menu Error:', window.MENU_ERROR);
+            } else if (window.MENU_DATA) {
+                const withTicketCount = window.MENU_DATA.withTicket?.categories?.reduce((sum, cat) => sum + (cat.menus?.length || 0), 0) || 0;
+                const withoutTicketCount = window.MENU_DATA.withoutTicket?.categories?.reduce((sum, cat) => sum + (cat.menus?.length || 0), 0) || 0;
+                console.log('WithTicket Menu Count:', withTicketCount);
+                console.log('WithoutTicket Menu Count:', withoutTicketCount);
+                console.log('Total Menu Count:', withTicketCount + withoutTicketCount);
+            }
         }
     </script>
     

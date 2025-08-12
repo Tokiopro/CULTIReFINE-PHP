@@ -20,6 +20,116 @@ class MenuApiService {
   }
 
   /**
+   * 全メニューを階層構造で取得（チケット有無を最上位カテゴリーとして分類）
+   * 単体予約用の新しいAPIエンドポイント
+   * @return {Object} 構造化されたメニューデータ
+   */
+  getAllStructuredMenus() {
+    try {
+      Logger.log('=== 全メニュー階層構造取得開始 ===');
+      
+      // 全てのアクティブなメニューを取得
+      const allMenus = this._getActiveMenus();
+      const categories = this._getActiveCategories();
+      
+      // カテゴリ階層構造を構築
+      const categoryHierarchy = this._buildCategoryHierarchy(categories);
+      
+      // メニューをカテゴリにマッピング
+      const menusWithCategory = this._mapMenusToCategories(allMenus, categoryHierarchy);
+      
+      // チケット有無を最上位カテゴリーとして分類
+      const structuredMenus = {
+        withTicket: {
+          name: 'チケット付与メニュー',
+          categories: {}
+        },
+        withoutTicket: {
+          name: '通常メニュー',
+          categories: {}
+        }
+      };
+      
+      // メニューをチケット有無で分類し、さらに大・中・小カテゴリーで整理
+      menusWithCategory.forEach(menu => {
+        const hasTicket = menu.ticket_type && menu.ticket_type !== '';
+        const targetGroup = hasTicket ? structuredMenus.withTicket : structuredMenus.withoutTicket;
+        
+        // カテゴリパスを取得（大カテゴリー > 中カテゴリー > 小カテゴリー）
+        const categoryPath = menu.category_path || [];
+        
+        if (categoryPath.length > 0) {
+          // 大カテゴリー
+          const majorCategory = categoryPath[0];
+          if (!targetGroup.categories[majorCategory]) {
+            targetGroup.categories[majorCategory] = {
+              name: majorCategory,
+              categories: {}
+            };
+          }
+          
+          if (categoryPath.length > 1) {
+            // 中カテゴリー
+            const middleCategory = categoryPath[1];
+            if (!targetGroup.categories[majorCategory].categories[middleCategory]) {
+              targetGroup.categories[majorCategory].categories[middleCategory] = {
+                name: middleCategory,
+                categories: {},
+                menus: []
+              };
+            }
+            
+            if (categoryPath.length > 2) {
+              // 小カテゴリー
+              const minorCategory = categoryPath[2];
+              if (!targetGroup.categories[majorCategory].categories[middleCategory].categories[minorCategory]) {
+                targetGroup.categories[majorCategory].categories[middleCategory].categories[minorCategory] = {
+                  name: minorCategory,
+                  menus: []
+                };
+              }
+              targetGroup.categories[majorCategory].categories[middleCategory].categories[minorCategory].menus.push(menu);
+            } else {
+              // 中カテゴリー直下のメニュー
+              targetGroup.categories[majorCategory].categories[middleCategory].menus.push(menu);
+            }
+          } else {
+            // 大カテゴリー直下のメニュー
+            if (!targetGroup.categories[majorCategory].menus) {
+              targetGroup.categories[majorCategory].menus = [];
+            }
+            targetGroup.categories[majorCategory].menus.push(menu);
+          }
+        } else {
+          // カテゴリーなしのメニュー
+          if (!targetGroup.uncategorized) {
+            targetGroup.uncategorized = [];
+          }
+          targetGroup.uncategorized.push(menu);
+        }
+      });
+      
+      Logger.log(`全メニュー取得完了: 合計${allMenus.length}件`);
+      Logger.log(`- チケット付与メニュー: ${Object.keys(structuredMenus.withTicket.categories).length}カテゴリー`);
+      Logger.log(`- 通常メニュー: ${Object.keys(structuredMenus.withoutTicket.categories).length}カテゴリー`);
+      
+      return {
+        success: true,
+        data: structuredMenus,
+        totalMenus: allMenus.length,
+        timestamp: new Date().toISOString()
+      };
+      
+    } catch (error) {
+      Logger.log(`全メニュー取得エラー: ${error.toString()}`);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
    * 階層構造メニュー取得（既存メソッド）
    * @deprecated 新しいgetAllStructuredMenus()を使用してください
    * @return {Object} 構造化されたメニューデータ
