@@ -31,14 +31,39 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
                 success: true,
                 data: window.MENU_DATA
             };
-        } else {
-            // PHPでメニューデータが取得できなかった場合
-            console.error('[LoadMenus] Menu data not available from PHP');
-            const errorMessage = window.MENU_ERROR || 'メニューデータが利用できません';
+        } else if (window.MENU_ERROR && window.MENU_ERROR !== null) {
+            // PHPで明示的なエラーがある場合
+            console.error('[LoadMenus] Menu error from PHP:', window.MENU_ERROR);
             result = {
                 success: false,
-                message: errorMessage
+                message: window.MENU_ERROR
             };
+        } else {
+            // PHPでメニューデータが取得できなかった場合、JavaScriptでフォールバック
+            console.log('[LoadMenus] Menu data not available from PHP, falling back to JavaScript API');
+            
+            try {
+                // gas-api.jsのgetAllStructuredMenus関数を使用
+                const { getAllStructuredMenus } = await import('../data/gas-api.js');
+                const apiResult = await getAllStructuredMenus();
+                
+                if (apiResult.success) {
+                    console.log('[LoadMenus] Successfully loaded menus via JavaScript API');
+                    result = apiResult;
+                } else {
+                    console.error('[LoadMenus] JavaScript API failed:', apiResult.message);
+                    result = {
+                        success: false,
+                        message: apiResult.message || 'メニューデータの取得に失敗しました'
+                    };
+                }
+            } catch (fallbackError) {
+                console.error('[LoadMenus] JavaScript fallback error:', fallbackError);
+                result = {
+                    success: false,
+                    message: 'メニューデータの取得に失敗しました: ' + fallbackError.message
+                };
+            }
         }
         
         if (!result.success) {

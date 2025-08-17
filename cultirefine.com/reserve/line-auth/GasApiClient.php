@@ -951,7 +951,7 @@ class GasApiClient
             return $cachedData;
         }
         
-        $path = "api/menus/all-structured";
+        $path = "/api/menus/all-structured";
         
         if (defined('DEBUG_MODE') && DEBUG_MODE) {
             error_log("[GAS API] Making request to path: {$path}");
