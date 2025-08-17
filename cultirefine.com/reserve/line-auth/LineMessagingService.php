@@ -432,4 +432,219 @@ class LineMessagingService
             ];
         }
     }
+    
+    /**
+     * 運営グループに予約作成通知を送信
+     * 
+     * @param array $reservationData 予約データ
+     * @param string $groupId 送信先グループID
+     * @return array 送信結果
+     */
+    public function sendReservationCreatedNotification(array $reservationData, string $groupId): array
+    {
+        try {
+            $flexMessage = FlexMessageTemplates::createReservationCreatedNotification($reservationData);
+            return $this->sendToGroup($groupId, $flexMessage, 'reservation_created');
+            
+        } catch (Exception $e) {
+            error_log('[LINE Messaging] Reservation created notification error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => ['message' => $e->getMessage()]
+            ];
+        }
+    }
+    
+    /**
+     * 運営グループに予約キャンセル通知を送信
+     * 
+     * @param array $reservationData 予約データ
+     * @param string $groupId 送信先グループID
+     * @return array 送信結果
+     */
+    public function sendReservationCancelledNotification(array $reservationData, string $groupId): array
+    {
+        try {
+            $flexMessage = FlexMessageTemplates::createReservationCancelledNotification($reservationData);
+            return $this->sendToGroup($groupId, $flexMessage, 'reservation_cancelled');
+            
+        } catch (Exception $e) {
+            error_log('[LINE Messaging] Reservation cancelled notification error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => ['message' => $e->getMessage()]
+            ];
+        }
+    }
+    
+    /**
+     * 運営グループに予約変更通知を送信
+     * 
+     * @param array $oldReservationData 変更前の予約データ
+     * @param array $newReservationData 変更後の予約データ
+     * @param string $groupId 送信先グループID
+     * @return array 送信結果
+     */
+    public function sendReservationModifiedNotification(array $oldReservationData, array $newReservationData, string $groupId): array
+    {
+        try {
+            $flexMessage = FlexMessageTemplates::createReservationModifiedNotification($oldReservationData, $newReservationData);
+            return $this->sendToGroup($groupId, $flexMessage, 'reservation_modified');
+            
+        } catch (Exception $e) {
+            error_log('[LINE Messaging] Reservation modified notification error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => ['message' => $e->getMessage()]
+            ];
+        }
+    }
+    
+    /**
+     * LINEグループにメッセージを送信
+     * 
+     * @param string $groupId LINE グループID
+     * @param array $message メッセージオブジェクト
+     * @param string $notificationType 通知タイプ
+     * @return array 送信結果
+     */
+    public function sendToGroup(string $groupId, array $message, string $notificationType = ''): array
+    {
+        try {
+            if (empty($groupId)) {
+                throw new Exception('LINE グループIDが指定されていません', 400);
+            }
+            
+            if (empty($message)) {
+                throw new Exception('メッセージが指定されていません', 400);
+            }
+            
+            // レート制限チェック
+            if (!$this->checkRateLimit($groupId)) {
+                throw new Exception('レート制限により送信できません', 429);
+            }
+            
+            // メッセージを送信
+            $result = $this->sendToLineApiGroup($groupId, $message);
+            
+            // 送信履歴を記録
+            if ($result['success']) {
+                $this->recordNotificationHistory($groupId, $notificationType, $message);
+            }
+            
+            return $result;
+            
+        } catch (Exception $e) {
+            error_log('[LINE Messaging] Group message error: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => [
+                    'message' => $e->getMessage(),
+                    'code' => $e->getCode()
+                ]
+            ];
+        }
+    }
+    
+    /**
+     * LINE APIでグループにメッセージを送信
+     * 
+     * @param string $groupId LINE グループID
+     * @param array $message メッセージオブジェクト
+     * @return array 送信結果
+     */
+    private function sendToLineApiGroup(string $groupId, array $message): array
+    {
+        $url = 'https://api.line.me/v2/bot/message/push';
+        
+        $payload = [
+            'to' => $groupId,
+            'messages' => [$message]
+        ];
+        
+        $headers = [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $this->channelAccessToken,
+            'X-Line-Retry-Key: ' . uniqid() // 重複送信防止
+        ];
+        
+        $retryAttempt = 0;
+        
+        while ($retryAttempt < $this->retryCount) {
+            try {
+                $response = $this->makeHttpRequest($url, $payload, $headers);
+                
+                if ($response['status_code'] === 200) {
+                    if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                        error_log('[LINE Messaging] Group message sent successfully to: ' . $groupId);
+                    }
+                    
+                    return [
+                        'success' => true,
+                        'message' => 'グループメッセージが正常に送信されました'
+                    ];
+                }
+                
+                // リトライ可能なエラーかチェック
+                if (!$this->isRetryableError($response['status_code'])) {
+                    break;
+                }
+                
+                $retryAttempt++;
+                if ($retryAttempt < $this->retryCount) {
+                    $delay = $this->retryDelay * pow(2, $retryAttempt - 1);
+                    usleep($delay * 1000000);
+                }
+                
+            } catch (Exception $e) {
+                $retryAttempt++;
+                if ($retryAttempt >= $this->retryCount) {
+                    throw $e;
+                }
+                
+                $delay = $this->retryDelay * pow(2, $retryAttempt - 1);
+                usleep($delay * 1000000);
+            }
+        }
+        
+        // 最終的に失敗
+        $errorMessage = 'LINE API グループ送信に失敗しました';
+        if (isset($response)) {
+            $errorMessage .= " (Status: {$response['status_code']})";
+            if (!empty($response['body'])) {
+                $errorBody = json_decode($response['body'], true);
+                if (isset($errorBody['message'])) {
+                    $errorMessage .= " - {$errorBody['message']}";
+                }
+            }
+        }
+        
+        return [
+            'success' => false,
+            'error' => ['message' => $errorMessage]
+        ];
+    }
+    
+    /**
+     * 運営グループIDを取得
+     * 
+     * @return string グループID
+     */
+    public function getOperationGroupId(): string
+    {
+        try {
+            // GAS APIからスクリプトプロパティの値を取得
+            $result = $this->gasApi->getLineNotificationGroupId();
+            
+            if (isset($result['data']['group_id']) && !empty($result['data']['group_id'])) {
+                return $result['data']['group_id'];
+            }
+            
+            return '';
+            
+        } catch (Exception $e) {
+            error_log('[LINE Messaging] Failed to get operation group ID: ' . $e->getMessage());
+            return '';
+        }
+    }
 }

@@ -1278,6 +1278,54 @@ class GasApiClient
     }
     
     /**
+     * LINE通知グループIDを取得
+     * 
+     * @return array レスポンス
+     */
+    public function getLineNotificationGroupId(): array
+    {
+        try {
+            $cacheKey = 'line_notification_group_id';
+            
+            // キャッシュから取得を試行
+            $cachedData = $this->getFromCache($cacheKey);
+            if ($cachedData !== null) {
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    error_log('[GAS API] LINE notification group ID cache hit');
+                }
+                return $cachedData;
+            }
+            
+            // GAS APIから取得
+            $response = $this->makeApiRequest('api/line/group-id', []);
+            
+            if (isset($response['status']) && $response['status'] === 'success') {
+                // キャッシュに保存（短い時間）
+                $this->saveToCache($cacheKey, $response, 60); // 1分キャッシュ
+                
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    $configured = $response['data']['configured'] ?? false;
+                    error_log('[GAS API] LINE notification group ID retrieved: ' . ($configured ? '設定済み' : '未設定'));
+                }
+                
+                return $response;
+            }
+            
+            return [
+                'status' => 'error',
+                'error' => ['message' => 'LINE通知グループIDの取得に失敗しました']
+            ];
+            
+        } catch (Exception $e) {
+            error_log('[GAS API] LINE notification group ID error: ' . $e->getMessage());
+            return [
+                'status' => 'error',
+                'error' => ['message' => $e->getMessage()]
+            ];
+        }
+    }
+    
+    /**
      * メニュー名が有効かどうかをチェック
      * 括弧が含まれている場合は無効とする
      */

@@ -782,4 +782,820 @@ class FlexMessageTemplates
         
         return $typeNames[$type] ?? $type;
     }
+    
+    /**
+     * 予約作成通知のFlexメッセージを作成（運営グループ向け）
+     * 
+     * @param array $reservationData 予約データ
+     * @return array FlexMessage
+     */
+    public static function createReservationCreatedNotification(array $reservationData): array
+    {
+        $patientName = $reservationData['patient_name'] ?? 'お客様';
+        $date = $reservationData['date'] ?? '';
+        $time = $reservationData['time'] ?? '';
+        $menuName = $reservationData['menu_name'] ?? '施術';
+        $staffName = $reservationData['staff_name'] ?? '';
+        $duration = $reservationData['duration'] ?? 60;
+        $notes = $reservationData['notes'] ?? '';
+        $reservationId = $reservationData['reservation_id'] ?? '';
+        $bookerName = $reservationData['booker_name'] ?? $patientName;
+        $isMainMember = $reservationData['is_main_member'] ?? false;
+        $companyName = $reservationData['company_name'] ?? '';
+        
+        $memberTypeText = $isMainMember ? '本会員' : 'サブ会員';
+        if (!empty($companyName)) {
+            $memberTypeText = "【{$companyName}】{$memberTypeText}";
+        }
+        
+        $bodyContents = [
+            // 予約者情報
+            [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '📝 予約者',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $bookerName,
+                        'flex' => 3,
+                        'size' => 'sm',
+                        'weight' => 'bold'
+                    ]
+                ]
+            ],
+            // 来院者情報
+            [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '👤 来院者',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $patientName . ' (' . $memberTypeText . ')',
+                        'flex' => 3,
+                        'size' => 'sm',
+                        'weight' => 'bold'
+                    ]
+                ],
+                'margin' => 'md'
+            ],
+            // 日時
+            [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '📅 日時',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $date . ' ' . $time,
+                        'flex' => 3,
+                        'size' => 'sm',
+                        'weight' => 'bold',
+                        'color' => '#4FC3F7'
+                    ]
+                ],
+                'margin' => 'md'
+            ],
+            // 施術内容
+            [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '💉 施術内容',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $menuName,
+                        'flex' => 3,
+                        'size' => 'sm',
+                        'weight' => 'bold',
+                        'wrap' => true
+                    ]
+                ],
+                'margin' => 'md'
+            ],
+            // 所要時間
+            [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '⏱ 所要時間',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $duration . '分',
+                        'flex' => 3,
+                        'size' => 'sm'
+                    ]
+                ],
+                'margin' => 'md'
+            ]
+        ];
+        
+        // 担当スタッフ
+        if (!empty($staffName)) {
+            $bodyContents[] = [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '👨‍⚕️ 担当',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $staffName,
+                        'flex' => 3,
+                        'size' => 'sm'
+                    ]
+                ],
+                'margin' => 'md'
+            ];
+        }
+        
+        // 予約ID
+        if (!empty($reservationId)) {
+            $bodyContents[] = [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '🆔 予約ID',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $reservationId,
+                        'flex' => 3,
+                        'size' => 'xs',
+                        'color' => '#999999'
+                    ]
+                ],
+                'margin' => 'md'
+            ];
+        }
+        
+        // 注意事項
+        if (!empty($notes)) {
+            $bodyContents[] = [
+                'type' => 'box',
+                'layout' => 'vertical',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '📝 注意事項',
+                        'color' => '#666666',
+                        'size' => 'sm',
+                        'margin' => 'md'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $notes,
+                        'size' => 'sm',
+                        'wrap' => true,
+                        'margin' => 'sm',
+                        'color' => '#333333'
+                    ]
+                ],
+                'margin' => 'md',
+                'paddingAll' => 'md',
+                'backgroundColor' => '#FFF9E6',
+                'cornerRadius' => 'md'
+            ];
+        }
+        
+        return [
+            'type' => 'flex',
+            'altText' => "新規予約: {$patientName}様 {$date} {$time}",
+            'contents' => [
+                'type' => 'bubble',
+                'size' => 'giga',
+                'header' => [
+                    'type' => 'box',
+                    'layout' => 'vertical',
+                    'contents' => [
+                        [
+                            'type' => 'text',
+                            'text' => '🆕 新しい予約が追加されました',
+                            'weight' => 'bold',
+                            'size' => 'xl',
+                            'color' => '#4FC3F7'
+                        ],
+                        [
+                            'type' => 'text',
+                            'text' => date('Y年n月j日 H:i'),
+                            'size' => 'sm',
+                            'color' => '#999999',
+                            'margin' => 'sm'
+                        ]
+                    ],
+                    'backgroundColor' => '#E3F2FD'
+                ],
+                'body' => [
+                    'type' => 'box',
+                    'layout' => 'vertical',
+                    'contents' => $bodyContents
+                ]
+            ]
+        ];
+    }
+    
+    /**
+     * 予約キャンセル通知のFlexメッセージを作成（運営グループ向け）
+     * 
+     * @param array $reservationData 予約データ
+     * @return array FlexMessage
+     */
+    public static function createReservationCancelledNotification(array $reservationData): array
+    {
+        $patientName = $reservationData['patient_name'] ?? 'お客様';
+        $date = $reservationData['date'] ?? '';
+        $time = $reservationData['time'] ?? '';
+        $menuName = $reservationData['menu_name'] ?? '施術';
+        $staffName = $reservationData['staff_name'] ?? '';
+        $reservationId = $reservationData['reservation_id'] ?? '';
+        $bookerName = $reservationData['booker_name'] ?? $patientName;
+        $cancelReason = $reservationData['cancel_reason'] ?? '';
+        $isMainMember = $reservationData['is_main_member'] ?? false;
+        $companyName = $reservationData['company_name'] ?? '';
+        
+        $memberTypeText = $isMainMember ? '本会員' : 'サブ会員';
+        if (!empty($companyName)) {
+            $memberTypeText = "【{$companyName}】{$memberTypeText}";
+        }
+        
+        $bodyContents = [
+            // キャンセル者情報
+            [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '📝 キャンセル者',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $bookerName,
+                        'flex' => 3,
+                        'size' => 'sm',
+                        'weight' => 'bold'
+                    ]
+                ]
+            ],
+            // 来院者情報
+            [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '👤 来院予定者',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $patientName . ' (' . $memberTypeText . ')',
+                        'flex' => 3,
+                        'size' => 'sm',
+                        'weight' => 'bold'
+                    ]
+                ],
+                'margin' => 'md'
+            ],
+            // 日時
+            [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '📅 日時',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $date . ' ' . $time,
+                        'flex' => 3,
+                        'size' => 'sm',
+                        'weight' => 'bold',
+                        'color' => '#FF6B6B'
+                    ]
+                ],
+                'margin' => 'md'
+            ],
+            // 施術内容
+            [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '💉 施術内容',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $menuName,
+                        'flex' => 3,
+                        'size' => 'sm',
+                        'weight' => 'bold',
+                        'wrap' => true
+                    ]
+                ],
+                'margin' => 'md'
+            ]
+        ];
+        
+        // 担当スタッフ
+        if (!empty($staffName)) {
+            $bodyContents[] = [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '👨‍⚕️ 担当',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $staffName,
+                        'flex' => 3,
+                        'size' => 'sm'
+                    ]
+                ],
+                'margin' => 'md'
+            ];
+        }
+        
+        // 予約ID
+        if (!empty($reservationId)) {
+            $bodyContents[] = [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '🆔 予約ID',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $reservationId,
+                        'flex' => 3,
+                        'size' => 'xs',
+                        'color' => '#999999'
+                    ]
+                ],
+                'margin' => 'md'
+            ];
+        }
+        
+        // キャンセル理由
+        if (!empty($cancelReason)) {
+            $bodyContents[] = [
+                'type' => 'box',
+                'layout' => 'vertical',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '📝 キャンセル理由',
+                        'color' => '#666666',
+                        'size' => 'sm',
+                        'margin' => 'md'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $cancelReason,
+                        'size' => 'sm',
+                        'wrap' => true,
+                        'margin' => 'sm',
+                        'color' => '#333333'
+                    ]
+                ],
+                'margin' => 'md',
+                'paddingAll' => 'md',
+                'backgroundColor' => '#FFE6E6',
+                'cornerRadius' => 'md'
+            ];
+        }
+        
+        return [
+            'type' => 'flex',
+            'altText' => "予約キャンセル: {$patientName}様 {$date} {$time}",
+            'contents' => [
+                'type' => 'bubble',
+                'size' => 'giga',
+                'header' => [
+                    'type' => 'box',
+                    'layout' => 'vertical',
+                    'contents' => [
+                        [
+                            'type' => 'text',
+                            'text' => '❌ 予約がキャンセルされました',
+                            'weight' => 'bold',
+                            'size' => 'xl',
+                            'color' => '#FF6B6B'
+                        ],
+                        [
+                            'type' => 'text',
+                            'text' => date('Y年n月j日 H:i'),
+                            'size' => 'sm',
+                            'color' => '#999999',
+                            'margin' => 'sm'
+                        ]
+                    ],
+                    'backgroundColor' => '#FFE6E6'
+                ],
+                'body' => [
+                    'type' => 'box',
+                    'layout' => 'vertical',
+                    'contents' => $bodyContents
+                ]
+            ]
+        ];
+    }
+    
+    /**
+     * 予約変更通知のFlexメッセージを作成（運営グループ向け）
+     * 
+     * @param array $oldReservationData 変更前の予約データ
+     * @param array $newReservationData 変更後の予約データ
+     * @return array FlexMessage
+     */
+    public static function createReservationModifiedNotification(array $oldReservationData, array $newReservationData): array
+    {
+        $patientName = $newReservationData['patient_name'] ?? 'お客様';
+        $bookerName = $newReservationData['booker_name'] ?? $patientName;
+        $reservationId = $newReservationData['reservation_id'] ?? '';
+        $isMainMember = $newReservationData['is_main_member'] ?? false;
+        $companyName = $newReservationData['company_name'] ?? '';
+        
+        $memberTypeText = $isMainMember ? '本会員' : 'サブ会員';
+        if (!empty($companyName)) {
+            $memberTypeText = "【{$companyName}】{$memberTypeText}";
+        }
+        
+        $bodyContents = [
+            // 変更者情報
+            [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '📝 変更者',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $bookerName,
+                        'flex' => 3,
+                        'size' => 'sm',
+                        'weight' => 'bold'
+                    ]
+                ]
+            ],
+            // 来院者情報
+            [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '👤 来院者',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $patientName . ' (' . $memberTypeText . ')',
+                        'flex' => 3,
+                        'size' => 'sm',
+                        'weight' => 'bold'
+                    ]
+                ],
+                'margin' => 'md'
+            ]
+        ];
+        
+        // 予約ID
+        if (!empty($reservationId)) {
+            $bodyContents[] = [
+                'type' => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '🆔 予約ID',
+                        'flex' => 2,
+                        'color' => '#666666',
+                        'size' => 'sm'
+                    ],
+                    [
+                        'type' => 'text',
+                        'text' => $reservationId,
+                        'flex' => 3,
+                        'size' => 'xs',
+                        'color' => '#999999'
+                    ]
+                ],
+                'margin' => 'md'
+            ];
+        }
+        
+        // 変更内容の比較
+        $bodyContents[] = ['type' => 'separator', 'margin' => 'lg'];
+        $bodyContents[] = [
+            'type' => 'text',
+            'text' => '📝 変更内容',
+            'size' => 'md',
+            'weight' => 'bold',
+            'color' => '#FF9800',
+            'margin' => 'lg'
+        ];
+        
+        // 日時の変更
+        $oldDate = $oldReservationData['date'] ?? '';
+        $oldTime = $oldReservationData['time'] ?? '';
+        $newDate = $newReservationData['date'] ?? '';
+        $newTime = $newReservationData['time'] ?? '';
+        
+        if ($oldDate !== $newDate || $oldTime !== $newTime) {
+            $bodyContents[] = [
+                'type' => 'box',
+                'layout' => 'vertical',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '📅 日時',
+                        'size' => 'sm',
+                        'color' => '#666666'
+                    ],
+                    [
+                        'type' => 'box',
+                        'layout' => 'horizontal',
+                        'contents' => [
+                            [
+                                'type' => 'text',
+                                'text' => '変更前:',
+                                'flex' => 1,
+                                'size' => 'xs',
+                                'color' => '#999999'
+                            ],
+                            [
+                                'type' => 'text',
+                                'text' => $oldDate . ' ' . $oldTime,
+                                'flex' => 3,
+                                'size' => 'xs',
+                                'color' => '#FF6B6B',
+                                'decoration' => 'line-through'
+                            ]
+                        ],
+                        'margin' => 'sm'
+                    ],
+                    [
+                        'type' => 'box',
+                        'layout' => 'horizontal',
+                        'contents' => [
+                            [
+                                'type' => 'text',
+                                'text' => '変更後:',
+                                'flex' => 1,
+                                'size' => 'xs',
+                                'color' => '#999999'
+                            ],
+                            [
+                                'type' => 'text',
+                                'text' => $newDate . ' ' . $newTime,
+                                'flex' => 3,
+                                'size' => 'xs',
+                                'color' => '#4FC3F7',
+                                'weight' => 'bold'
+                            ]
+                        ],
+                        'margin' => 'sm'
+                    ]
+                ],
+                'margin' => 'md'
+            ];
+        }
+        
+        // 施術内容の変更
+        $oldMenu = $oldReservationData['menu_name'] ?? '';
+        $newMenu = $newReservationData['menu_name'] ?? '';
+        
+        if ($oldMenu !== $newMenu) {
+            $bodyContents[] = [
+                'type' => 'box',
+                'layout' => 'vertical',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '💉 施術内容',
+                        'size' => 'sm',
+                        'color' => '#666666'
+                    ],
+                    [
+                        'type' => 'box',
+                        'layout' => 'horizontal',
+                        'contents' => [
+                            [
+                                'type' => 'text',
+                                'text' => '変更前:',
+                                'flex' => 1,
+                                'size' => 'xs',
+                                'color' => '#999999'
+                            ],
+                            [
+                                'type' => 'text',
+                                'text' => $oldMenu,
+                                'flex' => 3,
+                                'size' => 'xs',
+                                'color' => '#FF6B6B',
+                                'decoration' => 'line-through',
+                                'wrap' => true
+                            ]
+                        ],
+                        'margin' => 'sm'
+                    ],
+                    [
+                        'type' => 'box',
+                        'layout' => 'horizontal',
+                        'contents' => [
+                            [
+                                'type' => 'text',
+                                'text' => '変更後:',
+                                'flex' => 1,
+                                'size' => 'xs',
+                                'color' => '#999999'
+                            ],
+                            [
+                                'type' => 'text',
+                                'text' => $newMenu,
+                                'flex' => 3,
+                                'size' => 'xs',
+                                'color' => '#4FC3F7',
+                                'weight' => 'bold',
+                                'wrap' => true
+                            ]
+                        ],
+                        'margin' => 'sm'
+                    ]
+                ],
+                'margin' => 'md'
+            ];
+        }
+        
+        // 担当スタッフの変更
+        $oldStaff = $oldReservationData['staff_name'] ?? '';
+        $newStaff = $newReservationData['staff_name'] ?? '';
+        
+        if ($oldStaff !== $newStaff) {
+            $bodyContents[] = [
+                'type' => 'box',
+                'layout' => 'vertical',
+                'contents' => [
+                    [
+                        'type' => 'text',
+                        'text' => '👨‍⚕️ 担当スタッフ',
+                        'size' => 'sm',
+                        'color' => '#666666'
+                    ],
+                    [
+                        'type' => 'box',
+                        'layout' => 'horizontal',
+                        'contents' => [
+                            [
+                                'type' => 'text',
+                                'text' => '変更前:',
+                                'flex' => 1,
+                                'size' => 'xs',
+                                'color' => '#999999'
+                            ],
+                            [
+                                'type' => 'text',
+                                'text' => $oldStaff ?: '未設定',
+                                'flex' => 3,
+                                'size' => 'xs',
+                                'color' => '#FF6B6B',
+                                'decoration' => 'line-through'
+                            ]
+                        ],
+                        'margin' => 'sm'
+                    ],
+                    [
+                        'type' => 'box',
+                        'layout' => 'horizontal',
+                        'contents' => [
+                            [
+                                'type' => 'text',
+                                'text' => '変更後:',
+                                'flex' => 1,
+                                'size' => 'xs',
+                                'color' => '#999999'
+                            ],
+                            [
+                                'type' => 'text',
+                                'text' => $newStaff ?: '未設定',
+                                'flex' => 3,
+                                'size' => 'xs',
+                                'color' => '#4FC3F7',
+                                'weight' => 'bold'
+                            ]
+                        ],
+                        'margin' => 'sm'
+                    ]
+                ],
+                'margin' => 'md'
+            ];
+        }
+        
+        return [
+            'type' => 'flex',
+            'altText' => "予約変更: {$patientName}様 {$newDate} {$newTime}",
+            'contents' => [
+                'type' => 'bubble',
+                'size' => 'giga',
+                'header' => [
+                    'type' => 'box',
+                    'layout' => 'vertical',
+                    'contents' => [
+                        [
+                            'type' => 'text',
+                            'text' => '🔄 予約が変更されました',
+                            'weight' => 'bold',
+                            'size' => 'xl',
+                            'color' => '#FF9800'
+                        ],
+                        [
+                            'type' => 'text',
+                            'text' => date('Y年n月j日 H:i'),
+                            'size' => 'sm',
+                            'color' => '#999999',
+                            'margin' => 'sm'
+                        ]
+                    ],
+                    'backgroundColor' => '#FFF3E0'
+                ],
+                'body' => [
+                    'type' => 'box',
+                    'layout' => 'vertical',
+                    'contents' => $bodyContents
+                ]
+            ]
+        ];
+    }
 }
