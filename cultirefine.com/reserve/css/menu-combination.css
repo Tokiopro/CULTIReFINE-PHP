@@ -1,0 +1,342 @@
+/**
+ * メニュー組み合わせ機能のスタイル
+ */
+
+/* 時間表示エリア */
+.duration-display {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.duration-summary {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.duration-item {
+    text-align: center;
+    flex: 1;
+    min-width: 120px;
+}
+
+.duration-label {
+    display: block;
+    font-size: 14px;
+    opacity: 0.9;
+    margin-bottom: 5px;
+}
+
+.duration-value {
+    display: block;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.duration-item.optimized .duration-value {
+    color: #90EE90;
+}
+
+.duration-item.saved .duration-value.positive {
+    color: #FFD700;
+}
+
+/* 選択メニュー表示エリア */
+.selected-menus-container {
+    background: #f8f9fa;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.selected-menus-header {
+    background: #495057;
+    color: white;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.selected-menus-header h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.clear-all-btn {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+.clear-all-btn:hover {
+    background: #c82333;
+}
+
+.selected-menus-list {
+    padding: 15px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.no-selection {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    padding: 20px;
+}
+
+.selected-menu-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 12px 15px;
+    margin-bottom: 10px;
+    transition: box-shadow 0.2s;
+}
+
+.selected-menu-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.menu-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.menu-name {
+    font-weight: 600;
+    color: #495057;
+}
+
+.menu-duration, .menu-price {
+    font-size: 12px;
+    color: #6c757d;
+}
+
+.remove-menu-btn {
+    background: #dc3545;
+    color: white;
+    border: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    transition: background-color 0.2s;
+}
+
+.remove-menu-btn:hover {
+    background: #c82333;
+}
+
+/* エラー表示エリア */
+.combination-errors {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.error-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.error-icon {
+    font-size: 18px;
+}
+
+.error-title {
+    font-weight: bold;
+    color: #721c24;
+}
+
+.error-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.error-list li {
+    color: #721c24;
+    padding: 4px 0;
+    border-bottom: 1px solid #f5c6cb;
+}
+
+.error-list li:last-child {
+    border-bottom: none;
+}
+
+/* メニューアイテムの無効状態 */
+.menu-item.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    position: relative;
+}
+
+.menu-item.disabled::after {
+    content: "組み合わせ不可";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(220, 53, 69, 0.9);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    z-index: 10;
+}
+
+.menu-item.disabled input[type="checkbox"] {
+    cursor: not-allowed;
+}
+
+/* 組み合わせ状態インジケーター */
+.combination-status {
+    position: relative;
+    display: inline-block;
+}
+
+.combination-status::after {
+    content: "";
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid white;
+}
+
+.combination-status.compatible::after {
+    background: #28a745;
+}
+
+.combination-status.incompatible::after {
+    background: #dc3545;
+}
+
+.combination-status.selected::after {
+    background: #007bff;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+    .duration-summary {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .duration-item {
+        min-width: auto;
+        width: 100%;
+    }
+    
+    .selected-menus-header {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+    }
+    
+    .selected-menu-item {
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
+    }
+    
+    .menu-info {
+        width: 100%;
+    }
+    
+    .remove-menu-btn {
+        align-self: flex-end;
+    }
+}
+
+/* アニメーション効果 */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.selected-menu-item {
+    animation: slideIn 0.3s ease;
+}
+
+.combination-errors {
+    animation: slideIn 0.3s ease;
+}
+
+/* ローディング状態 */
+.loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.loading::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 成功状態のフィードバック */
+.success-message {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.success-message::before {
+    content: "✓";
+    font-weight: bold;
+    color: #28a745;
+}

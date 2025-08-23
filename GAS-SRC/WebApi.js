@@ -1580,6 +1580,20 @@ function call_doGet() {
   Logger.log(response.getContent());
 }
 
+function callmenu_doGet() {
+  const e = {
+    parameter: {
+      action: 'api',
+      path: '/api/menus/all-structured',
+      authorization: 'Bearer php_api_key_123'  // 認証トークン
+    },
+    queryString: 'path=api/patients&authorization=Bearer%20php_api_key_123',
+    contentLength: 0
+  };
+  const response = doGet(e);
+  Logger.log(response.getContent());
+}
+
 /**
  * キャンセル予約エンドポイントのテスト関数
  */

@@ -1189,6 +1189,160 @@ class SpreadsheetManager {
     
     return sheet;
   }
+
+  /**
+   * 横並びルール定義シートを初期化
+   */
+  static initializeHorizontalRuleSheet() {
+    const sheetName = '横並びルール定義';
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    
+    if (spreadsheet.getSheetByName(sheetName)) {
+      Logger.log(`${sheetName}シートは既に存在します。スキップします。`);
+      return;
+    }
+    
+    Logger.log(`${sheetName}シートを作成します`);
+    const sheet = spreadsheet.insertSheet(sheetName);
+    
+    // ヘッダーを設定
+    const headers = [
+      'カテゴリ1',
+      'カテゴリ2', 
+      '組み合わせ可否',
+      '例外メニュー名',
+      '例外対象カテゴリ',
+      '説明',
+      '作成日時',
+      '更新日時'
+    ];
+    
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    
+    // デフォルトルールを設定
+    const defaultRules = [
+      ['beauty', 'beauty', '×', '', '', '美容施術同士は組み合わせ不可', new Date(), new Date()],
+      ['beauty', 'iv', '○', 'ボトックス', 'iv', '美容施術と点滴・注射は組み合わせ可（ボトックス除く）', new Date(), new Date()],
+      ['beauty', 'hydrogen', '×', '', '', '美容施術と水素吸入は組み合わせ不可', new Date(), new Date()],
+      ['iv', 'iv', '×', '', '', '点滴・注射同士は組み合わせ不可', new Date(), new Date()],
+      ['iv', 'hydrogen', '○', '', '', '点滴・注射と水素吸入は組み合わせ可', new Date(), new Date()],
+      ['iv', 'beauty', '×', 'NAD+注射', '', 'NAD+注射は美容施術と組み合わせ不可', new Date(), new Date()]
+    ];
+    
+    sheet.getRange(2, 1, defaultRules.length, defaultRules[0].length).setValues(defaultRules);
+    
+    // スタイル設定
+    sheet.getRange(1, 1, 1, headers.length).setBackground('#f0f0f0').setFontWeight('bold');
+    sheet.autoResizeColumns(1, headers.length);
+    
+    Logger.log(`${sheetName}シートが作成されました`);
+  }
+
+  /**
+   * 縦並びルール定義シートを初期化
+   */
+  static initializeVerticalRuleSheet() {
+    const sheetName = '縦並びルール定義';
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    
+    if (spreadsheet.getSheetByName(sheetName)) {
+      Logger.log(`${sheetName}シートは既に存在します。スキップします。`);
+      return;
+    }
+    
+    Logger.log(`${sheetName}シートを作成します`);
+    const sheet = spreadsheet.insertSheet(sheetName);
+    
+    // ヘッダーを設定
+    const headers = [
+      'カテゴリ',
+      'メニュー名',
+      '優先順位',
+      '基本準備時間（分）',
+      '基本片付け時間（分）',
+      '連続時の調整（最初）',
+      '連続時の調整（中間）',
+      '連続時の調整（最後）',
+      '説明',
+      '作成日時',
+      '更新日時'
+    ];
+    
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    
+    // デフォルトルールを設定
+    const defaultRules = [
+      ['iv', '幹細胞培養上清液', 1, 10, 10, -10, -20, -10, '点滴・注射の第一優先メニュー', new Date(), new Date()],
+      ['iv', '高濃度ビタミンC注射', 2, 10, 10, -10, -20, -10, '点滴・注射の第二優先メニュー', new Date(), new Date()],
+      ['iv', 'その他点滴・注射', 3, 10, 10, -10, -20, -10, '点滴・注射のその他メニュー', new Date(), new Date()],
+      ['beauty', '全美容施術', 1, 10, 10, 0, 0, 0, '美容施術（連続調整なし）', new Date(), new Date()],
+      ['hydrogen', '水素吸入', 1, 10, 10, 0, 0, 0, '水素吸入（連続調整なし）', new Date(), new Date()]
+    ];
+    
+    sheet.getRange(2, 1, defaultRules.length, defaultRules[0].length).setValues(defaultRules);
+    
+    // スタイル設定
+    sheet.getRange(1, 1, 1, headers.length).setBackground('#f0f0f0').setFontWeight('bold');
+    sheet.autoResizeColumns(1, headers.length);
+    
+    // 優先順位の列には数値フォーマットを適用
+    sheet.getRange(2, 3, defaultRules.length, 1).setNumberFormat('0');
+    
+    Logger.log(`${sheetName}シートが作成されました`);
+  }
+
+  /**
+   * メニュー組み合わせルール定義シートのみを作成
+   * 既存データに影響しない安全な作成方法
+   */
+  static createMenuCombinationRuleSheets() {
+    Logger.log('メニュー組み合わせルール定義シートの作成を開始します');
+    
+    try {
+      // 横並びルール定義シート作成
+      this.initializeHorizontalRuleSheet();
+      
+      // 縦並びルール定義シート作成  
+      this.initializeVerticalRuleSheet();
+      
+      Logger.log('メニュー組み合わせルール定義シートの作成が完了しました');
+      
+      // 作成されたシートの確認
+      const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+      const horizontalSheet = spreadsheet.getSheetByName('横並びルール定義');
+      const verticalSheet = spreadsheet.getSheetByName('縦並びルール定義');
+      
+      const result = {
+        success: true,
+        created: {
+          horizontal: horizontalSheet ? true : false,
+          vertical: verticalSheet ? true : false
+        },
+        message: []
+      };
+      
+      if (horizontalSheet) {
+        result.message.push('横並びルール定義シートが正常に作成されました');
+      } else {
+        result.message.push('横並びルール定義シートは既に存在していました');
+      }
+      
+      if (verticalSheet) {
+        result.message.push('縦並びルール定義シートが正常に作成されました');
+      } else {
+        result.message.push('縦並びルール定義シートは既に存在していました');
+      }
+      
+      return result;
+      
+    } catch (error) {
+      Logger.log(`メニュー組み合わせルール定義シート作成エラー: ${error.toString()}`);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
   
   /**
    * すべてのシートを初期化
@@ -1218,6 +1372,9 @@ class SpreadsheetManager {
     this.initializeLineNotificationConfigSheet();
     this.initializeLineNotificationTemplatesSheet();
     this.initializeStaffSheet();
+    
+    // 注意: メニュー組み合わせルール定義シートは別途 createMenuCombinationRuleSheets() で作成してください
+    Logger.log('注意: メニュー組み合わせルール定義シートは createMenuCombinationRuleSheets() で別途作成してください');
     
     Logger.log('スプレッドシートの初期化が完了しました');
     

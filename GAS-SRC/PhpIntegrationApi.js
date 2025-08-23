@@ -199,6 +199,15 @@ function routePhpApiPostRequest(requestData) {
     return scheduleLineNotification(requestData);
   }
   
+  // /api/line/group-id - LINE通知グループID取得
+  if (pathParts.length === 3 && 
+      pathParts[0] === 'api' && 
+      pathParts[1] === 'line' && 
+      pathParts[2] === 'group-id') {
+    
+    return getLineNotificationGroupId();
+  }
+  
   return {
     status: 'error',
     error: {
@@ -299,6 +308,9 @@ function validatePhpApiKey(e) {
 function routePhpApiRequest(e) {
   let path = e.parameter.path || '';
   
+  // パスの正規化（前後の空白や不要なスラッシュを除去）
+  path = path.trim().replace(/\/+/g, '/').replace(/^\//g, '').replace(/\/$/g, '');
+  
   // pathにクエリストリングが含まれている場合の処理
   if (path.includes('?')) {
     const [basePath, queryString] = path.split('?');
@@ -318,6 +330,11 @@ function routePhpApiRequest(e) {
   } else {
     Logger.log(`PHP API Request: ${path}`);
   }
+  
+  // デバッグ: パスの詳細情報をログ出力
+  Logger.log(`[DEBUG] Original path: "${e.parameter.path}"`);
+  Logger.log(`[DEBUG] Normalized path: "${path}"`);
+  Logger.log(`[DEBUG] Path length: ${path.length}`);
   
   const pathParts = path.split('/').filter(p => p);
   
@@ -490,13 +507,41 @@ function routePhpApiRequest(e) {
   }
   
   // /api/menus/all-structured - 全メニューを階層構造で取得
+  // このエンドポイントを早い位置に移動し、確実にマッチするように
   if (pathParts.length === 3 && 
       pathParts[0] === 'api' && 
       pathParts[1] === 'menus' && 
       pathParts[2] === 'all-structured') {
     
     Logger.log('全メニュー階層構造API呼び出し');
-    return getAllStructuredMenus();
+    Logger.log('[DEBUG] Successfully matched api/menus/all-structured endpoint');
+    Logger.log('[DEBUG] Calling getAllStructuredMenus() function');
+    
+    try {
+      const result = getAllStructuredMenus();
+      Logger.log('[DEBUG] getAllStructuredMenus() returned: ' + JSON.stringify(result).substring(0, 200));
+      return result;
+    } catch (error) {
+      Logger.log('[ERROR] getAllStructuredMenus() failed: ' + error.toString());
+      return {
+        status: 'error',
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'メニューデータの取得中にエラーが発生しました',
+          details: error.toString()
+        }
+      };
+    }
+  }
+  
+  // デバッグ: api/menus/all-structured がマッチしなかった場合
+  if (path === 'api/menus/all-structured' || path.includes('menus/all-structured')) {
+    Logger.log('[DEBUG] Path contains api/menus/all-structured but did not match conditions');
+    Logger.log('[DEBUG] pathParts: ' + JSON.stringify(pathParts));
+    Logger.log('[DEBUG] pathParts.length: ' + pathParts.length);
+    Logger.log('[DEBUG] pathParts[0]: "' + pathParts[0] + '" (equals "api"? ' + (pathParts[0] === 'api') + ')');
+    Logger.log('[DEBUG] pathParts[1]: "' + pathParts[1] + '" (equals "menus"? ' + (pathParts[1] === 'menus') + ')');
+    Logger.log('[DEBUG] pathParts[2]: "' + pathParts[2] + '" (equals "all-structured"? ' + (pathParts[2] === 'all-structured') + ')');
   }
   
   // /api/patients/{visitorId}/available-slots - 患者別予約可能スロット
@@ -2220,108 +2265,32 @@ function formatDateTimeISO(datetime) {
  *   "details": "TypeError: Cannot read property 'id' of undefined"
  * }
  */
-function getAllStructuredMenus() {
+function getAllStructuredMenus(visitorId = null) {
   try {
-    Logger.log('getAllStructuredMenus: 全メニューの階層構造取得開始');  
+    Logger.log('getAllStructuredMenus: 患者別階層構造付きメニュー取得開始');
+    Logger.log(`患者ID: ${visitorId || 'なし'}`);
 
-    // MenuServiceのインスタンスを作成
-    const menuService = new MenuService();
+    // MenuApiServiceのインスタンスを作成
+    const menuApiService = new MenuApiService();
     
-    // カテゴリ付きメニュー一覧を取得
-    const menusWithCategories = menuService.getMenusWithCategories();
-    Logger.log(`全メニュー数: ${menusWithCategories.length}`);
+    // MenuApiServiceのgetAllStructuredMenusメソッドを呼び出し
+    // visitorIdを渡して患者別メニューを取得
+    const result = menuApiService.getAllStructuredMenus(visitorId);
     
-    // カテゴリ一覧を取得
-    const categories = menuService.getMenuCategories();
-    Logger.log(`カテゴリ数: ${categories.length}`);
-    
-    // カテゴリごとにメニューをグループ化
-    const menusByCategory = {};
-    
-    // カテゴリ情報を初期化
-    categories.forEach(category => {
-      menusByCategory[category.id] = {
-        id: category.id,
-        name: category.name,
-        display_order: category.displayOrder || 0,
-        menus: []
+    if (!result.success) {
+      Logger.log(`getAllStructuredMenus Error from MenuApiService: ${result.error}`);
+      return {
+        success: false,
+        error: 'メニュー情報の取得中にエラーが発生しました',
+        message: 'メニュー情報の取得中にエラーが発生しました',
+        details: result.error
       };
-    });
+    }
     
-    // カテゴリなしの特別カテゴリを追加
-    menusByCategory['uncategorized'] = {
-      id: 'uncategorized',
-      name: '未分類',
-      display_order: 999,
-      menus: []
-    };
+    Logger.log(`患者別階層構造メニュー取得完了: ${result.data.treatmentCategories.length}カテゴリ`);
     
-    // メニューをカテゴリごとに振り分け
-    menusWithCategories.forEach(menu => {
-      const categoryId = menu.categoryId || 'uncategorized';
-      
-      // メニューデータをフォーマット
-      const formattedMenu = {
-        id: menu.id,
-        name: menu.name,
-        duration: menu.duration || 0,
-        price: menu.price || 0,
-        description: menu.description || '',
-        is_active: menu.isActive !== false,
-        display_order: menu.displayOrder || 0,
-        category_id: menu.categoryId,
-        category_name: menu.categoryName
-      };
-      
-      if (menusByCategory[categoryId]) {
-        menusByCategory[categoryId].menus.push(formattedMenu);
-      } else {
-        // カテゴリが見つからない場合は未分類に追加
-        menusByCategory['uncategorized'].menus.push(formattedMenu);
-      }
-    });
-    
-    // カテゴリごとにメニューを表示順でソート
-    Object.values(menusByCategory).forEach(category => {
-      category.menus.sort((a, b) => {
-        // まず表示順でソート
-        if (a.display_order !== b.display_order) {
-          return a.display_order - b.display_order;
-        }
-        // 表示順が同じ場合は名前でソート
-        return a.name.localeCompare(b.name, 'ja');
-      });
-    });
-    
-    // カテゴリを配列に変換して表示順でソート
-    const categoriesArray = Object.values(menusByCategory)
-      .filter(category => category.menus.length > 0) // メニューがないカテゴリは除外
-      .sort((a, b) => {
-        // まず表示順でソート
-        if (a.display_order !== b.display_order) {
-          return a.display_order - b.display_order;
-        }
-        // 表示順が同じ場合は名前でソート
-        return a.name.localeCompare(b.name, 'ja');
-      });
-    
-    // 統計情報を生成
-    const totalMenus = menusWithCategories.length;
-    const activeMenus = menusWithCategories.filter(m => m.isActive !== false).length;
-    const totalCategories = categoriesArray.length;
-    
-    return {
-      success: true,
-      data: {
-        categories: categoriesArray,
-        statistics: {
-          total_menus: totalMenus,
-          active_menus: activeMenus,
-          total_categories: totalCategories
-        },
-        generated_at: new Date().toISOString()
-      }
-    };
+    // MenuApiServiceの結果をそのまま返却（既に適切な形式）
+    return result;
     
   } catch (error) {
     Logger.log(`getAllStructuredMenus Error: ${error.toString()}`);
@@ -4174,6 +4143,41 @@ function getLineNotificationConfig(requestData) {
       error: {
         code: 'CONFIG_FETCH_FAILED',
         message: '通知設定の取得に失敗しました',
+        details: error.toString()
+      }
+    };
+  }
+}
+
+/**
+ * LINE通知グループIDを取得（PHP Integration API用）
+ * @return {Object} レスポンス
+ */
+function getLineNotificationGroupId() {
+  try {
+    Logger.log('getLineNotificationGroupId');
+    
+    // スクリプトプロパティからLINE_NOTIFICATION_GROUP_IDを取得
+    const scriptProperties = PropertiesService.getScriptProperties();
+    const groupId = scriptProperties.getProperty('LINE_NOTIFICATION_GROUP_ID') || '';
+    
+    Logger.log('LINE_NOTIFICATION_GROUP_ID: ' + (groupId ? '設定済み' : '未設定'));
+    
+    return {
+      status: 'success',
+      data: {
+        group_id: groupId,
+        configured: groupId !== ''
+      }
+    };
+    
+  } catch (error) {
+    Logger.log('getLineNotificationGroupId error: ' + error.toString());
+    return {
+      status: 'error',
+      error: {
+        code: 'GROUP_ID_FETCH_FAILED',
+        message: 'LINE通知グループIDの取得に失敗しました',
         details: error.toString()
       }
     };

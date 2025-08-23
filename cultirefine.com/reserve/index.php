@@ -1,4 +1,5 @@
 <?php
+
 // config.phpを最初に読み込み（DEBUG_MODE定義のため）
 if (!file_exists(__DIR__ . '/line-auth/config.php')) {
     die('エラー: config.phpが見つかりません - パス: ' . __DIR__ . '/line-auth/config.php');
@@ -177,6 +178,120 @@ require_once __DIR__ . '/line-auth/GasApiClient.php';
 $menuData = null;
 $menuError = null;
 
+
+/**
+ * GAS APIを直接呼び出す関数
+ * GasApiClientを使わずに直接HTTPリクエストを送信
+ */
+function callGasApiDirect($path, $deploymentId, $apiKey, $logger = null) {
+    $startTime = microtime(true);
+    
+    // GAS APIのURLを構築（引数を使用）
+    $url = "https://script.google.com/macros/s/" . $deploymentId . "/exec";
+    $url .= "?path=" . urlencode($path);
+    $url .= "&Authorization=" . urlencode("Bearer " . $apiKey);
+    
+    if ($logger) {
+        $logger->info('[Direct GAS API] Request started', [
+            'path' => $path,
+            'deployment_id' => substr($deploymentId, 0, 20) . '...',
+            'api_key_length' => strlen($apiKey)
+        ]);
+    }
+    
+    // cURLの設定
+    $ch = curl_init();
+    curl_setopt_array($ch, [
+        CURLOPT_URL => $url,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_HTTPHEADER => [
+            'Authorization: Bearer ' . $apiKey,
+            'Content-Type: application/json'
+        ],
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_VERBOSE => false
+    ]);
+    
+    // リクエスト実行
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+    
+    $endTime = microtime(true);
+    $elapsedTime = round(($endTime - $startTime) * 1000, 2);
+    
+    if ($logger) {
+        $logger->info('[Direct GAS API] Request completed', [
+            'http_code' => $httpCode,
+            'elapsed_time_ms' => $elapsedTime,
+            'response_size' => strlen($response)
+        ]);
+    }
+    
+    // エラーチェック
+    if ($curlError) {
+        if ($logger) {
+            $logger->error('[Direct GAS API] cURL error', [
+                'error' => $curlError
+            ]);
+        }
+        return [
+            'status' => 'error',
+            'error' => [
+                'code' => 'CURL_ERROR',
+                'message' => 'ネットワークエラー: ' . $curlError
+            ]
+        ];
+    }
+    
+    if ($httpCode !== 200) {
+        if ($logger) {
+            $logger->error('[Direct GAS API] HTTP error', [
+                'http_code' => $httpCode,
+                'response' => substr($response, 0, 500)
+            ]);
+        }
+        return [
+            'status' => 'error',
+            'error' => [
+                'code' => 'HTTP_ERROR',
+                'message' => "HTTPエラー: {$httpCode}"
+            ]
+        ];
+    }
+    
+    // JSONパース
+    $result = json_decode($response, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        if ($logger) {
+            $logger->error('[Direct GAS API] JSON parse error', [
+                'json_error' => json_last_error_msg(),
+                'response_preview' => substr($response, 0, 200)
+            ]);
+        }
+        return [
+            'status' => 'error',
+            'error' => [
+                'code' => 'JSON_ERROR',
+                'message' => 'JSONパースエラー: ' . json_last_error_msg()
+            ]
+        ];
+    }
+    
+    if ($logger && isset($result['status'])) {
+        $logger->info('[Direct GAS API] Response parsed', [
+            'status' => $result['status'],
+            'has_data' => isset($result['data']),
+            'has_error' => isset($result['error'])
+        ]);
+    }
+    
+    return $result;
+}
+
 try {
     // 既存のuser_dataを使用（callback.phpで既に取得済み）
     $logger->info('[Index] セッションからユーザーデータを使用', [
@@ -185,20 +300,29 @@ try {
         'has_visitor_id' => isset($userData['visitor_id']) || isset($userData['id'])
     ]);
     
-    $gasApi = new GasApiClient(GAS_DEPLOYMENT_ID, GAS_API_KEY);
+
     
-    // メニューデータをGasApiClientから取得
-    try {
-        $logger->info('[Index] getAllStructuredMenus 呼び出し開始', [
-            'gas_deployment_id' => substr(GAS_DEPLOYMENT_ID, 0, 10) . '...',
-            'gas_api_key_length' => strlen(GAS_API_KEY),
-            'debug_mode' => DEBUG_MODE
-        ]);
+    // 直接GAS APIを呼び出し
+    $logger->info('[Index] Direct GAS API call for getAllStructuredMenus', [
+        'method' => 'direct',
+        'debug_mode' => DEBUG_MODE
+    ]);
+    
+    // 定数が定義されているか確認
+    if (!defined('GAS_DEPLOYMENT_ID') || !defined('GAS_API_KEY')) {
+        $logger->error('[Index] Required GAS API constants not defined');
+        throw new Exception('Configuration error: GAS API credentials not found');
+    }
+    
+    // 関数を呼び出し（定数を引数として渡す）
+    $menuResult = callGasApiDirect(
+        '/api/menus/all-structured',
+        GAS_DEPLOYMENT_ID,
+        GAS_API_KEY,
+        $logger
+    );
         
-        // GAS APIを直接呼び出し（history/index.phpやticket/index.phpと同じパターン）
-        $menuResult = $gasApi->getAllStructuredMenus();
-        
-        $logger->info('[Index] GAS API レスポンス受信', [
+        $logger->info('[Index] Direct GAS API response received', [
             'response_keys' => array_keys($menuResult ?? []),
             'status' => $menuResult['status'] ?? 'missing',
             'has_data' => isset($menuResult['data']),
@@ -240,8 +364,19 @@ try {
             $errorDetails = [];
             if (isset($menuResult['error'])) {
                 if (is_array($menuResult['error'])) {
-                    $menuError = $menuResult['error']['message'] ?? 'メニューデータの取得に失敗しました';
-                    $errorDetails = $menuResult['error'];
+                    // エラーコードを確認
+                    $errorCode = $menuResult['error']['code'] ?? '';
+                    if ($errorCode === 'NOT_FOUND') {
+                        // NOT_FOUNDエラーの場合はnullを設定してJavaScript側でフォールバック
+                        $menuError = null;
+                        $logger->info('[Index] メニューAPI NOT_FOUND - JavaScript側でフォールバック', [
+                            'error_code' => $errorCode,
+                            'message' => $menuResult['error']['message'] ?? ''
+                        ]);
+                    } else {
+                        $menuError = $menuResult['error']['message'] ?? 'メニューデータの取得に失敗しました';
+                        $errorDetails = $menuResult['error'];
+                    }
                 } else {
                     $menuError = $menuResult['error'];
                     $errorDetails = ['message' => $menuResult['error']];
@@ -261,6 +396,17 @@ try {
             
             // デバッグ情報にエラー詳細を追加
             $debugInfo['menu_api_error'] = $errorDetails;
+            
+            // フォールバック: エラー時でも最小限のメニュー構造を提供
+            // JavaScriptエラーを防ぐために空の構造を設定
+            $menuData = [
+                'withTicket' => ['categories' => []],
+                'withoutTicket' => ['categories' => []],
+                'error' => true,
+                'message' => $menuError
+            ];
+            
+            $logger->info('[Index] フォールバックメニュー構造を設定');
         }
     } catch (Exception $e) {
         $menuError = 'メニューデータの取得中にエラーが発生しました: ' . $e->getMessage();
@@ -277,6 +423,16 @@ try {
             'file' => $e->getFile(),
             'line' => $e->getLine()
         ];
+        
+        // フォールバック: 例外時でも最小限のメニュー構造を提供
+        $menuData = [
+            'withTicket' => ['categories' => []],
+            'withoutTicket' => ['categories' => []],
+            'error' => true,
+            'message' => $menuError
+        ];
+        
+        $logger->info('[Index] 例外処理: フォールバックメニュー構造を設定');
     }
     
     // userDataからユーザー情報を取得（callback.phpで取得済み）
@@ -374,11 +530,14 @@ try {
                 'line_user_id' => $lineUserId
             ]);
         }
-    }
-} catch (Exception $e) {
+    } catch (Exception $e) {
     $errorMessage = 'システムエラーが発生しました: ' . $e->getMessage();
     
     if (DEBUG_MODE) {
+        // $debugInfoが未定義の場合に備えて初期化
+        if (!isset($debugInfo)) {
+            $debugInfo = [];
+        }
         $debugInfo['exception'] = [
             'message' => $e->getMessage(),
             'file' => $e->getFile(),
@@ -1025,13 +1184,13 @@ try {
             // 権限管理とPHPから取得した来院者データ
             companyInfo: <?php echo $companyInfo ? json_encode($companyInfo) : 'null'; ?>,
             userRole: '<?php echo htmlspecialchars($userRole); ?>',
-            companyPatients: <?php echo json_encode($companyPatients); ?>,
+            companyPatients: <?php echo json_encode($companyPatients ?? [], JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS); ?>,
             companyPatientsCount: <?php echo count($companyPatients); ?>,
             isCompanyPatientsEmpty: <?php echo empty($companyPatients) ? 'true' : 'false'; ?>,
             errorMessage: '<?php echo htmlspecialchars($errorMessage); ?>',
             // デバッグ情報
             debugMode: <?php echo DEBUG_MODE ? 'true' : 'false'; ?>,
-            debugInfo: <?php echo json_encode($debugInfo); ?>
+            debugInfo: <?php echo json_encode($debugInfo ?? []); ?>
         };
         
         // DEBUG_MODEをPHPから取得してwindowオブジェクトに設定
@@ -2253,7 +2412,7 @@ try {
             pictureUrl: <?php echo json_encode($pictureUrl); ?>,
             userData: <?php echo json_encode($userData); ?>,
             companyInfo: <?php echo json_encode($companyInfo); ?>,
-            companyPatients: <?php echo json_encode($companyPatients); ?>,
+            companyPatients: <?php echo json_encode($companyPatients ?? [], JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS); ?>,
             currentUserVisitorId: <?php echo json_encode($currentUserVisitorId); ?>,
             userRole: <?php echo json_encode($userRole); ?>,
             debugMode: <?php echo json_encode(defined('DEBUG_MODE') && DEBUG_MODE); ?>,
@@ -2261,8 +2420,8 @@ try {
         };
         
         // GasApiClientから取得したメニューデータをJavaScriptに渡す
-        window.MENU_DATA = <?php echo json_encode($menuData); ?>;
-        window.MENU_ERROR = <?php echo json_encode($menuError); ?>;
+        window.MENU_DATA = <?php echo json_encode($menuData ?? null, JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS); ?>;
+        window.MENU_ERROR = <?php echo json_encode($menuError ?? null, JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS); ?>;
         
         // デバッグ情報
         if (window.SESSION_USER_DATA.debugMode) {

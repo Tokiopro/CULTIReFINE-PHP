@@ -4006,3 +4006,50 @@ function generateTreatmentsCsv(treatments) {
   const treatmentMasterService = new TreatmentMasterService();
   return treatmentMasterService.generateTreatmentsCsv(treatments);
 }
+
+/**
+ * メニュー組み合わせ機能テスト実行
+ */
+function runMenuCombinationTestsMenu() {
+  try {
+    runMenuCombinationTests();
+    SpreadsheetApp.getUi().alert('メニュー組み合わせ機能のテストが完了しました。\n\nログを確認してください。');
+  } catch (error) {
+    SpreadsheetApp.getUi().alert(`テスト実行中にエラーが発生しました:\n${error.toString()}`);
+  }
+}
+
+/**
+ * データ整合性チェック実行
+ */
+function checkDataConsistencyMenu() {
+  try {
+    checkDataConsistency();
+    SpreadsheetApp.getUi().alert('データ整合性チェックが完了しました。\n\nログを確認してください。');
+  } catch (error) {
+    SpreadsheetApp.getUi().alert(`チェック実行中にエラーが発生しました:\n${error.toString()}`);
+  }
+}
+
+/**
+ * メニュー組み合わせルール定義シート作成
+ */
+function createMenuCombinationRuleSheetsMenu() {
+  try {
+    const result = SpreadsheetManager.createMenuCombinationRuleSheets();
+    
+    if (result.success) {
+      const messages = result.message.join('\n');
+      SpreadsheetApp.getUi().alert(
+        'メニュー組み合わせルール定義シートの作成が完了しました。\n\n' +
+        messages + '\n\n' +
+        '作成されたシートで組み合わせルールを編集できます。'
+      );
+    } else {
+      SpreadsheetApp.getUi().alert(`シート作成中にエラーが発生しました:\n${result.error}`);
+    }
+    
+  } catch (error) {
+    SpreadsheetApp.getUi().alert(`シート作成中にエラーが発生しました:\n${error.toString()}`);
+  }
+}
