@@ -122,7 +122,7 @@ export async function updateMenuCalendarScreen() {
     
     var description = document.getElementById('menu-calendar-description');
     var backButtonText = document.getElementById('back-button-text');
-    var nextButtonText = document.getElementById('next-button-text');
+    var nextButtonText = document.getElementById('next-menu-calendar-btn');
 
     if (!description || !backButtonText || !nextButtonText) {
         console.error('Required UI elements not found:', {
@@ -303,7 +303,7 @@ export function checkAndUpdateTimeSlots(patientId, date) {
     const firstMenu = selectedMenus[0];
     console.log('[CheckTimeSlots] Checking availability for menu:', firstMenu.name || firstMenu.id);
     
-    return mockCheckSlotAvailability(firstMenu.id, dateKey, pairRoom, 5).then(function(slotsResult) {
+    return mockCheckSlotAvailability(patientId, firstMenu.id, dateKey, pairRoom, 5).then(function(slotsResult) {
         console.log('[CheckTimeSlots] Slots result:', slotsResult);
         // Show availability message
         if (slotsResult.message) {

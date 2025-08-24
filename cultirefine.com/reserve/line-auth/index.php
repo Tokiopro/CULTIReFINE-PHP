@@ -43,3 +43,22 @@ $logger->info('[LINE Auth] OAuth state生成・保存（詳細）', [
 // LINE認証ページへリダイレクト
 header('Location: ' . $authUrl);
 exit;
+
+?>
+
+<!-- LINEログインボタンは一旦は必要なくなったのでコメントアウト
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>LINEログイン</title>
+</head>
+<body>
+    <h1>LINEでログイン</h1>
+    <a href="<?php echo htmlspecialchars($authUrl, ENT_QUOTES, 'UTF-8'); ?>">
+        <img src="/reserve/line-auth/Line_Login_Button_Image/images/DeskTop/2x/44dp/btn_login_hover.png" alt="LINEでログイン">
+    </a>
+</body>
+</html>
+--!>
+

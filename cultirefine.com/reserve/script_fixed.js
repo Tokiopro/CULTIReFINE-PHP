@@ -290,7 +290,7 @@ function mockCheckTreatmentInterval(patientId, treatmentId, desiredDate) {
     });
 }
 
-function mockCheckSlotAvailability(treatmentId, dateKey, pairRoomDesired) {
+function mockCheckSlotAvailability(patientId, treatmentId, dateKey, pairRoomDesired) {
     console.log("[API Mock] Checking slots for treatment " + treatmentId + " on " + dateKey + ", pair: " + pairRoomDesired);
     return delay(400).then(function() {
         var times = ["10:00", "10:30", "11:00", "11:30", "14:00", "14:30", "15:00"];
@@ -1040,7 +1040,7 @@ function checkAndUpdateTimeSlots(patientId, date) {
     }
 
     var dateKey = formatDateKey(date);
-    return mockCheckSlotAvailability(treatment.id, dateKey, pairRoom).then(function(slotsResult) {
+    return mockCheckSlotAvailability(patientId, treatment.id, dateKey, pairRoom).then(function(slotsResult) {
         // Show availability message
         if (slotsResult.message) {
             var alertType = slotsResult.availableTimes.length > 0 ? 'info' : 'warning';
@@ -1333,7 +1333,7 @@ function checkAndUpdatePairTimeSlots(date) {
 
         // Check slot availability for pair booking
         var dateKey = formatDateKey(date);
-        return mockCheckSlotAvailability(treatment1.id, dateKey, true);
+        return mockCheckSlotAvailability(patient1.id, treatment1.id, dateKey, true);
     }).then(function(slotsResult) {
         if (!slotsResult) return;
         
@@ -1680,7 +1680,7 @@ function checkAndUpdateBulkTimeSlots(date) {
         // Check slot availability (use first treatment as reference)
         var firstTreatment = appState.selectedTreatments[patients[0].id];
         var dateKey = formatDateKey(date);
-        return mockCheckSlotAvailability(firstTreatment.id, dateKey, false);
+        return mockCheckSlotAvailability(patients[0].id, firstTreatment.id, dateKey, false);
     }).then(function(slotsResult) {
         if (!slotsResult) return;
         

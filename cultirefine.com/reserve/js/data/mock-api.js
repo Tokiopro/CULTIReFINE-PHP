@@ -39,7 +39,7 @@ export function mockCheckTreatmentInterval(patientId, treatmentId, desiredDate) 
     });
 }
 
-export function mockCheckSlotAvailability(treatmentId, dateKey, pairRoomDesired) {
+export function mockCheckSlotAvailability(patientId, treatmentId, dateKey, pairRoomDesired) {
     console.log("[API Mock] Checking slots for treatment " + treatmentId + " on " + dateKey + ", pair: " + pairRoomDesired);
     return delay(400).then(function() {
         var times = ["10:00", "10:30", "11:00", "11:30", "14:00", "14:30", "15:00"];

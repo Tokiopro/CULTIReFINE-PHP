@@ -248,7 +248,7 @@ class GasApiClient
         }
         
         $params = [
-            'treatment_id' => $treatmentId,
+            'menu_id' => $treatmentId,
             'date' => $date,
             'pair_room' => $pairRoom ? 'true' : 'false',
             'time_spacing' => $timeSpacing
@@ -938,7 +938,7 @@ class GasApiClient
     public function getAllStructuredMenus(): array
     {
         $cacheKey = "all_structured_menus";
-        
+        error_log("CALL getAllStructuredMenus");
         if (defined('DEBUG_MODE') && DEBUG_MODE) {
             error_log("[GAS API] getAllStructuredMenus called");
         }
@@ -974,7 +974,188 @@ class GasApiClient
         
         return $result;
     }
+	public function getTestAllStructuredMenus()
+    {
+        $cacheKey = "all_structured_menus";
+        
+        // デバッグ: 入力値確認
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] getAllStructuredMenus called");
+            error_log("[GAS API] Cache key: {$cacheKey}");
+        }
+        
+        // 開発モードではキャッシュを無効化（新形式テスト用）
+        /*$useCache = !defined('DEBUG_MODE') || !DEBUG_MODE;
+        
+        // 開発モードでは古いキャッシュを強制クリア
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            $this->clearCache("user_full_*");
+            error_log("[GAS API] Development mode: cleared all user_full caches");
+        }
+        
+        // キャッシュチェック
+        if ($useCache && ($cachedData = $this->getFromCache($cacheKey))) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Returning cached data for: {$lineUserId}");
+            }
+            return $cachedData;
+        } else if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Cache disabled or no cached data found, making fresh request");
+        }*/
+        
+        $path = "/api/menus/all-structured";
+        
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Making request to path: {$path}");
+            error_log("[GAS API] Base URL: {$this->baseUrl}");
+            error_log("[GAS API] Full URL: {$this->baseUrl}{$path}");
+        }
+        
+        $result = $this->makeRequest('GET', $path);
+        error_log("Response Result: {$result}");
+        
+        // デバッグ: レスポンス詳細
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Response status: " . ($result['status'] ?? 'no_status'));
+            error_log("[GAS API] Response keys: " . implode(', ', array_keys($result)));
+            if (isset($result['error'])) {
+                error_log("[GAS API] Error details: " . json_encode($result['error']));
+            }
+            if (isset($result['data'])) {
+                error_log("[GAS API] Data keys: " . implode(', ', array_keys($result['data'])));
+            }
+        }
+        
+        // レスポンス形式を標準化
+        $MenunormalizedResult = $this->normalizeGasApiMenuResponse($result);
+        
+        // 正規化後のstatusをチェック
+        if (isset($MenunormalizedResult['status']) && $MenunormalizedResult['status'] === 'success') {
+            // 成功時かつキャッシュ使用時のみキャッシュ（正規化後のデータを保存）
+            if ($useCache) {
+                $this->saveToCache($cacheKey, $MenunormalizedResult);
+                if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                    error_log("[GAS API] Data cached successfully for: {$lineUserId}");
+                }
+            } else if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Cache disabled, not saving to cache");
+            }
+        } else {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Request failed, not caching. Status: " . ($MenunormalizedResult['status'] ?? 'unknown'));
+            }
+        }
+        
+        return $MenunormalizedResult;
+    }
     
+    /**
+     * GAS APIレスポンスを標準形式に変換
+     */
+    private function normalizeGasApiMenuResponse(array $response): array
+    {
+        // デバッグ: 変換前のレスポンス
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Normalizing response with keys: " . implode(', ', array_keys($response)));
+        }
+        
+        // 既に標準形式（status + data構造）の場合はそのまま返す
+        if (isset($response['status']) && isset($response['data'])) {
+            return $response;
+        }
+        
+        // エラーレスポンスの場合
+        if (isset($response['status']) && $response['status'] === 'error') {
+            return $response;
+        }
+        
+        // 成功レスポンスだがdataがない場合（GAS APIの標準レスポンス形式）
+        if (isset($response['status']) && $response['status'] === 'success' && !isset($response['data'])) {
+            // レスポンス全体をdataとして扱う
+            $data = $response;
+            unset($data['status']);
+            return [
+                'status' => 'success',
+                'data' => $data
+            ];
+        }
+        
+        // 新形式のGAS APIレスポンス（フラット構造: visitor_id, visitor_name, ticketInfo, docsinfo, ReservationHistory）
+        if (isset($response['visitor_id']) || isset($response['visitor_name']) || 
+            isset($response['ticketInfo']) || isset($response['docsinfo']) || 
+            isset($response['ReservationHistory'])) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Detected new flat format response");
+                error_log("[GAS API] Response has visitor_id: " . (isset($response['visitor_id']) ? 'yes' : 'no'));
+                error_log("[GAS API] Response has docsinfo: " . (isset($response['docsinfo']) ? 'yes' : 'no'));
+                error_log("[GAS API] Response has ReservationHistory: " . (isset($response['ReservationHistory']) ? 'yes' : 'no'));
+            }
+            
+            // 新形式はそのまま返す（変換しない）
+            return [
+                'status' => 'success',
+                'data' => $response
+            ];
+        }
+        
+        // その他の場合も可能な限り解釈を試みる
+        if (defined('DEBUG_MODE') && DEBUG_MODE) {
+            error_log("[GAS API] Unknown response format, attempting flexible interpretation");
+            error_log("[GAS API] Response structure: " . json_encode($response, JSON_UNESCAPED_UNICODE));
+        }
+        
+        // 空のレスポンスや null の場合はユーザー未発見として扱う
+        if (empty($response) || $response === null) {
+            return [
+                'status' => 'error',
+                'error' => [
+                    'code' => 'USER_NOT_FOUND',
+                    'message' => '指定されたLINE IDのユーザーが見つかりません',
+                    'details' => 'Empty or null response'
+                ]
+            ];
+        }
+        
+        // 配列形式でない場合やエラーを示すキーワードが含まれる場合
+        if (!is_array($response)) {
+            $responseStr = (string)$response;
+            if (strpos($responseStr, 'not found') !== false || 
+                strpos($responseStr, '見つかりません') !== false ||
+                strpos($responseStr, 'ユーザーが存在しません') !== false) {
+                return [
+                    'status' => 'error',
+                    'error' => [
+                        'code' => 'USER_NOT_FOUND',
+                        'message' => '指定されたLINE IDのユーザーが見つかりません',
+                        'details' => $responseStr
+                    ]
+                ];
+            }
+        }
+        
+        // 最後の手段：予期しない形式だが、可能な限り成功として処理
+        // データがある場合は取得成功と判断し、フォールバック処理を行う
+        if (is_array($response) && !empty($response)) {
+            if (defined('DEBUG_MODE') && DEBUG_MODE) {
+                error_log("[GAS API] Treating unknown format as success with fallback processing");
+            }
+            
+            return [
+                'status' => 'success',
+                'data' => $response
+            ];
+        }
+        
+        // 本当に解釈不可能な場合のみエラー
+        return [
+            'status' => 'error',
+            'error' => [
+                'code' => 'INVALID_RESPONSE_FORMAT',
+                'message' => 'GAS APIからの予期しないレスポンス形式です',
+                'details' => $response
+            ]
+        ];
+    }
     /**
      * 来院者の過去予約からメニューIDを決定
      * @param string $visitorId 来院者ID
@@ -1275,54 +1456,6 @@ class GasApiClient
         }
         
         return $data;
-    }
-    
-    /**
-     * LINE通知グループIDを取得
-     * 
-     * @return array レスポンス
-     */
-    public function getLineNotificationGroupId(): array
-    {
-        try {
-            $cacheKey = 'line_notification_group_id';
-            
-            // キャッシュから取得を試行
-            $cachedData = $this->getFromCache($cacheKey);
-            if ($cachedData !== null) {
-                if (defined('DEBUG_MODE') && DEBUG_MODE) {
-                    error_log('[GAS API] LINE notification group ID cache hit');
-                }
-                return $cachedData;
-            }
-            
-            // GAS APIから取得
-            $response = $this->makeApiRequest('api/line/group-id', []);
-            
-            if (isset($response['status']) && $response['status'] === 'success') {
-                // キャッシュに保存（短い時間）
-                $this->saveToCache($cacheKey, $response, 60); // 1分キャッシュ
-                
-                if (defined('DEBUG_MODE') && DEBUG_MODE) {
-                    $configured = $response['data']['configured'] ?? false;
-                    error_log('[GAS API] LINE notification group ID retrieved: ' . ($configured ? '設定済み' : '未設定'));
-                }
-                
-                return $response;
-            }
-            
-            return [
-                'status' => 'error',
-                'error' => ['message' => 'LINE通知グループIDの取得に失敗しました']
-            ];
-            
-        } catch (Exception $e) {
-            error_log('[GAS API] LINE notification group ID error: ' . $e->getMessage());
-            return [
-                'status' => 'error',
-                'error' => ['message' => $e->getMessage()]
-            ];
-        }
     }
     
     /**

@@ -268,16 +268,22 @@ export async function mockCheckTreatmentInterval(patientId, treatmentId, desired
     try {
         // ユーザー情報から施術履歴を取得
         const userInfo = await getUserFullInfo();
+        console.log("[IIJIMA TEMP2] userInfo", userInfo);
         
         if (!userInfo.success) {
             throw new Error('ユーザー情報の取得に失敗しました');
         }
         
-        const treatmentHistory = userInfo.data.treatmentHistory || [];
-        const availableTreatments = userInfo.data.availableTreatments || [];
+        console.log("[IIJIMA TEMP1] userInfo", userInfo);
+        
+        const treatmentHistory = userInfo.data.ReservationHistory || [];
+        const availableTreatments = userInfo.data.ticketInfo || [];
         
         // 指定された施術の情報を取得
-        const treatment = availableTreatments.find(t => t.treatmentId === treatmentId);
+        const treatment = availableTreatments.find(t => t.treatment_id === treatmentId);
+        
+        // IIJIMA TEST
+        return { success: true, isValid: true };
         
         if (!treatment) {
             return { 
@@ -288,7 +294,7 @@ export async function mockCheckTreatmentInterval(patientId, treatmentId, desired
         }
         
         // 予約可能かチェック
-        if (!treatment.canBook) {
+        if (treatment.available_count === 0) {
             return { 
                 success: false, 
                 isValid: false, 
@@ -456,11 +462,12 @@ export async function getAvailableSlots(visitorId, menuIds, startDate, dateRange
 /**
  * 空き時間確認
  */
-export async function mockCheckSlotAvailability(treatmentId, dateKey, pairRoomDesired, timeSpacing = 5) {
+export async function mockCheckSlotAvailability(patientId, treatmentId, dateKey, pairRoomDesired, timeSpacing = 5) {
     console.log('[GAS API] Checking slot availability for:', treatmentId, dateKey, pairRoomDesired, timeSpacing);
     
     try {
         const data = await apiCall('getAvailability', {
+            patient_id: patientId,
             treatment_id: treatmentId,
             date: dateKey,
             pair_room: pairRoomDesired ? 'true' : 'false',

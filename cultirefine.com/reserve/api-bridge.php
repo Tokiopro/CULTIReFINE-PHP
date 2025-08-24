@@ -395,7 +395,7 @@ try {
             'action' => $action ?? 'unknown',
             'request_method' => $_SERVER['REQUEST_METHOD'],
             'get_params' => $_GET,
-            'post_data' => getJsonInput(),
+            // 'post_data' => getJsonInput(),
             'session_data' => [
                 'line_user_id' => $_SESSION['line_user_id'] ?? 'not_set',
                 'company_info' => $_SESSION['company_info'] ?? 'not_set'
@@ -419,7 +419,7 @@ try {
         error_log('[API_BRIDGE_ERROR] File: ' . $e->getFile() . ':' . $e->getLine());
         error_log('[API_BRIDGE_ERROR] Request Method: ' . $_SERVER['REQUEST_METHOD']);
         error_log('[API_BRIDGE_ERROR] GET Params: ' . json_encode($_GET));
-        error_log('[API_BRIDGE_ERROR] POST Data: ' . json_encode(getJsonInput()));
+        // error_log('[API_BRIDGE_ERROR] POST Data: ' . json_encode(getJsonInput()));
         error_log('[API_BRIDGE_ERROR] Session Data: ' . json_encode([
             'line_user_id' => $_SESSION['line_user_id'] ?? 'not_set',
             'company_info' => $_SESSION['company_info'] ?? 'not_set'

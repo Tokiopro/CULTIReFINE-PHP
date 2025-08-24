@@ -3,6 +3,7 @@
 
 // PHPから提供されたメニューデータを使用するため、API呼び出しは不要
 import { createElement } from '../core/ui-helpers.js';
+import { createTreatmentAccordion } from './treatment-accordion.js';
 
 /**
  * 全ユーザー共通メニューをロードして表示
@@ -95,6 +96,8 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
             console.log('Data keys:', Object.keys(data));
         }
         
+        createTreatmentAccordion(containerId, patientId);
+        
         // 全ユーザー共通メニューのため患者情報は不要
         
         // 全メニューAPIの構造に対応（withTicket/withoutTicket形式）
@@ -155,7 +158,7 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
             hasMenus = menuCategories.length > 0;
         } else {
             // 旧形式のフォールバック
-            menuCategories = data.categories || data.menu_categories || data.menus;
+            menuCategories = data.categories || data.menu_categories || data.items || data.treatmentCategories;
         }
         
         // デバッグ: メニューデータの構造を詳細に確認
@@ -165,7 +168,7 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
             console.log('- data.withoutTicket:', data.withoutTicket ? 'exists' : 'null');
             console.log('- data.categories:', data.categories);
             console.log('- data.menu_categories:', data.menu_categories);
-            console.log('- data.menus:', data.menus);
+            console.log('- data.items:', data.items);
             console.log('- Selected menuCategories:', menuCategories);
             console.log('- Type of menuCategories:', typeof menuCategories);
             console.log('- Is Array?:', Array.isArray(menuCategories));
@@ -184,15 +187,15 @@ export async function loadPatientMenus(containerId, patientId, companyId, onSele
                     const firstItem = menuCategories[0];
                     if (window.DEBUG_MODE) {
                         console.log('First menu item structure:', firstItem);
-                        console.log('Has menus property?:', !!firstItem.menus);
+                        console.log('Has menus property?:', !!firstItem.items);
                         console.log('Has menu_id?:', !!firstItem.menu_id);
                         console.log('Has name?:', !!firstItem.name);
                     }
                     
-                    if (firstItem.menus && Array.isArray(firstItem.menus)) {
+                    if (firstItem.items && Array.isArray(firstItem.items)) {
                         // カテゴリ形式の場合
                         hasMenus = menuCategories.some(cat => {
-                            return cat.menus && cat.menus.length > 0 && cat.menus.some(menu => 
+                            return cat.items && cat.items.length > 0 && cat.items.some(menu => 
                                 menu.should_display !== false && menu.is_active !== false
                             );
                         });
@@ -409,7 +412,7 @@ function createMenuAccordion(menuCategories, recommendedCategory, patientId, onS
         if (menuCategories.length > 0) {
             const firstItem = menuCategories[0];
             
-            if (firstItem.menus && Array.isArray(firstItem.menus)) {
+            if (firstItem.items && Array.isArray(firstItem.items)) {
                 // カテゴリ形式の場合
                 menuCategories.forEach((category, index) => {
                     if (window.DEBUG_MODE) {
@@ -417,8 +420,8 @@ function createMenuAccordion(menuCategories, recommendedCategory, patientId, onS
                     }
                     
                     // メニューが存在し、表示すべきメニューがある場合のみカテゴリを表示
-                    if (category.menus && category.menus.length > 0) {
-                        const displayableMenus = category.menus.filter(menu => 
+                    if (category.items && category.items.length > 0) {
+                        const displayableMenus = category.items.filter(menu => 
                             menu.should_display !== false && menu.is_active !== false
                         );
                         
@@ -523,16 +526,16 @@ function createMenuAccordion(menuCategories, recommendedCategory, patientId, onS
 function createCategoryAccordion(category, patientId, onSelectCallback) {
     if (window.DEBUG_MODE) {
         console.log('createCategoryAccordion called for category:', category.category_name);
-        console.log('Number of menus in category:', category.menus.length);
+        console.log('Number of menus in category:', category.items.length);
     }
     
     const categoryDiv = createElement('div', 'border border-gray-200 rounded-lg');
-    const categoryId = 'cat-' + category.category_id;
+    const categoryId = 'cat-' + category.id;
     const contentId = 'content-' + categoryId;
     
     // ヘッダー
     const headerButton = createElement('button', 'w-full px-4 py-3 text-left font-medium hover:bg-gray-50 flex justify-between items-center');
-    headerButton.innerHTML = category.category_name + '<span class="accordion-arrow">▼</span>';
+    headerButton.innerHTML = category.name + '<span class="accordion-arrow">▼</span>';
     headerButton.onclick = () => toggleMenuAccordion(categoryId, contentId);
     headerButton.id = categoryId;
     
@@ -543,8 +546,8 @@ function createCategoryAccordion(category, patientId, onSelectCallback) {
     // メニューアイテムを直接追加
     const itemsDiv = createElement('div', 'space-y-2');
     
-    if (category.menus && category.menus.length > 0) {
-        category.menus.forEach(menu => {
+    if (category.items && category.items.length > 0) {
+        category.items.forEach(menu => {
             // should_displayがない場合も表示（後方互換性）
             if (menu.should_display !== false) {
                 const menuItem = createMenuItem(menu, patientId, onSelectCallback);
@@ -855,8 +858,8 @@ function flattenStructuredMenus(categories, parentName = '') {
     
     function processCategory(categoryData, categoryName) {
         // カテゴリ直下のメニューを追加
-        if (categoryData.menus && Array.isArray(categoryData.menus)) {
-            categoryData.menus.forEach(menu => {
+        if (categoryData.items && Array.isArray(categoryData.items)) {
+            categoryData.items.forEach(menu => {
                 flatMenus.push({
                     ...menu,
                     category_name: categoryName,
@@ -945,7 +948,7 @@ function processCategories(categories) {
                     name: midCategoryData.name,
                     level: 'middle',
                     children: [],
-                    menus: midCategoryData.menus || []
+                    menus: midCategoryData.items || []
                 };
                 
                 // 小カテゴリーの処理
@@ -955,7 +958,7 @@ function processCategories(categories) {
                             id: minorCategoryId,
                             name: minorCategoryData.name,
                             level: 'minor',
-                            menus: minorCategoryData.menus || []
+                            menus: minorCategoryData.items || []
                         });
                     }
                 }
@@ -965,8 +968,8 @@ function processCategories(categories) {
         }
         
         // 大カテゴリー直下のメニュー
-        if (categoryData.menus && categoryData.menus.length > 0) {
-            processedCategory.menus = categoryData.menus;
+        if (categoryData.items && categoryData.items.length > 0) {
+            processedCategory.items = categoryData.items;
         }
         
         processed.push(processedCategory);

@@ -639,7 +639,7 @@ foreach ($visitedTicketInfo as $item) {
 <!-- Footer -->
 <?php include_once '../assets/inc/footer.php'; ?>
 	<script src="js/modal.js"></script>
-	<?php /*if (defined('DEBUG_MODE') && DEBUG_MODE): ?>
+	<?php if (defined('DEBUG_MODE') && DEBUG_MODE): ?>
     <div class="fixed bottom-4 right-4 bg-gray-800 text-white p-2 text-xs rounded max-w-sm max-h-96 overflow-y-auto">
         <p><strong>書類一覧デバッグ情報</strong></p>
         <p>LINE ID: <?php echo substr($lineUserId, 0, 10); ?>...</p>
@@ -648,11 +648,7 @@ foreach ($visitedTicketInfo as $item) {
         <p>Visitor ID: <?php echo $visitorId ? substr($visitorId, 0, 15) . '...' : 'なし'; ?></p>
         <p>書類件数: <?php echo $reservation; ?>件</p>
 		<?php echo "<pre>";
-var_dump($reservedTicketInfo);
-echo "</pre>";
-?>
-		<?php echo "<pre>";
-var_dump($visitedTicketInfo);
+var_dump($gasApi);
 echo "</pre>";
 ?>
         <p>エラー: <?php echo $errorMessage ?: 'なし'; ?></p>
@@ -662,7 +658,7 @@ echo "</pre>";
         <pre class="text-xs bg-gray-900 p-2 rounded overflow-auto max-h-32"><?php echo htmlspecialchars(json_encode($folders, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></pre>
         <?php endif; ?>
     </div>
-<?php endif; */?>
+<?php endif; ?>
 <script type="text/javascript">
 // sessionStorageキャッシュ確認
 (function() {

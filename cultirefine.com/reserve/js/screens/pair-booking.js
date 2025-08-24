@@ -232,7 +232,7 @@ function checkAndUpdatePairTimeSlots(date) {
 
         // Check slot availability for pair booking
         var dateKey = formatDateKey(date);
-        return mockCheckSlotAvailability(treatment1.id, dateKey, true);
+        return mockCheckSlotAvailability(patient1.id, treatment1.id, dateKey, true);
     }).then(function(slotsResult) {
         if (!slotsResult) return;
         

@@ -266,7 +266,7 @@ function checkAndUpdateBulkTimeSlots(date) {
         // Check slot availability (use first treatment as reference)
         var firstTreatment = appState.selectedTreatments[patients[0].id];
         var dateKey = formatDateKey(date);
-        return mockCheckSlotAvailability(firstTreatment.id, dateKey, false);
+        return mockCheckSlotAvailability(patients[0].id, firstTreatment.id, dateKey, false);
     }).then(function(slotsResult) {
         if (!slotsResult) return;
         

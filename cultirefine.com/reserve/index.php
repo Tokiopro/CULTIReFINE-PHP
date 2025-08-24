@@ -321,6 +321,7 @@ try {
         GAS_API_KEY,
         $logger
     );
+    print_r($menuResult);
         
         $logger->info('[Index] Direct GAS API response received', [
             'response_keys' => array_keys($menuResult ?? []),
@@ -330,7 +331,7 @@ try {
             'raw_response_type' => gettype($menuResult)
         ]);
         
-        if ($menuResult['status'] === 'success' && isset($menuResult['data'])) {
+        if ((array_key_exists('success', $menuResult) && $menuResult['success'] === true) || (array_key_exists('status', $menuResult) && $menuResult['status'] === 'success' && isset($menuResult['data']))) {
             $menuData = $menuResult['data'];
             
             // メニュー数をカウント
@@ -446,109 +447,114 @@ try {
     
     // JavaScript側でGAS APIを呼び出すため、PHP側では呼び出さない
     // 会社情報とメンバータイプのみ設定（callback.phpで取得済みのuserDataから）
-    if ($currentUserVisitorId) {
-        // userDataから会社情報を構築（既にcallback.phpで取得済み）
-        $companyData = $userData['company'] ?? null;
-        
-        if (DEBUG_MODE) {
-            $logger->debug('[Index] Company data from userData', [
-                'company_data' => $companyData,
-                'userData_keys' => array_keys($userData)
-            ]);
-        }
-        
-        // 会社情報の処理
-        if ($companyData && isset($companyData['company_id']) && !empty($companyData['company_id'])) {
-            // member_typeの判定（userDataから取得）
-            $isMemberType = ($userData['member_type'] ?? false) === true;
-            $memberTypeLabel = $isMemberType ? '本会員' : 'サブ会員';
+    try {
+        if ($currentUserVisitorId) {
+            // userDataから会社情報を構築（既にcallback.phpで取得済み）
+            $companyData = $userData['company'] ?? null;
             
-            $companyInfo = [
-                'id' => $companyData['company_id'],
-                'name' => $companyData['name'] ?? '不明',
-                'plan' => $companyData['plan'] ?? '',
-                'member_type' => $memberTypeLabel,
-                'role' => $isMemberType ? 'main' : 'sub'
-            ];
-            
-            // 会社関連のメンバーリストをGAS APIから取得
-            try {
-                $logger->info('[Index] 会社別来院者を取得開始', [
-                    'company_id' => $companyData['company_id'],
-                    'user_role' => $companyInfo['role']
+            if (DEBUG_MODE) {
+                $logger->debug('[Index] Company data from userData', [
+                    'company_data' => $companyData,
+                    'userData_keys' => array_keys($userData)
                 ]);
+            }
+            
+            // 会社情報の処理
+            if ($companyData && isset($companyData['company_id']) && !empty($companyData['company_id'])) {
+                // member_typeの判定（userDataから取得）
+                $isMemberType = ($userData['member_type'] ?? false) === true;
+                $memberTypeLabel = $isMemberType ? '本会員' : 'サブ会員';
                 
-                $companyVisitorsResult = $gasApi->getPatientsByCompany(
-                    $companyData['company_id'], 
-                    $companyInfo['role']
-                );
+                $companyInfo = [
+                    'id' => $companyData['company_id'],
+                    'name' => $companyData['name'] ?? '不明',
+                    'plan' => $companyData['plan'] ?? '',
+                    'member_type' => $memberTypeLabel,
+                    'role' => $isMemberType ? 'main' : 'sub'
+                ];
                 
-                if ($companyVisitorsResult['status'] === 'success' && isset($companyVisitorsResult['data']['visitors'])) {
-                    $companyPatients = $companyVisitorsResult['data']['visitors'];
-                    
-                    $logger->info('[Index] 会社別来院者取得成功', [
+                // 会社関連のメンバーリストをGAS APIから取得
+                try {
+                    $logger->info('[Index] 会社別来院者を取得開始', [
                         'company_id' => $companyData['company_id'],
-                        'total_count' => count($companyPatients),
                         'user_role' => $companyInfo['role']
                     ]);
+
+		    // GAS APIクライアントを初期化
+		    $gasApi = new GasApiClient(GAS_DEPLOYMENT_ID, GAS_API_KEY);
                     
-                    if (DEBUG_MODE) {
-                        $logger->debug('[Index] 来院者リスト詳細', [
-                            'first_5_visitors' => array_slice($companyPatients, 0, 5)
+                    $companyVisitorsResult = $gasApi->getPatientsByCompany(
+                        $companyData['company_id'], 
+                        $companyInfo['role']
+                    );
+                    
+                    if ($companyVisitorsResult['status'] === 'success' && isset($companyVisitorsResult['data']['visitors'])) {
+                        $companyPatients = $companyVisitorsResult['data']['visitors'];
+                        
+                        $logger->info('[Index] 会社別来院者取得成功', [
+                            'company_id' => $companyData['company_id'],
+                            'total_count' => count($companyPatients),
+                            'user_role' => $companyInfo['role']
                         ]);
+                        
+                        if (DEBUG_MODE) {
+                            $logger->debug('[Index] 来院者リスト詳細', [
+                                'first_5_visitors' => array_slice($companyPatients, 0, 5)
+                            ]);
+                        }
+                    } else {
+                        $logger->warning('[Index] 会社別来院者取得失敗', [
+                            'company_id' => $companyData['company_id'],
+                            'result' => $companyVisitorsResult
+                        ]);
+                        $companyPatients = [];
                     }
-                } else {
-                    $logger->warning('[Index] 会社別来院者取得失敗', [
+                } catch (Exception $e) {
+                    $logger->error('[Index] 会社別来院者取得エラー', [
                         'company_id' => $companyData['company_id'],
-                        'result' => $companyVisitorsResult
+                        'error' => $e->getMessage()
                     ]);
                     $companyPatients = [];
+                    // エラーメッセージに追加
+                    if (!$errorMessage) {
+                        $errorMessage = '会社メンバーの取得に失敗しました。';
+                    }
                 }
-            } catch (Exception $e) {
-                $logger->error('[Index] 会社別来院者取得エラー', [
-                    'company_id' => $companyData['company_id'],
-                    'error' => $e->getMessage()
-                ]);
-                $companyPatients = [];
-                // エラーメッセージに追加
-                if (!$errorMessage) {
-                    $errorMessage = '会社メンバーの取得に失敗しました。';
-                }
+            } else {
+                // 会社情報がない場合（個人利用者）
+                $companyInfo = null;
             }
         } else {
-            // 会社情報がない場合（個人利用者）
-            $companyInfo = null;
-        }
-    } else {
-        // visitor_idがない場合のエラーメッセージ
-        $errorMessage = 'ユーザー情報の取得に失敗しました。visitor_idが見つかりません。';
-        
-        // デバッグ: 失敗詳細
-        if (DEBUG_MODE) {
-            $logger->debug('[Index] No visitor_id found', [
-                'user_data' => $userData,
-                'line_user_id' => $lineUserId
-            ]);
+            // visitor_idがない場合のエラーメッセージ
+            $errorMessage = 'ユーザー情報の取得に失敗しました。visitor_idが見つかりません。';
+            
+            // デバッグ: 失敗詳細
+            if (DEBUG_MODE) {
+                $logger->debug('[Index] No visitor_id found', [
+                    'user_data' => $userData,
+                    'line_user_id' => $lineUserId
+                ]);
+            }
         }
     } catch (Exception $e) {
-    $errorMessage = 'システムエラーが発生しました: ' . $e->getMessage();
-    
-    if (DEBUG_MODE) {
-        // $debugInfoが未定義の場合に備えて初期化
-        if (!isset($debugInfo)) {
-            $debugInfo = [];
+        $errorMessage = 'システムエラーが発生しました: ' . $e->getMessage();
+     
+        if (DEBUG_MODE) {
+            // $debugInfoが未定義の場合に備えて初期化
+            if (!isset($debugInfo)) {
+                $debugInfo = [];
+            }
+            $debugInfo['exception'] = [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ];
+            $logger->error('[Index] Exception occurred', $debugInfo['exception']);
         }
-        $debugInfo['exception'] = [
-            'message' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-            'trace' => $e->getTraceAsString()
-        ];
-        $logger->error('[Index] Exception occurred', $debugInfo['exception']);
+	error_log('Patients loading error: ' . $e->getMessage());
     }
     
-    error_log('Patients loading error: ' . $e->getMessage());
-}
 ?>
 <!DOCTYPE html>
 <!-- 
